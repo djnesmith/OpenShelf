@@ -1,7 +1,8 @@
 import Foundation
 
 /// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
-/// calibre's ebook-convert, pandoc, yq, cjxl (JPEG XL), DuckDB and jet (EDN).
+/// calibre's ebook-convert, pandoc, yq, cjxl (JPEG XL), DuckDB, jet (EDN),
+/// and the source-code formatters Pretty Print uses.
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
     var cwebp: URL?
@@ -13,6 +14,20 @@ struct ExternalTools: Equatable, Sendable {
     var cjxl: URL? = nil
     var duckdb: URL? = nil
     var jet: URL? = nil
+    var formatters = Formatters()
+
+    /// Pretty Print's formatters (xmllint ships with macOS).
+    struct Formatters: Equatable, Sendable {
+        var deno: URL? = nil
+        var cljfmt: URL? = nil
+        var ruff: URL? = nil
+        var shfmt: URL? = nil
+        var swiftFormat: URL? = nil
+        var pgFormat: URL? = nil
+        var clangFormat: URL? = nil
+        var gofmt: URL? = nil
+        var rustfmt: URL? = nil
+    }
 
     /// Never runs ffmpeg: see `WebPEncoder.isOffered`.
     var canEncodeWebP: Bool {
@@ -80,7 +95,19 @@ struct ExternalTools: Equatable, Sendable {
             yq: find("yq", ignoredAs: "yq"),
             cjxl: find("cjxl", ignoredAs: "cjxl"),
             duckdb: find("duckdb", ignoredAs: "duckdb"),
-            jet: find("jet", ignoredAs: "jet")
+            jet: find("jet", ignoredAs: "jet"),
+            formatters: Formatters(
+                deno: find("deno", ignoredAs: "deno"),
+                cljfmt: find("cljfmt", ignoredAs: "cljfmt"),
+                ruff: find("ruff", ignoredAs: "ruff"),
+                shfmt: find("shfmt", ignoredAs: "shfmt"),
+                swiftFormat: find("swift-format", ignoredAs: "swift-format")
+                    ?? locations.swiftFormat.first { FileManager.default.isExecutableFile(atPath: $0.path) },
+                pgFormat: find("pg_format", ignoredAs: "pg_format"),
+                clangFormat: find("clang-format", ignoredAs: "clang-format"),
+                gofmt: find("gofmt", ignoredAs: "gofmt"),
+                rustfmt: find("rustfmt", ignoredAs: "rustfmt")
+            )
         )
     }
 
@@ -103,6 +130,8 @@ struct ToolLocations: Sendable {
     var ownCommandDirectories: [URL] = []
     var ownLibreOfficeApps: [URL] = []
     var calibreApps: [URL] = []
+    /// Xcode's swift-format, which isn't on any PATH.
+    var swiftFormat: [URL] = []
 
     /// Homebrew, MacPorts and the PATH come first: tools people installed
     /// themselves and keep up to date. OpenShelf's own copies (`ManagedTools`)
@@ -123,7 +152,8 @@ struct ToolLocations: Sendable {
             calibreApps: [
                 URL(fileURLWithPath: "/Applications/calibre.app"),
                 FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/calibre.app"),
-            ]
+            ],
+            swiftFormat: [URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-format")]
         )
     }
 }

@@ -45,6 +45,8 @@ enum FileTool: CaseIterable, Hashable {
     case icon
     case export
     case sqliteTables
+    // Source code.
+    case prettyPrint
 
     var title: String {
         switch self {
@@ -88,6 +90,7 @@ enum FileTool: CaseIterable, Hashable {
         case .icon: "Icon"
         case .export: "Export"
         case .sqliteTables: "Tables"
+        case .prettyPrint: "Pretty Print"
         }
     }
 
@@ -125,6 +128,7 @@ enum FileTool: CaseIterable, Hashable {
         case .icon: "app.dashed"
         case .export: "square.and.arrow.up.on.square"
         case .sqliteTables: "tablecells"
+        case .prettyPrint: "text.alignleft"
         case .transcribe: "captions.bubble"
         case .fitSize: "externaldrive.badge.checkmark"
         }
@@ -184,6 +188,9 @@ enum FileTool: CaseIterable, Hashable {
         if kinds == [.image] {
             let gifs: [FileTool] = urls.allSatisfy { $0.pathExtension.lowercased() == "gif" } ? [.gifLoop] : []
             return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr, .icon] + gifs + combine
+        }
+        if urls.allSatisfy({ PrettyPrint.formatter(for: $0, tools: tools) != nil }) {
+            return [.prettyPrint]
         }
         if urls.count == 1, kinds == [.data], DatabaseConversion.isSQLite(urls[0]) {
             return [.sqliteTables]

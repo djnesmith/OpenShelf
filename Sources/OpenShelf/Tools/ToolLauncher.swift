@@ -82,6 +82,11 @@ enum ToolLauncher {
         case .gifLoop:
             EditorWindowController.present(size: GIFLoopEditor.windowSize, near: location) { GIFLoopEditor(urls: urls, actions: $0) }
 
+        case .prettyPrint:
+            runner.run(title: "Pretty printing", jobs: urls.map { [$0] }, unchangedLabel: "already formatted", near: location) { sources, _ in
+                try await PrettyPrint.format(sources[0]).map { [$0] } ?? []
+            }
+
         case .sqliteTables:
             EditorWindowController.present(size: SQLiteTablesEditor.windowSize, near: location) { SQLiteTablesEditor(url: first, actions: $0) }
 

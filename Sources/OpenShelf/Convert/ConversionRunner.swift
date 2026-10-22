@@ -32,11 +32,14 @@ final class ConversionRunner {
     }
 
     /// Queues `jobs` behind any batch already running.
+    /// - Parameter unchangedLabel: For tools whose job saves nothing when the
+    ///   file needs no change: what the toast calls those files.
     func run(
         title: String,
         jobs: [[URL]],
         savedSubtitle: String? = nil,
         keepsFormat: Bool = false,
+        unchangedLabel: String? = nil,
         near location: NSPoint = NSEvent.mouseLocation,
         operation: @escaping Operation
     ) {
@@ -45,7 +48,7 @@ final class ConversionRunner {
         current = Task { [weak self] in
             // Batches queue behind each other so their toasts don't collide.
             await previous?.value
-            await self?.execute(title: title, jobs: jobs, savedSubtitle: savedSubtitle, keepsFormat: keepsFormat, near: location, operation: operation)
+            await self?.execute(title: title, jobs: jobs, savedSubtitle: savedSubtitle, keepsFormat: keepsFormat, unchangedLabel: unchangedLabel, near: location, operation: operation)
         }
     }
 
@@ -54,6 +57,7 @@ final class ConversionRunner {
         jobs: [[URL]],
         savedSubtitle: String?,
         keepsFormat: Bool,
+        unchangedLabel: String?,
         near location: NSPoint,
         operation: @escaping Operation
     ) async {
@@ -61,13 +65,16 @@ final class ConversionRunner {
         let total = jobs.count
         let job = Task {
             var saved: [URL] = []
+            var unchanged = 0
             var failures: [String] = []
             for (index, sources) in jobs.enumerated() {
                 if Task.isCancelled { break }
                 do {
-                    saved += try await operation(sources) { fraction in
+                    let written = try await operation(sources) { fraction in
                         Task { @MainActor in toasts.updateProgress((Double(index) + fraction) / Double(total)) }
                     }
+                    if written.isEmpty { unchanged += 1 }
+                    saved += written
                 } catch is CancellationError {
                     break
                 } catch {
@@ -75,13 +82,13 @@ final class ConversionRunner {
                 }
                 toasts.updateProgress(Double(index + 1) / Double(total), subtitle: "\(index + 1) of \(total) saved")
             }
-            return (saved, failures)
+            return (saved, unchanged, failures)
         }
 
         toasts.showProgress(Toast(systemImage: "arrow.triangle.2.circlepath", title: title, subtitle: "0 of \(total) saved", progress: 0), near: location) {
             job.cancel()
         }
-        let (saved, failures) = await job.value
+        let (saved, unchanged, failures) = await job.value
 
         if job.isCancelled {
             toasts.show(Toast(systemImage: "xmark", title: "Cancelled", subtitle: saved.isEmpty ? nil : "\(saved.count) saved"))
@@ -91,7 +98,11 @@ final class ConversionRunner {
         } else {
             // Worded like the editors' confirmations. Edits say why when they couldn't keep the format.
             let note = keepsFormat ? zip(jobs.map { $0[0] }, saved).lazy.compactMap { KeepFormat.note(source: $0, output: $1) }.first : nil
-            toasts.show(SaveOutcome(saved: saved, detail: note ?? savedSubtitle).toast)
+            if let unchangedLabel {
+                toasts.show(SaveOutcome(saved: saved, unchanged: unchanged, unchangedLabel: unchangedLabel, detail: savedSubtitle).toast)
+            } else {
+                toasts.show(SaveOutcome(saved: saved, detail: note ?? savedSubtitle).toast)
+            }
         }
     }
 }
