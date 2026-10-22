@@ -313,7 +313,10 @@ extension MediaTools {
         tools: ExternalTools = .current,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
-        try await MediaFallback.run(url, tools: tools) {
+        if let ffmpeg = tools.ffmpeg, rotation.isMirror, await KeepFormat.avFoundationChangesProRes(url) {
+            return try await rotateWithFFmpeg(url, by: rotation, ffmpeg: ffmpeg, tools: tools, progress: progress)
+        }
+        return try await MediaFallback.run(url, tools: tools) {
             try await rotateWithAVFoundation(url, by: rotation, progress: progress)
         } fallback: { ffmpeg in
             try await rotateWithFFmpeg(url, by: rotation, ffmpeg: ffmpeg, tools: tools, progress: progress)
@@ -347,7 +350,7 @@ extension MediaTools {
             videoTrack.preferredTransform = newTransform
             session = try await makeSession(
                 for: composition,
-                presets: [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality],
+                presets: [AVAssetExportPresetPassthrough] + (await KeepFormat.reencodePresets(for: asset)),
                 fileType: output.fileType
             )
         } else {
@@ -361,7 +364,7 @@ extension MediaTools {
             videoComposition.renderSize = evenSize(CGSize(width: abs(size.width), height: abs(size.height)))
             videoComposition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(rate > 0 ? rate.rounded() : 30))
             videoComposition.instructions = [instruction]
-            session = try await makeSession(for: composition, presets: [AVAssetExportPresetHighestQuality], fileType: output.fileType)
+            session = try await makeSession(for: composition, presets: await KeepFormat.reencodePresets(for: asset), fileType: output.fileType)
             session.videoComposition = videoComposition
         }
         try await export(session, to: destination, fileType: output.fileType, progress: progress)

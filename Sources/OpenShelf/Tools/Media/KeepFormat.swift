@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import Foundation
 
 /// Edits (Reverse, Trim, Speed, Mono, Loudness, Volume…) save in the format
@@ -84,13 +85,97 @@ enum KeepFormat {
         return Audio(pathExtension: "mp3", encoder: "libmp3lame", quality: quality, sampleRate: sampleRate)
     }
 
+    // MARK: Video
+
+    /// Whether a video container holds sound in `codec`, so an edit can keep it.
+    static func holds(_ container: String, audio codec: String) -> Bool {
+        let mp4: Set<String> = ["aac", "alac", "mp3", "ac3", "eac3", "flac", "opus"]
+        switch container {
+        case "mp4", "m4v": return mp4.contains(codec)
+        case "mov": return mp4.contains(codec) || codec.hasPrefix("pcm_")
+        default: return false
+        }
+    }
+
+    /// ffmpeg's encoder for re-encoding sound in `codec`.
+    static func encoder(forAudioCodec codec: String) -> String? {
+        switch codec {
+        case "aac", "alac", "ac3", "eac3", "flac": codec
+        case "mp3": "libmp3lame"
+        case "opus": "libopus"
+        default: codec.hasPrefix("pcm_") ? codec : nil
+        }
+    }
+
+    /// AVFoundation's presets for re-encoding a picture in `codec` (a
+    /// CMFormatDescription subtype), best first: HEVC stays HEVC and ProRes
+    /// stays ProRes (in MOV); the rest become H.264.
+    static func presets(forVideoCodec codec: FourCharCode?) -> [String] {
+        switch codec {
+        case kCMVideoCodecType_HEVC, kCMVideoCodecType_HEVCWithAlpha:
+            [AVAssetExportPresetHEVCHighestQuality, AVAssetExportPresetHighestQuality]
+        case kCMVideoCodecType_AppleProRes4444, kCMVideoCodecType_AppleProRes4444XQ:
+            [AVAssetExportPresetAppleProRes4444LPCM, AVAssetExportPresetAppleProRes422LPCM, AVAssetExportPresetHighestQuality]
+        case kCMVideoCodecType_AppleProRes422, kCMVideoCodecType_AppleProRes422HQ, kCMVideoCodecType_AppleProRes422LT, kCMVideoCodecType_AppleProRes422Proxy:
+            [AVAssetExportPresetAppleProRes422LPCM, AVAssetExportPresetHighestQuality]
+        default:
+            [AVAssetExportPresetHighestQuality]
+        }
+    }
+
+    /// AVFoundation's one ProRes 422 preset writes 422 Standard (and its 4444
+    /// preset 4444), so re-encoding any other ProRes flavour there would change
+    /// it. Those go through ffmpeg, which keeps the profile.
+    static func avFoundationChangesProRes(_ url: URL) async -> Bool {
+        let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video).first
+        guard let description = try? await track?.load(.formatDescriptions).first else { return false }
+        return [kCMVideoCodecType_AppleProRes422HQ, kCMVideoCodecType_AppleProRes422LT, kCMVideoCodecType_AppleProRes422Proxy, kCMVideoCodecType_AppleProRes4444XQ]
+            .contains(CMFormatDescriptionGetMediaSubType(description))
+    }
+
+    /// `presets(forVideoCodec:)` for the first picture track of `asset`.
+    static func reencodePresets(for asset: AVAsset) async -> [String] {
+        let track = try? await asset.loadTracks(withMediaType: .video).first
+        let description = try? await track?.load(.formatDescriptions).first
+        return presets(forVideoCodec: description.map(CMFormatDescriptionGetMediaSubType))
+    }
+
     /// The toast detail for an edit of `source` saved as `output`, when the
     /// format had to change; nil when it was kept.
     static func note(source: URL, output: URL, tools: ExternalTools = .current) -> String? {
         let from = source.pathExtension.lowercased(), to = output.pathExtension.lowercased()
-        guard from != to, !(from == "m4b" && to == "m4a") else { return nil }
+        guard from != to, !(from == "m4b" && to == "m4a") else {
+            return videoCodecNote(source: source, output: output, tools: tools)
+        }
         return tools.ffmpeg == nil
             ? "Saved as \(to.uppercased()): keeping \(from.uppercased()) needs ffmpeg."
             : "Saved as \(to.uppercased()): OpenShelf can’t write \(from.uppercased()) here."
     }
+
+    /// When the container was kept but the picture's codec changed: "Video
+    /// saved as H.264: this edit can't write VP9 here." Needs ffprobe to tell.
+    private static func videoCodecNote(source: URL, output: URL, tools: ExternalTools) -> String? {
+        guard let ffprobe = tools.ffprobe else { return nil }
+        func codec(_ url: URL) -> String? {
+            MediaProbe.runSync(ffprobe, ["-v", "error", "-select_streams", "V:0", "-show_entries", "stream=codec_name", "-of", "csv=p=0", url.path])?
+                .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }
+        guard let before = codec(source), let after = codec(output), before != after else { return nil }
+        return "Video saved as \(title(ofVideoCodec: after)): this edit can’t write \(title(ofVideoCodec: before)) here."
+    }
+
+    static func title(ofVideoCodec codec: String) -> String {
+        switch codec {
+        case "h264": "H.264"
+        case "hevc": "HEVC"
+        case "prores": "ProRes"
+        case "mpeg4": "MPEG-4"
+        case "mpeg2video": "MPEG-2"
+        default: codec.uppercased()
+        }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

@@ -15,7 +15,7 @@ extension MediaTools {
         let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
         let destination = OutputNaming.destination(for: url, suffix: "Reversed", pathExtension: sound.container)
         try SaveError.checkWritable(destination)
-        try await FFmpegJob.export(ffmpeg, ["-i", url.path] + FFmpegEdits.reverse(probed, audio: sound.encode), to: destination, duration: probed.duration, progress: progress)
+        try await FFmpegJob.export(ffmpeg, ["-i", url.path] + FFmpegEdits.reverse(probed, container: sound.container, audio: sound.encode), to: destination, duration: probed.duration, progress: progress)
         return destination
     }
 
@@ -105,7 +105,7 @@ extension MediaTools {
         let destination = OutputNaming.destination(for: url, suffix: "\(fps)fps", pathExtension: videoContainer(for: url).pathExtension)
         try SaveError.checkWritable(destination)
         let arguments: [String] = ["-i", url.path, "-map", "0:V:0", "-map", "0:a?", "-vf", "fps=\(fps)"]
-            + FFmpegEdits.videoEncoding(for: video) + FFmpegEdits.audioCopyOrAAC(probed.audio)
+            + FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -167,12 +167,12 @@ extension FFmpegEdits {
     ]
 
     /// Picture and every sound track reversed; video re-encoded, sound as AAC.
-    static func reverse(_ probed: ProbedMedia, audio: (Int, ProbedMedia.Audio) -> [String] = { aac($1, index: $0) }) -> [String] {
+    static func reverse(_ probed: ProbedMedia, container: String = "mp4", audio: (Int, ProbedMedia.Audio) -> [String] = { aac($1, index: $0) }) -> [String] {
         var graph: [String] = []
         var arguments: [String] = []
         if let video = probed.video {
             graph.append("[0:V:0]reverse[v]")
-            arguments += ["-map", "[v]"] + videoEncoding(for: video)
+            arguments += ["-map", "[v]"] + videoEncoding(for: video, container: container)
         }
         for (index, track) in probed.audio.enumerated() {
             graph.append("[0:a:\(index)]areverse[a\(index)]")
@@ -231,9 +231,14 @@ extension FFmpegEdits {
         }
     }
 
-    /// The codec for filtered sound in `container`: lossless containers stay lossless.
+    /// The codec for filtered sound in `container`: lossless containers stay
+    /// lossless, and a video's sound keeps its codec when the container holds it.
     static func filteredAudio(_ container: String, track: ProbedMedia.Audio, index: Int) -> [String] {
-        switch container {
+        if ["mp4", "m4v", "mov"].contains(container), KeepFormat.holds(container, audio: track.codec), let encoder = KeepFormat.encoder(forAudioCodec: track.codec) {
+            let rate: [String] = ["aac", "libmp3lame", "ac3", "eac3", "libopus"].contains(encoder) ? ["-b:a:\(index)", "\(track.bitRate ?? AudioBitRate.target(for: .aac, source: track.source))"] : []
+            return ["-c:a:\(index)", encoder] + rate
+        }
+        return switch container {
         case "wav": ["-c:a:\(index)", "pcm_s16le"]
         case "aif", "aiff": ["-c:a:\(index)", "pcm_s16be"]
         case "flac": ["-c:a:\(index)", "flac"]

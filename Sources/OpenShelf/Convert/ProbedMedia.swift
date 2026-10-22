@@ -17,6 +17,8 @@ struct ProbedMedia: Equatable, Sendable {
         var pixelFormat: String?
         /// "smpte2084" (PQ) or "arib-std-b67" (HLG) for HDR.
         var colorTransfer: String?
+        /// The codec's profile as ffprobe names it, e.g. "HQ" or "4444" for ProRes.
+        var profile: String? = nil
 
         /// The size players show, after rotation.
         var displaySize: CGSize {
@@ -59,7 +61,7 @@ struct ProbedMedia: Equatable, Sendable {
         do {
             try await ProcessRunner.run(ffprobe, [
                 "-v", "error",
-                "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,pix_fmt,color_transfer,avg_frame_rate,r_frame_rate,bit_rate,channels,sample_rate,duration:stream_disposition=attached_pic:stream_tags=rotate:stream_side_data=rotation",
+                "-show_entries", "format=duration:stream=codec_type,codec_name,profile,width,height,pix_fmt,color_transfer,avg_frame_rate,r_frame_rate,bit_rate,channels,sample_rate,duration:stream_disposition=attached_pic:stream_tags=rotate:stream_side_data=rotation",
                 "-of", "json",
                 url.path,
             ], standardOutputFile: output)
@@ -100,7 +102,8 @@ struct ProbedMedia: Equatable, Sendable {
                     bitRate: number(stream["bit_rate"]).map { Int($0) },
                     codec: stream["codec_name"] as? String ?? "",
                     pixelFormat: stream["pix_fmt"] as? String,
-                    colorTransfer: stream["color_transfer"] as? String
+                    colorTransfer: stream["color_transfer"] as? String,
+                    profile: stream["profile"] as? String
                 )
             case "audio":
                 audio.append(Audio(

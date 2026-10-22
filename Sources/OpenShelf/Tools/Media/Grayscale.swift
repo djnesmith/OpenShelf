@@ -7,7 +7,10 @@ extension MediaTools {
 
     /// A black-and-white copy of a video. Sound is kept.
     static func grayscale(_ url: URL, tools: ExternalTools = .current, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
-        try await MediaFallback.run(url, tools: tools) {
+        if let ffmpeg = tools.ffmpeg, await KeepFormat.avFoundationChangesProRes(url) {
+            return try await grayscaleWithFFmpeg(url, ffmpeg: ffmpeg, tools: tools, progress: progress)
+        }
+        return try await MediaFallback.run(url, tools: tools) {
             try await grayscaleWithAVFoundation(url, progress: progress)
         } fallback: { ffmpeg in
             try await grayscaleWithFFmpeg(url, ffmpeg: ffmpeg, tools: tools, progress: progress)
@@ -24,7 +27,7 @@ extension MediaTools {
         let output = videoContainer(for: url)
         let destination = OutputNaming.destination(for: url, suffix: "Grayscale", pathExtension: output.pathExtension)
         try SaveError.checkWritable(destination)
-        let session = try await makeSession(for: asset, presets: [AVAssetExportPresetHighestQuality], fileType: output.fileType)
+        let session = try await makeSession(for: asset, presets: await KeepFormat.reencodePresets(for: asset), fileType: output.fileType)
         session.videoComposition = videoComposition
         try await export(session, to: destination, fileType: output.fileType, progress: progress)
         return destination
@@ -36,7 +39,7 @@ extension MediaTools {
         let destination = OutputNaming.destination(for: url, suffix: "Grayscale", pathExtension: videoContainer(for: url).pathExtension)
         try SaveError.checkWritable(destination)
         var arguments: [String] = ["-i", url.path, "-map", "0:V:0", "-map", "0:a?", "-vf", "hue=s=0"]
-        arguments += FFmpegEdits.videoEncoding(for: video) + FFmpegEdits.audioCopyOrAAC(probed.audio)
+        arguments += FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }

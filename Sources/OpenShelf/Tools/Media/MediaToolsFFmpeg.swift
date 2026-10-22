@@ -17,7 +17,7 @@ extension MediaTools {
 
         // Every picture stream, copied, unless the container can't hold its codec.
         let input: [String] = ["-i", url.path, "-map", "0:V"]
-        let attempts: [[String]] = [input + FFmpegEdits.videoCopy(for: video), input + FFmpegEdits.videoEncoding(for: video)]
+        let attempts: [[String]] = [input + FFmpegEdits.videoCopy(for: video), input + FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension)]
         try await FFmpegJob.export(ffmpeg, attempts: attempts, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -39,7 +39,7 @@ extension MediaTools {
             pathExtension = videoContainer(for: url).pathExtension
             // A cut rarely falls on a keyframe, so the picture is re-encoded to
             // start exactly there; AAC sound is copied.
-            streams = ["-map", "0:V", "-map", "0:a?"] + FFmpegEdits.videoEncoding(for: video) + FFmpegEdits.audioCopyOrAAC(probed.audio)
+            streams = ["-map", "0:V", "-map", "0:a?"] + FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
         } else {
             guard !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
             let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
@@ -66,7 +66,7 @@ extension MediaTools {
         let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
         let destination = OutputNaming.destination(for: url, suffix: speedSuffix(rate), pathExtension: sound.container)
         try SaveError.checkWritable(destination)
-        let arguments: [String] = ["-i", url.path] + FFmpegEdits.speed(probed, rate: rate, keepsPitch: keepsPitch, audio: sound.encode)
+        let arguments: [String] = ["-i", url.path] + FFmpegEdits.speed(probed, rate: rate, keepsPitch: keepsPitch, container: sound.container, audio: sound.encode)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration / rate, progress: progress)
         return destination
     }
@@ -81,7 +81,7 @@ extension MediaTools {
         // ffmpeg turns frames upright before filtering them, so the crop
         // applies to the picture as the editor showed it.
         var arguments: [String] = ["-i", url.path, "-map", "0:V:0", "-map", "0:a?", "-vf", FFmpegEdits.cropFilter(crop)]
-        arguments += FFmpegEdits.videoEncoding(for: video) + FFmpegEdits.audioCopyOrAAC(probed.audio)
+        arguments += FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -99,7 +99,7 @@ extension MediaTools {
         try SaveError.checkWritable(destination)
 
         let streams: [String] = ["-map", "0:V:0", "-map", "0:a?"]
-        let audio: [String] = FFmpegEdits.audioCopyOrAAC(probed.audio)
+        let audio: [String] = FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
         var attempts: [[String]] = []
         if rotation.isLossless {
             // As with AVFoundation, a turn only changes the angle players show
@@ -108,7 +108,7 @@ extension MediaTools {
             attempts.append(["-display_rotation:v:0", "\(angle)", "-i", url.path] + streams + FFmpegEdits.videoCopy(for: video) + audio)
         }
         let turned: [String] = ["-i", url.path] + streams + ["-vf", FFmpegEdits.rotationFilter(rotation)]
-        attempts.append(turned + FFmpegEdits.videoEncoding(for: video) + audio)
+        attempts.append(turned + FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + audio)
         try await FFmpegJob.export(ffmpeg, attempts: attempts, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -165,13 +165,43 @@ enum FFmpegEdits {
 
     // MARK: Codecs
 
-    /// The picture re-encoded about as well as AVFoundation's highest-quality
-    /// preset does: H.264, or 10-bit HEVC for HDR so it keeps its colours.
-    static func videoEncoding(for video: ProbedMedia.Video?) -> [String] {
-        if video?.isHDR == true {
-            return ["-c:v", "libx265", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p10le", "-tag:v", "hvc1", "-x265-params", "log-level=error"]
+    /// The picture re-encoded in the source's own codec where `container`
+    /// holds it and Apple's players play it: H.264, HEVC, ProRes (in MOV, at
+    /// the same profile) or MPEG-4, at about the source's quality and in its
+    /// pixel format. Anything else (or no source) becomes H.264, or 10-bit
+    /// HEVC for HDR so it keeps its colours.
+    static func videoEncoding(for video: ProbedMedia.Video?, container: String = "mp4") -> [String] {
+        let hevc = ["-c:v", "libx265", "-preset", "medium", "-crf", "20", "-tag:v", "hvc1", "-x265-params", "log-level=error"]
+        switch video?.codec {
+        case "hevc":
+            return hevc + ["-pix_fmt", keptPixelFormat(video, allowed: ["yuv420p", "yuv420p10le", "yuv422p", "yuv422p10le", "yuv444p", "yuv444p10le"], otherwise: video?.isHDR == true ? "yuv420p10le" : "yuv420p")]
+        case "prores" where container == "mov":
+            let profile = proresProfile(video?.profile)
+            return ["-c:v", "prores_ks", "-profile:v", "\(profile)", "-pix_fmt", profile >= 4 ? "yuva444p10le" : "yuv422p10le"]
+        case "mpeg4":
+            return ["-c:v", "mpeg4", "-q:v", "2", "-pix_fmt", "yuv420p"]
+        default:
+            if video?.isHDR == true { return hevc + ["-pix_fmt", "yuv420p10le"] }
+            return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", keptPixelFormat(video, allowed: ["yuv420p", "yuv422p", "yuv444p"], otherwise: "yuv420p")]
         }
-        return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"]
+    }
+
+    /// The source's pixel format when the encoder takes it, else `otherwise`.
+    private static func keptPixelFormat(_ video: ProbedMedia.Video?, allowed: Set<String>, otherwise: String) -> String {
+        let format = video?.pixelFormat == "yuvj420p" ? "yuv420p" : video?.pixelFormat
+        return format.map { allowed.contains($0) ? $0 : otherwise } ?? otherwise
+    }
+
+    /// prores_ks's profile number for ffprobe's ProRes profile name; 422 HQ when unknown.
+    static func proresProfile(_ name: String?) -> Int {
+        switch name?.lowercased() {
+        case "proxy": 0
+        case "lt": 1
+        case "standard": 2
+        case "4444": 4
+        case "4444xq", "xq": 5
+        default: 3
+        }
     }
 
     /// The picture copied as it is.
@@ -182,10 +212,13 @@ enum FFmpegEdits {
 
     /// For sound tracks mapped in order: AAC is copied, anything else becomes
     /// AAC at the rate `AudioBitRate` picks for it.
-    static func audioCopyOrAAC(_ tracks: [ProbedMedia.Audio]) -> [String] {
+    /// With `container`, every codec it holds is copied (an edit keeps its
+    /// sound); without, only AAC is, as for files going into a new container.
+    static func audioCopyOrAAC(_ tracks: [ProbedMedia.Audio], container: String? = nil) -> [String] {
         var arguments: [String] = []
         for (index, track) in tracks.enumerated() {
-            arguments += track.codec == "aac" ? ["-c:a:\(index)", "copy"] : aac(track, index: index)
+            let copies = container.map { KeepFormat.holds($0, audio: track.codec) } ?? (track.codec == "aac")
+            arguments += copies ? ["-c:a:\(index)", "copy"] : aac(track, index: index)
         }
         return arguments
     }
@@ -201,12 +234,12 @@ enum FFmpegEdits {
     /// both. Every frame is kept, shown for less (or more) time, as in the
     /// AVFoundation version; every sound track keeps its pitch or follows
     /// the speed, like a record.
-    static func speed(_ probed: ProbedMedia, rate: Double, keepsPitch: Bool, audio: (Int, ProbedMedia.Audio) -> [String] = { aac($1, index: $0) }) -> [String] {
+    static func speed(_ probed: ProbedMedia, rate: Double, keepsPitch: Bool, container: String = "mp4", audio: (Int, ProbedMedia.Audio) -> [String] = { aac($1, index: $0) }) -> [String] {
         var graph: [String] = []
         var arguments: [String] = []
         if let video = probed.video {
             graph.append("[0:V:0]setpts=PTS/\(factor(rate))[v]")
-            arguments += ["-map", "[v]"] + videoEncoding(for: video)
+            arguments += ["-map", "[v]"] + videoEncoding(for: video, container: container)
             if let fps = video.framesPerSecond {
                 arguments += ["-r", factor(fps * rate)]
             }

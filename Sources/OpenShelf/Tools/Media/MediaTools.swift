@@ -58,7 +58,7 @@ enum MediaTools {
         let destination = OutputNaming.destination(for: url, suffix: "Muted", pathExtension: output.pathExtension)
         let session = try await makeSession(
             for: composition,
-            presets: [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality],
+            presets: [AVAssetExportPresetPassthrough] + (await KeepFormat.reencodePresets(for: asset)),
             fileType: output.fileType
         )
         try await export(session, to: destination, fileType: output.fileType, progress: progress)
@@ -110,7 +110,7 @@ enum MediaTools {
 
         if isVideo {
             output = videoContainer(for: url)
-            session = try await makeSession(for: asset, presets: [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality], fileType: output.fileType)
+            session = try await makeSession(for: asset, presets: [AVAssetExportPresetPassthrough] + (await KeepFormat.reencodePresets(for: asset)), fileType: output.fileType)
         } else if let passthrough = audioPassthroughContainer(for: url),
                   let candidate = try? await makeSession(for: asset, presets: [AVAssetExportPresetPassthrough], fileType: passthrough.fileType) {
             output = passthrough
@@ -138,7 +138,7 @@ enum MediaTools {
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         // AVFoundation writes sped-up sound only as M4A; ffmpeg keeps an audio file's own format.
-        if let ffmpeg = tools.ffmpeg, FileKind(url: url) == .audio, !["m4a", "m4b"].contains(url.pathExtension.lowercased()) {
+        if let ffmpeg = tools.ffmpeg, FileKind(url: url) == .audio ? !["m4a", "m4b"].contains(url.pathExtension.lowercased()) : await KeepFormat.avFoundationChangesProRes(url) {
             return try await changeSpeedWithFFmpeg(url, rate: rate, keepsPitch: keepsPitch, ffmpeg: ffmpeg, tools: tools, progress: progress)
         }
         return try await MediaFallback.run(url, tools: tools) {
@@ -180,7 +180,7 @@ enum MediaTools {
         let output: (fileType: AVFileType, pathExtension: String) = isVideo ? videoContainer(for: url) : (.m4a, "m4a")
         let session = try await makeSession(
             for: composition,
-            presets: isVideo ? [AVAssetExportPresetHighestQuality] : [AVAssetExportPresetAppleM4A],
+            presets: isVideo ? await KeepFormat.reencodePresets(for: asset) : [AVAssetExportPresetAppleM4A],
             fileType: output.fileType
         )
         session.audioTimePitchAlgorithm = keepsPitch ? .spectral : .varispeed
@@ -247,7 +247,10 @@ enum MediaTools {
         tools: ExternalTools = .current,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
-        try await MediaFallback.run(url, tools: tools) {
+        if let ffmpeg = tools.ffmpeg, await KeepFormat.avFoundationChangesProRes(url) {
+            return try await cropWithFFmpeg(url, to: rect, ffmpeg: ffmpeg, tools: tools, progress: progress)
+        }
+        return try await MediaFallback.run(url, tools: tools) {
             try await cropWithAVFoundation(url, to: rect, progress: progress)
         } fallback: { ffmpeg in
             try await cropWithFFmpeg(url, to: rect, ffmpeg: ffmpeg, tools: tools, progress: progress)
@@ -288,7 +291,7 @@ enum MediaTools {
         videoComposition.instructions = [instruction]
 
         let output = videoContainer(for: url)
-        let session = try await makeSession(for: composition, presets: [AVAssetExportPresetHighestQuality], fileType: output.fileType)
+        let session = try await makeSession(for: composition, presets: await KeepFormat.reencodePresets(for: asset), fileType: output.fileType)
         session.videoComposition = videoComposition
         let destination = OutputNaming.destination(for: url, suffix: "Cropped", pathExtension: output.pathExtension)
         try await export(session, to: destination, fileType: output.fileType, progress: progress)
