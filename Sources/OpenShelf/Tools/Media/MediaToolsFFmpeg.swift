@@ -42,8 +42,9 @@ extension MediaTools {
             streams = ["-map", "0:V", "-map", "0:a?"] + FFmpegEdits.videoEncoding(for: video) + FFmpegEdits.audioCopyOrAAC(probed.audio)
         } else {
             guard !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
-            pathExtension = audioPassthroughContainer(for: url)?.pathExtension ?? "m4a"
-            streams = ["-map", "0:a", "-vn"] + FFmpegEdits.audioCodecs(forContainer: pathExtension, tracks: probed.audio)
+            let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
+            pathExtension = sound.container
+            streams = ["-map", "0:a", "-vn"] + probed.audio.enumerated().flatMap { sound.encode($0.offset, $0.element) }
         }
         let destination = OutputNaming.destination(for: url, suffix: suffix, pathExtension: pathExtension)
         try SaveError.checkWritable(destination)
@@ -62,10 +63,10 @@ extension MediaTools {
     ) async throws -> URL {
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard probed.video != nil || !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
-        let pathExtension: String = probed.video != nil ? videoContainer(for: url).pathExtension : "m4a"
-        let destination = OutputNaming.destination(for: url, suffix: speedSuffix(rate), pathExtension: pathExtension)
+        let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
+        let destination = OutputNaming.destination(for: url, suffix: speedSuffix(rate), pathExtension: sound.container)
         try SaveError.checkWritable(destination)
-        let arguments: [String] = ["-i", url.path] + FFmpegEdits.speed(probed, rate: rate, keepsPitch: keepsPitch)
+        let arguments: [String] = ["-i", url.path] + FFmpegEdits.speed(probed, rate: rate, keepsPitch: keepsPitch, audio: sound.encode)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration / rate, progress: progress)
         return destination
     }
@@ -194,24 +195,13 @@ enum FFmpegEdits {
         ["-c:a:\(index)", "aac", "-b:a:\(index)", AudioBitRate.argument(for: .aac, source: track.source)]
     }
 
-    /// Sound for an audio-only file written as `pathExtension`, as a
-    /// passthrough export would: PCM stays PCM, M4A is AAC.
-    static func audioCodecs(forContainer pathExtension: String, tracks: [ProbedMedia.Audio]) -> [String] {
-        switch pathExtension {
-        case "wav": return ["-c:a", "pcm_s16le"]
-        case "aif", "aiff": return ["-c:a", "pcm_s16be"]
-        case "caf": return ["-c:a", "copy"]
-        default: return audioCopyOrAAC(tracks)
-        }
-    }
-
     // MARK: Speed
 
     /// Plays `probed` `rate` times as fast, whether it has a picture, sound or
     /// both. Every frame is kept, shown for less (or more) time, as in the
     /// AVFoundation version; every sound track keeps its pitch or follows
     /// the speed, like a record.
-    static func speed(_ probed: ProbedMedia, rate: Double, keepsPitch: Bool) -> [String] {
+    static func speed(_ probed: ProbedMedia, rate: Double, keepsPitch: Bool, audio: (Int, ProbedMedia.Audio) -> [String] = { aac($1, index: $0) }) -> [String] {
         var graph: [String] = []
         var arguments: [String] = []
         if let video = probed.video {
@@ -224,7 +214,7 @@ enum FFmpegEdits {
         for (index, track) in probed.audio.enumerated() {
             let filter: String = keepsPitch ? atempoChain(rate) : varispeed(rate, sampleRate: track.sampleRate ?? 48_000)
             graph.append("[0:a:\(index)]\(filter)[a\(index)]")
-            arguments += ["-map", "[a\(index)]"] + aac(track, index: index)
+            arguments += ["-map", "[a\(index)]"] + audio(index, track)
         }
         return ["-filter_complex", graph.joined(separator: ";")] + arguments
     }

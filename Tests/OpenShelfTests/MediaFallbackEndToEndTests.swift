@@ -215,7 +215,8 @@ struct MediaFallbackEndToEndTests {
 
         for keepsPitch in [true, false] {
             let output = try await MediaTools.changeSpeed(files[1], rate: 2, keepsPitch: keepsPitch, tools: tools) { _ in }
-            #expect(output.pathExtension == "m4a")
+            // Sound in an MP4 stays an MP4 (see KeepFormat).
+            #expect(output.pathExtension == "mp4")
             let probe = try MediaCheck.probe(output)
             #expect(probe.videos.isEmpty)
             #expect(probe.audios.map(\.codec) == ["aac"])

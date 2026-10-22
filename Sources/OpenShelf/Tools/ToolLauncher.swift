@@ -34,32 +34,32 @@ enum ToolLauncher {
             }
 
         case .mute:
-            runner.run(title: "Removing audio", jobs: urls.map { [$0] }, near: location) { sources, progress in
+            runner.run(title: "Removing audio", jobs: urls.map { [$0] }, keepsFormat: true, near: location) { sources, progress in
                 [try await MediaTools.mute(sources[0], progress: progress)]
             }
 
         case .reverse:
-            runner.run(title: "Reversing", jobs: urls.map { [$0] }, near: location) { sources, progress in
+            runner.run(title: "Reversing", jobs: urls.map { [$0] }, keepsFormat: true, near: location) { sources, progress in
                 [try await MediaTools.reverse(sources[0], progress: progress)]
             }
 
         case .mediaMetadata:
-            runner.run(title: "Removing metadata", jobs: urls.map { [$0] }, near: location) { sources, progress in
+            runner.run(title: "Removing metadata", jobs: urls.map { [$0] }, keepsFormat: true, near: location) { sources, progress in
                 [try await MediaTools.stripMetadata(sources[0], progress: progress)]
             }
 
         case .mono:
-            runner.run(title: "Mixing to mono", jobs: urls.map { [$0] }, near: location) { sources, progress in
+            runner.run(title: "Mixing to mono", jobs: urls.map { [$0] }, keepsFormat: true, near: location) { sources, progress in
                 [try await MediaTools.mono(sources[0], progress: progress)]
             }
 
         case .normalize:
-            runner.run(title: "Evening out loudness", jobs: urls.map { [$0] }, near: location) { sources, progress in
+            runner.run(title: "Evening out loudness", jobs: urls.map { [$0] }, keepsFormat: true, near: location) { sources, progress in
                 [try await MediaTools.normalizeLoudness(sources[0], progress: progress)]
             }
 
         case .grayscale:
-            runner.run(title: "Making grayscale", jobs: urls.map { [$0] }, near: location) { sources, progress in
+            runner.run(title: "Making grayscale", jobs: urls.map { [$0] }, keepsFormat: true, near: location) { sources, progress in
                 [try await MediaTools.grayscale(sources[0], progress: progress)]
             }
 

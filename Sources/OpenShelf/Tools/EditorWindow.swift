@@ -19,6 +19,11 @@ struct EditorActions {
     func saved(_ urls: [URL]) {
         finished(SaveOutcome(saved: urls))
     }
+
+    /// The same for an edit of `source`, saying why when the format had to change.
+    func saved(_ urls: [URL], editing source: URL) {
+        finished(SaveOutcome(saved: urls, detail: urls.first.flatMap { KeepFormat.note(source: source, output: $0) }))
+    }
 }
 
 /// Standard frame for tool editors: a close button and title on top, the

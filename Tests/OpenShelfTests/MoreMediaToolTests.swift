@@ -153,13 +153,9 @@ struct MoreMediaToolTests {
 
     // MARK: Mono
 
-    @Test func filteredSoundKeepsLosslessContainers() {
-        #expect(FFmpegEdits.filteredAudioContainer(for: URL(fileURLWithPath: "/tmp/a.WAV")) == "wav")
-        #expect(FFmpegEdits.filteredAudioContainer(for: URL(fileURLWithPath: "/tmp/a.flac")) == "flac")
-        #expect(FFmpegEdits.filteredAudioContainer(for: URL(fileURLWithPath: "/tmp/a.mp3")) == "m4a")
+    @Test func filteredSoundInVideoIsAAC() {
         let track = ProbedMedia.Audio(codec: "pcm_s16le", channels: 1)
-        #expect(FFmpegEdits.filteredAudio("wav", track: track, index: 0) == ["-c:a:0", "pcm_s16le"])
-        #expect(FFmpegEdits.filteredAudio("m4a", track: track, index: 0).contains("aac"))
+        #expect(FFmpegEdits.filteredAudio("mp4", track: track, index: 0).contains("aac"))
     }
 
     @Test(.enabled(if: hasFFmpeg)) func mixesDownToOneChannel() async throws {
@@ -195,7 +191,7 @@ struct MoreMediaToolTests {
             video: ProbedMedia.Video(width: 320, height: 240, codec: "h264"),
             audio: [ProbedMedia.Audio(codec: "aac", channels: 2, sampleRate: 44_100)]
         )
-        let arguments = FFmpegEdits.normalizeLoudness(probed, container: "mp4")
+        let arguments = FFmpegEdits.normalizeLoudness(probed) { index, track in FFmpegEdits.filteredAudio("mp4", track: track, index: index) }
         #expect(arguments.contains("[0:a:0]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100[a0]"))
         #expect(arguments.starts(with: ["-filter_complex"]) && arguments.contains("copy"))
     }
@@ -282,12 +278,12 @@ struct MoreMediaToolTests {
             video: ProbedMedia.Video(width: 320, height: 240, codec: "h264"),
             audio: [ProbedMedia.Audio(codec: "pcm_s16le", channels: 2)]
         )
-        let arguments = FFmpegEdits.volume(probed, decibels: 6, container: "wav")
+        let arguments = FFmpegEdits.volume(probed, decibels: 6) { index, _ in ["-c:a:\(index)", "pcm_s16le"] }
         #expect(arguments == [
             "-filter_complex", "[0:a:0]volume=6dB,alimiter=limit=0.891:level=false[a0]",
             "-map", "0:V:0", "-c:v", "copy", "-map", "[a0]", "-c:a:0", "pcm_s16le",
         ])
-        #expect(FFmpegEdits.volume(probed, decibels: -20, container: "m4a")[1].hasPrefix("[0:a:0]volume=-20dB,"))
+        #expect(FFmpegEdits.volume(probed, decibels: -20) { _, _ in [] }[1].hasPrefix("[0:a:0]volume=-20dB,"))
     }
 
     @Test(.enabled(if: hasFFmpeg)) func changesVolumeWithoutClipping() async throws {

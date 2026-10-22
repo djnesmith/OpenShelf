@@ -79,7 +79,7 @@ final class FrameRateModel {
                         Task { @MainActor in self?.progress = (Double(index) + fraction) / Double(urls.count) }
                     })
                 }
-                actions.saved(outputs)
+                actions.saved(outputs, editing: urls[0])
             } catch is CancellationError {
                 self?.progress = nil
             } catch {

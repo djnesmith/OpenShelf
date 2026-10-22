@@ -86,7 +86,11 @@ enum MediaTools {
         tools: ExternalTools = .current,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
-        try await MediaFallback.run(url, tools: tools) {
+        // AVFoundation can only copy M4A, WAV, AIFF and CAF; ffmpeg keeps the rest as they are.
+        if let ffmpeg = tools.ffmpeg, FileKind(url: url) == .audio, audioPassthroughContainer(for: url) == nil {
+            return try await exportRangeWithFFmpeg(url, range: range, suffix: suffix, ffmpeg: ffmpeg, tools: tools, progress: progress)
+        }
+        return try await MediaFallback.run(url, tools: tools) {
             try await exportRangeWithAVFoundation(url, range: range, suffix: suffix, progress: progress)
         } fallback: { ffmpeg in
             try await exportRangeWithFFmpeg(url, range: range, suffix: suffix, ffmpeg: ffmpeg, tools: tools, progress: progress)
@@ -133,7 +137,11 @@ enum MediaTools {
         tools: ExternalTools = .current,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
-        try await MediaFallback.run(url, tools: tools) {
+        // AVFoundation writes sped-up sound only as M4A; ffmpeg keeps an audio file's own format.
+        if let ffmpeg = tools.ffmpeg, FileKind(url: url) == .audio, !["m4a", "m4b"].contains(url.pathExtension.lowercased()) {
+            return try await changeSpeedWithFFmpeg(url, rate: rate, keepsPitch: keepsPitch, ffmpeg: ffmpeg, tools: tools, progress: progress)
+        }
+        return try await MediaFallback.run(url, tools: tools) {
             try await changeSpeedWithAVFoundation(url, rate: rate, keepsPitch: keepsPitch, progress: progress)
         } fallback: { ffmpeg in
             try await changeSpeedWithFFmpeg(url, rate: rate, keepsPitch: keepsPitch, ffmpeg: ffmpeg, tools: tools, progress: progress)

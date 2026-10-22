@@ -12,10 +12,10 @@ extension MediaTools {
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard probed.video != nil || !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
         try ReverseLimit.check(probed)
-        let pathExtension = probed.video != nil ? videoContainer(for: url).pathExtension : "m4a"
-        let destination = OutputNaming.destination(for: url, suffix: "Reversed", pathExtension: pathExtension)
+        let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
+        let destination = OutputNaming.destination(for: url, suffix: "Reversed", pathExtension: sound.container)
         try SaveError.checkWritable(destination)
-        try await FFmpegJob.export(ffmpeg, ["-i", url.path] + FFmpegEdits.reverse(probed), to: destination, duration: probed.duration, progress: progress)
+        try await FFmpegJob.export(ffmpeg, ["-i", url.path] + FFmpegEdits.reverse(probed, audio: sound.encode), to: destination, duration: probed.duration, progress: progress)
         return destination
     }
 
@@ -42,10 +42,10 @@ extension MediaTools {
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard var track = probed.audio.first else { throw MediaToolError.noTracks(url) }
         track.channels = 1
-        let container = FFmpegEdits.filteredAudioContainer(for: url)
-        let destination = OutputNaming.destination(for: url, suffix: "Mono", pathExtension: container)
+        let plan = KeepFormat.audio(for: url, track: track, encoders: FFmpegEncoders.available(in: ffmpeg))
+        let destination = OutputNaming.destination(for: url, suffix: "Mono", pathExtension: plan.pathExtension)
         try SaveError.checkWritable(destination)
-        let arguments: [String] = ["-i", url.path, "-map", "0:a:0", "-vn", "-ac", "1"] + FFmpegEdits.filteredAudio(container, track: track, index: 0)
+        let arguments: [String] = ["-i", url.path, "-map", "0:a:0", "-vn", "-ac", "1"] + plan.arguments(index: 0)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -58,10 +58,10 @@ extension MediaTools {
         let ffmpeg = try requireFFmpeg(tools)
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
-        let container = probed.video != nil ? videoContainer(for: url).pathExtension : FFmpegEdits.filteredAudioContainer(for: url)
-        let destination = OutputNaming.destination(for: url, suffix: "Normalized", pathExtension: container)
+        let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
+        let destination = OutputNaming.destination(for: url, suffix: "Normalized", pathExtension: sound.container)
         try SaveError.checkWritable(destination)
-        let arguments: [String] = ["-i", url.path] + FFmpegEdits.normalizeLoudness(probed, container: container)
+        let arguments: [String] = ["-i", url.path] + FFmpegEdits.normalizeLoudness(probed, audio: sound.encode)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -79,10 +79,10 @@ extension MediaTools {
         let ffmpeg = try requireFFmpeg(tools)
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
-        let container = probed.video != nil ? videoContainer(for: url).pathExtension : FFmpegEdits.filteredAudioContainer(for: url)
-        let destination = OutputNaming.destination(for: url, suffix: decibels > 0 ? "Louder" : "Quieter", pathExtension: container)
+        let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
+        let destination = OutputNaming.destination(for: url, suffix: decibels > 0 ? "Louder" : "Quieter", pathExtension: sound.container)
         try SaveError.checkWritable(destination)
-        let arguments: [String] = ["-i", url.path] + FFmpegEdits.volume(probed, decibels: decibels, container: container)
+        let arguments: [String] = ["-i", url.path] + FFmpegEdits.volume(probed, decibels: decibels, audio: sound.encode)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -108,6 +108,17 @@ extension MediaTools {
             + FFmpegEdits.videoEncoding(for: video) + FFmpegEdits.audioCopyOrAAC(probed.audio)
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
+    }
+
+    /// Where re-encoded sound goes and how each track is written: an audio
+    /// file keeps its own format (see `KeepFormat`); a video keeps its container.
+    static func soundPlan(_ url: URL, probed: ProbedMedia, ffmpeg: URL) -> (container: String, encode: @Sendable (Int, ProbedMedia.Audio) -> [String]) {
+        if probed.video != nil {
+            let container = videoContainer(for: url).pathExtension
+            return (container, { index, track in FFmpegEdits.filteredAudio(container, track: track, index: index) })
+        }
+        let plan = KeepFormat.audio(for: url, track: probed.audio.first, encoders: FFmpegEncoders.available(in: ffmpeg))
+        return (plan.pathExtension, { index, _ in plan.arguments(index: index) })
     }
 
     static func requireFFmpeg(_ tools: ExternalTools) throws -> URL {
@@ -156,7 +167,7 @@ extension FFmpegEdits {
     ]
 
     /// Picture and every sound track reversed; video re-encoded, sound as AAC.
-    static func reverse(_ probed: ProbedMedia) -> [String] {
+    static func reverse(_ probed: ProbedMedia, audio: (Int, ProbedMedia.Audio) -> [String] = { aac($1, index: $0) }) -> [String] {
         var graph: [String] = []
         var arguments: [String] = []
         if let video = probed.video {
@@ -165,7 +176,7 @@ extension FFmpegEdits {
         }
         for (index, track) in probed.audio.enumerated() {
             graph.append("[0:a:\(index)]areverse[a\(index)]")
-            arguments += ["-map", "[a\(index)]"] + aac(track, index: index)
+            arguments += ["-map", "[a\(index)]"] + audio(index, track)
         }
         return ["-filter_complex", graph.joined(separator: ";")] + arguments
     }
@@ -178,7 +189,7 @@ extension FFmpegEdits {
     /// Every sound track's gain changed by `decibels`, then through
     /// `alimiter` holding peaks at -1 dBFS (0.891), without its automatic
     /// levelling, so loud parts flatten instead of clipping. A picture is copied.
-    static func volume(_ probed: ProbedMedia, decibels: Int, container: String) -> [String] {
+    static func volume(_ probed: ProbedMedia, decibels: Int, audio: (Int, ProbedMedia.Audio) -> [String]) -> [String] {
         var graph: [String] = []
         var arguments: [String] = []
         if let video = probed.video {
@@ -186,7 +197,7 @@ extension FFmpegEdits {
         }
         for (index, track) in probed.audio.enumerated() {
             graph.append("[0:a:\(index)]volume=\(decibels)dB,alimiter=limit=0.891:level=false[a\(index)]")
-            arguments += ["-map", "[a\(index)]"] + filteredAudio(container, track: track, index: index)
+            arguments += ["-map", "[a\(index)]"] + audio(index, track)
         }
         return ["-filter_complex", graph.joined(separator: ";")] + arguments
     }
@@ -196,7 +207,7 @@ extension FFmpegEdits {
 
     /// Every sound track through ffmpeg's one-pass `loudnorm`, resampled back
     /// to its own rate (loudnorm works at 192 kHz). A picture is copied.
-    static func normalizeLoudness(_ probed: ProbedMedia, container: String) -> [String] {
+    static func normalizeLoudness(_ probed: ProbedMedia, audio: (Int, ProbedMedia.Audio) -> [String]) -> [String] {
         var graph: [String] = []
         var arguments: [String] = []
         if let video = probed.video {
@@ -205,7 +216,7 @@ extension FFmpegEdits {
         for (index, track) in probed.audio.enumerated() {
             let rate = Int((track.sampleRate ?? 48_000).rounded())
             graph.append("[0:a:\(index)]loudnorm=I=\(loudnessTarget):TP=-1.5:LRA=11,aresample=\(rate)[a\(index)]")
-            arguments += ["-map", "[a\(index)]"] + filteredAudio(container, track: track, index: index)
+            arguments += ["-map", "[a\(index)]"] + audio(index, track)
         }
         return ["-filter_complex", graph.joined(separator: ";")] + arguments
     }

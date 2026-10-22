@@ -199,7 +199,7 @@ final class SplitModel {
                         self?.progressDetail = "Exporting part \(part) of \(segments.count)…"
                     }
                 }
-                actions.saved(outputs)
+                actions.saved(outputs, editing: url)
             } catch is CancellationError {
                 self?.exportProgress = nil
             } catch {

@@ -96,7 +96,7 @@ final class VolumeModel {
                     }
                     outputs.append(output)
                 }
-                actions.saved(outputs)
+                actions.saved(outputs, editing: urls[0])
             } catch is CancellationError {
                 self?.exportProgress = nil
             } catch {

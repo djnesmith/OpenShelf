@@ -239,7 +239,7 @@ final class TrimModel {
                 let output = try await MediaTools.trim(url, range: range) { fraction in
                     Task { @MainActor in self?.exportProgress = fraction }
                 }
-                actions.saved([output])
+                actions.saved([output], editing: url)
             } catch is CancellationError {
                 self?.exportProgress = nil
             } catch {

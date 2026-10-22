@@ -36,6 +36,7 @@ final class ConversionRunner {
         title: String,
         jobs: [[URL]],
         savedSubtitle: String? = nil,
+        keepsFormat: Bool = false,
         near location: NSPoint = NSEvent.mouseLocation,
         operation: @escaping Operation
     ) {
@@ -44,7 +45,7 @@ final class ConversionRunner {
         current = Task { [weak self] in
             // Batches queue behind each other so their toasts don't collide.
             await previous?.value
-            await self?.execute(title: title, jobs: jobs, savedSubtitle: savedSubtitle, near: location, operation: operation)
+            await self?.execute(title: title, jobs: jobs, savedSubtitle: savedSubtitle, keepsFormat: keepsFormat, near: location, operation: operation)
         }
     }
 
@@ -52,6 +53,7 @@ final class ConversionRunner {
         title: String,
         jobs: [[URL]],
         savedSubtitle: String?,
+        keepsFormat: Bool,
         near location: NSPoint,
         operation: @escaping Operation
     ) async {
@@ -87,8 +89,9 @@ final class ConversionRunner {
             let title = failures.count == 1 ? "Something went wrong" : "\(failures.count) files failed"
             toasts.show(Toast(systemImage: "exclamationmark.triangle", title: title, subtitle: failure), for: .seconds(4))
         } else {
-            // Worded like the editors' confirmations.
-            toasts.show(SaveOutcome(saved: saved, detail: savedSubtitle).toast)
+            // Worded like the editors' confirmations. Edits say why when they couldn't keep the format.
+            let note = keepsFormat ? zip(jobs.map { $0[0] }, saved).lazy.compactMap { KeepFormat.note(source: $0, output: $1) }.first : nil
+            toasts.show(SaveOutcome(saved: saved, detail: note ?? savedSubtitle).toast)
         }
     }
 }
