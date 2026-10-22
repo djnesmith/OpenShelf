@@ -34,6 +34,84 @@ struct MoreToolTests {
 
     // MARK: OCR
 
+    /// A PDF with a real text page and a scanned one: the searchable copy keeps
+    /// the real page's own content (a page drawn after its document was let go
+    /// came out blank).
+    @Test func ocrKeepsPagesThatAlreadyHaveText() async throws {
+        let folder = try workspace()
+        let pdf = folder.appendingPathComponent("Mixed.pdf")
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = try #require(CGContext(pdf as CFURL, mediaBox: &box, nil))
+        context.beginPDFPage(nil)
+        let font = CTFontCreateWithName("Helvetica" as CFString, 24, nil)
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: "Vector page text", attributes: [.init(kCTFontAttributeName as String): font]))
+        context.textPosition = CGPoint(x: 72, y: 700)
+        CTLineDraw(line, context)
+        context.endPDFPage()
+        context.beginPDFPage(nil)
+        context.draw(try Self.picture(of: "Scanned words here"), in: CGRect(x: 0, y: 300, width: 612, height: 153))
+        context.endPDFPage()
+        context.closePDF()
+
+        // The pages outlive the code that opened the document, as they do in OCR.run.
+        let pages = try autoreleasepool { try OCRPage.load(pdf) }
+        let canvas = try #require(CGContext(
+            data: nil, width: 612, height: 792, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        canvas.setFillColor(.white)
+        canvas.fill(CGRect(x: 0, y: 0, width: 612, height: 792))
+        pages[0].draw(in: canvas)
+        let drawn = try #require(canvas.makeImage()?.dataProvider?.data as Data?)
+        #expect(drawn.contains { $0 < 128 }, "the first page drew nothing")
+
+        let output = try await OCR.run(pdf, output: .searchablePDF)
+        let document = try #require(PDFDocument(url: output))
+        #expect(document.pageCount == 2)
+        #expect(document.page(at: 0)?.string?.contains("Vector page text") == true)
+        #expect(document.page(at: 1)?.string?.contains("Scanned") == true)
+    }
+
+    /// How far this process's footprint rises while `body` runs, sampled every 20 ms.
+    static func peakRise(_ body: () async throws -> Void) async rethrows -> Double {
+        func footprint() -> Double {
+            var info = rusage_info_v4()
+            _ = withUnsafeMutablePointer(to: &info) { $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0) } }
+            return Double(info.ri_phys_footprint) / 1_048_576
+        }
+        let start = footprint()
+        let peak = PeakBox(start)
+        let sampler = Task.detached {
+            while !Task.isCancelled {
+                peak.update(footprint())
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+        }
+        try await body()
+        sampler.cancel()
+        return peak.value - start
+    }
+
+    /// PDF pages become images one at a time: all 40 at 300 dpi at once would be about 1.3 GB.
+    @Test func pdfPagesAreRenderedOneAtATime() async throws {
+        let folder = try workspace()
+        let pdf = folder.appendingPathComponent("Forty.pdf")
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = try #require(CGContext(pdf as CFURL, mediaBox: &box, nil))
+        let page = try Self.picture(of: "A page")
+        for _ in 0..<40 {
+            context.beginPDFPage(nil)
+            context.draw(page, in: box)
+            context.endPDFPage()
+        }
+        context.closePDF()
+        let rise = try await Self.peakRise {
+            let images = try await Converter.convert(pdf, to: .png, tools: ExternalTools()) { _ in }
+            #expect(images.count == 40)
+        }
+        #expect(rise < 700, "rose \(Int(rise)) MB")
+    }
+
     @Test func picksSystemLanguagesVisionKnows() {
         let supported = ["en-US", "fr-FR", "de-DE", "zh-Hans"]
         #expect(OCR.recognitionLanguages(preferred: ["en-GB", "de-AT", "ja-JP"], supported: supported) == ["en-US", "de-DE"])
@@ -404,3 +482,10 @@ struct MoreToolTests {
     }
 }
 
+private final class PeakBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var peak: Double
+    init(_ start: Double) { peak = start }
+    func update(_ value: Double) { lock.withLock { peak = max(peak, value) } }
+    var value: Double { lock.withLock { peak } }
+}

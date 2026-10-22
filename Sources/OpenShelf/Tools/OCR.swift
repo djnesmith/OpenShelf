@@ -70,7 +70,10 @@ enum OCR {
             var recognised: [(page: OCRPage, lines: [Line])] = []
             for (index, page) in pages.enumerated() {
                 try Task.checkCancellation()
-                let lines = try page.existingText == nil ? page.image().map { try recognize($0) } ?? [] : []
+                // Each rendered page is let go before the next, not at the end.
+                let lines = try autoreleasepool {
+                    try page.existingText == nil ? page.image().map { try recognize($0) } ?? [] : []
+                }
                 recognised.append((page, lines))
                 progress(Double(index + 1) / Double(pages.count))
             }
@@ -97,11 +100,13 @@ enum OCR {
     private static func writePDF(_ pages: [(page: OCRPage, lines: [Line])], to url: URL) throws {
         guard let context = CGContext(url as CFURL, mediaBox: nil, nil) else { throw EditableImageError.unwritable(url) }
         for (page, lines) in pages {
-            var box = CGRect(origin: .zero, size: page.size)
-            context.beginPage(mediaBox: &box)
-            page.draw(in: context)
-            drawInvisibleText(lines, in: box, context: context)
-            context.endPage()
+            autoreleasepool {
+                var box = CGRect(origin: .zero, size: page.size)
+                context.beginPage(mediaBox: &box)
+                page.draw(in: context)
+                drawInvisibleText(lines, in: box, context: context)
+                context.endPage()
+            }
         }
         context.closePDF()
     }
@@ -142,6 +147,8 @@ struct OCRPage: @unchecked Sendable {
     let existingText: String?
     private let picture: CGImage?
     private let pdfPage: PDFPage?
+    /// A PDFPage draws nothing once its document is gone, so each page keeps it.
+    private let document: PDFDocument?
 
     static func load(_ url: URL) throws -> [OCRPage] {
         if FileKind(url: url) == .pdf {
@@ -153,14 +160,14 @@ struct OCRPage: @unchecked Sendable {
                 let bounds = page.bounds(for: .mediaBox)
                 let size = page.rotation % 180 == 0 ? bounds.size : CGSize(width: bounds.height, height: bounds.width)
                 let text = page.string?.trimmingCharacters(in: .whitespacesAndNewlines)
-                return OCRPage(size: size, existingText: text?.isEmpty == false ? text : nil, picture: nil, pdfPage: page)
+                return OCRPage(size: size, existingText: text?.isEmpty == false ? text : nil, picture: nil, pdfPage: page, document: document)
             }
         }
         let image = try EditableImage.load(url)
         let dpi = image.properties[kCGImagePropertyDPIWidth] as? Double ?? 72
         let scale = 72 / max(dpi, 1)
         let size = CGSize(width: Double(image.cgImage.width) * scale, height: Double(image.cgImage.height) * scale)
-        return [OCRPage(size: size, existingText: nil, picture: image.cgImage, pdfPage: nil)]
+        return [OCRPage(size: size, existingText: nil, picture: image.cgImage, pdfPage: nil, document: nil)]
     }
 
     /// The picture to recognise: the image itself, or the page rendered at `OCR.renderDPI`.

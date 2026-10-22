@@ -19,12 +19,15 @@ extension PDFTools {
             let pathExtension = type.preferredFilenameExtension ?? "png"
             return try pages.map { index in
                 try Task.checkCancellation()
-                guard let page = document.page(at: index), let image = PDFConversion.renderPage(page, dpi: dpi) else {
-                    throw ConversionError.failed("Page \(index + 1) couldn’t be drawn.")
+                // One page in memory at a time.
+                return try autoreleasepool {
+                    guard let page = document.page(at: index), let image = PDFConversion.renderPage(page, dpi: dpi) else {
+                        throw ConversionError.failed("Page \(index + 1) couldn’t be drawn.")
+                    }
+                    let destination = OutputNaming.destination(for: url, suffix: "Page \(index + 1)", pathExtension: pathExtension)
+                    try EditableImage.write(image, to: destination, type: type, quality: 0.92)
+                    return destination
                 }
-                let destination = OutputNaming.destination(for: url, suffix: "Page \(index + 1)", pathExtension: pathExtension)
-                try EditableImage.write(image, to: destination, type: type, quality: 0.92)
-                return destination
             }
         }.value
     }
