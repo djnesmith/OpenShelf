@@ -283,44 +283,124 @@ struct MoreToolTests {
         #expect(NSImage(systemSymbolName: FileAction.copyName.systemImage, accessibilityDescription: nil) != nil)
     }
 
-    // MARK: Copy to a folder
+    // MARK: Copy and Move to a folder
 
-    @MainActor
-    @Test func copiesIntoAFolderKeepingTheOriginals() throws {
+    /// A source folder holding Report.pdf (with an extended attribute and an old
+    /// date) and Album/Inner/photo.jpg, a target folder, and a test trash.
+    func transferWorkspace() throws -> (source: URL, target: URL, trash: URL, report: URL, album: URL) {
         let folder = try workspace()
         let source = folder.appendingPathComponent("Source", isDirectory: true)
         let target = folder.appendingPathComponent("Target", isDirectory: true)
-        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let trash = folder.appendingPathComponent("Trash", isDirectory: true)
+        for url in [source, target, trash] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
         let report = source.appendingPathComponent("Report.pdf")
-        try "pdf".write(to: report, atomically: true, encoding: .utf8)
-        // A folder with something inside, an extended attribute and an old date.
+        try "new".write(to: report, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_000_000_000)], ofItemAtPath: report.path)
+        #expect(setxattr(report.path, "com.example.tag", "kept", 4, 0, 0) == 0)
         let album = source.appendingPathComponent("Album", isDirectory: true)
         try FileManager.default.createDirectory(at: album.appendingPathComponent("Inner"), withIntermediateDirectories: true)
         try "x".write(to: album.appendingPathComponent("Inner/photo.jpg"), atomically: true, encoding: .utf8)
-        let old = Date(timeIntervalSince1970: 1_000_000_000)
-        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: report.path)
-        #expect(setxattr(report.path, "com.example.tag", "kept", 4, 0, 0) == 0)
+        return (source, target, trash, report, album)
+    }
 
+    /// Stubs: a fixed answer, as a pure function of the clash.
+    static func always(_ choice: FileActions.ConflictChoice, applyToAll: Bool = false) -> FileActions.ConflictPrompt {
+        { _, _, _ in FileActions.ConflictDecision(choice: choice, applyToAll: applyToAll) }
+    }
+
+    static func never(_ name: String, _ destination: URL, _ offersApplyToAll: Bool) -> FileActions.ConflictDecision {
+        Issue.record("Asked about \(name) without a clash")
+        return FileActions.ConflictDecision(choice: .skip)
+    }
+
+    func text(_ url: URL) throws -> String { try String(contentsOf: url, encoding: .utf8) }
+
+    @MainActor
+    @Test func copiesIntoAFolderKeepingTheOriginals() throws {
+        let (_, target, _, report, album) = try transferWorkspace()
         let clipboard = NSPasteboard.general.changeCount
-        let first = FileActions.copy([report, album], into: target)
-        #expect(first.failures.isEmpty)
-        #expect(first.copied.map(\.lastPathComponent) == ["Report.pdf", "Album"])
-        // The originals stay, and the clipboard is left alone.
+        let result = FileActions.transfer([report, album], into: target, operation: .copy, prompt: Self.never)
+        #expect(result.done.map(\.lastPathComponent) == ["Report.pdf", "Album"] && result.failures.isEmpty)
         #expect(FileManager.default.fileExists(atPath: report.path) && FileManager.default.fileExists(atPath: album.path))
         #expect(NSPasteboard.general.changeCount == clipboard)
-        // Everything inside, the attribute and the date come along.
         #expect(FileManager.default.fileExists(atPath: target.appendingPathComponent("Album/Inner/photo.jpg").path))
         var value = [CChar](repeating: 0, count: 8)
         #expect(getxattr(target.appendingPathComponent("Report.pdf").path, "com.example.tag", &value, 8, 0, 0) == 4)
-        let copiedDate = try FileManager.default.attributesOfItem(atPath: target.appendingPathComponent("Report.pdf").path)[.modificationDate] as? Date
-        #expect(copiedDate == old)
+        let date = try FileManager.default.attributesOfItem(atPath: target.appendingPathComponent("Report.pdf").path)[.modificationDate] as? Date
+        #expect(date == Date(timeIntervalSince1970: 1_000_000_000))
+    }
 
-        // Again: the names are taken, so the copies are numbered, never overwritten.
-        let second = FileActions.copy([report, album], into: target)
-        #expect(second.copied.map(\.lastPathComponent) == ["Report 2.pdf", "Album 2"])
-        // Into the file's own folder: a duplicate beside it.
-        #expect(FileActions.copy([report], into: source).copied.map(\.lastPathComponent) == ["Report 2.pdf"])
-        #expect(try String(contentsOf: target.appendingPathComponent("Report.pdf"), encoding: .utf8) == "pdf")
+    @MainActor
+    @Test func keepBothNumbersTheNewOne() throws {
+        let (_, target, _, report, album) = try transferWorkspace()
+        try "old".write(to: target.appendingPathComponent("Report.pdf"), atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: target.appendingPathComponent("Album"), withIntermediateDirectories: true)
+        let result = FileActions.transfer([report, album], into: target, operation: .copy, prompt: Self.always(.keepBoth))
+        #expect(result.done.map(\.lastPathComponent) == ["Report 2.pdf", "Album 2"])
+        #expect(try text(target.appendingPathComponent("Report.pdf")) == "old")
+    }
+
+    @MainActor
+    @Test func overwriteSendsTheOldOneToTheTrash() throws {
+        let (_, target, trash, report, album) = try transferWorkspace()
+        try "old".write(to: target.appendingPathComponent("Report.pdf"), atomically: true, encoding: .utf8)
+        // An existing folder is replaced whole, not merged.
+        try FileManager.default.createDirectory(at: target.appendingPathComponent("Album/OnlyInOld"), withIntermediateDirectories: true)
+        let toTestTrash: (URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: trash.appendingPathComponent($0.lastPathComponent)) }
+        let result = FileActions.transfer([report, album], into: target, operation: .move, prompt: Self.always(.overwrite), trash: toTestTrash)
+        #expect(result.done.count == 2 && result.failures.isEmpty)
+        #expect(try text(target.appendingPathComponent("Report.pdf")) == "new")
+        #expect(try text(trash.appendingPathComponent("Report.pdf")) == "old")
+        #expect(FileManager.default.fileExists(atPath: trash.appendingPathComponent("Album/OnlyInOld").path))
+        #expect(!FileManager.default.fileExists(atPath: target.appendingPathComponent("Album/OnlyInOld").path))
+        #expect(FileManager.default.fileExists(atPath: target.appendingPathComponent("Album/Inner/photo.jpg").path))
+        // Moved, so gone from the source.
+        #expect(!FileManager.default.fileExists(atPath: report.path))
+    }
+
+    @MainActor
+    @Test func cancelLeavesEverythingAsItWas() throws {
+        let (_, target, trash, report, _) = try transferWorkspace()
+        try "old".write(to: target.appendingPathComponent("Report.pdf"), atomically: true, encoding: .utf8)
+        let result = FileActions.transfer([report], into: target, operation: .move, prompt: Self.always(.skip)) { _ in Issue.record("Trashed on Cancel") }
+        #expect(result.done.isEmpty && result.skipped == 1)
+        #expect(try text(report) == "new" && (try text(target.appendingPathComponent("Report.pdf"))) == "old")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: trash.path).isEmpty)
+    }
+
+    @MainActor
+    @Test func applyToAllAsksOnce() throws {
+        let (source, target, _, _, _) = try transferWorkspace()
+        let names = ["a.txt", "b.txt", "c.txt"]
+        for name in names {
+            try "new".write(to: source.appendingPathComponent(name), atomically: true, encoding: .utf8)
+            try "old".write(to: target.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        let files = names.map { source.appendingPathComponent($0) }
+        // Without Apply to all, each file is asked about; the answer depends only on its name.
+        let perFile: FileActions.ConflictPrompt = { name, _, offersApplyToAll in
+            #expect(offersApplyToAll == (name != "c.txt"), "\(name)")
+            return FileActions.ConflictDecision(choice: name == "b.txt" ? .skip : .keepBoth)
+        }
+        let each = FileActions.transfer(files, into: target, operation: .copy, prompt: perFile)
+        #expect(each.done.map(\.lastPathComponent) == ["a 2.txt", "c 2.txt"] && each.skipped == 1)
+
+        // With it, the first answer is used for the rest: only a.txt is asked about.
+        let once: FileActions.ConflictPrompt = { name, _, _ in
+            #expect(name == "a.txt", "asked about \(name) after Apply to all")
+            return FileActions.ConflictDecision(choice: .skip, applyToAll: true)
+        }
+        let all = FileActions.transfer(files, into: target, operation: .copy, prompt: once)
+        #expect(all.done.isEmpty && all.skipped == 3)
+    }
+
+    @MainActor
+    @Test func ontoItselfNeedsNoQuestion() throws {
+        let (source, _, _, report, _) = try transferWorkspace()
+        let copy = FileActions.transfer([report], into: source, operation: .copy, prompt: Self.never)
+        #expect(copy.done.map(\.lastPathComponent) == ["Report 2.pdf"])
+        let move = FileActions.transfer([report], into: source, operation: .move, prompt: Self.never)
+        #expect(move.done.isEmpty && move.failures.isEmpty && FileManager.default.fileExists(atPath: report.path))
     }
 }
+

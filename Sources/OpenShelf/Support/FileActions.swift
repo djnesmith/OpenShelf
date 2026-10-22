@@ -54,52 +54,138 @@ enum FileActions {
         NSWorkspace.shared.open(Array(folders), withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
     }
 
-    /// Asks for a destination folder, then moves the files into it. Name clashes
-    /// are reported rather than overwritten. Returns where files went and how many
-    /// moved, or nil when cancelled.
+    /// Asks for a destination folder, then moves the files into it, asking what
+    /// to do about each name already taken there (see `transfer`). Returns where
+    /// files went and how many moved, or nil when cancelled.
     @discardableResult
     static func moveWithPrompt(_ urls: [URL]) -> (destination: URL, movedCount: Int)? {
         guard let destination = chooseDestination(for: urls, verb: "Move") else { return nil }
-
-        var failures: [String] = []
-        for url in urls {
-            do {
-                try FileManager.default.moveItem(at: url, to: destination.appendingPathComponent(url.lastPathComponent))
-            } catch {
-                failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
-            }
-        }
-        report(failures, verb: "moved")
-        return (destination, urls.count - failures.count)
+        let result = transfer(urls, into: destination, operation: .move, prompt: askAboutConflict)
+        report(result.failures, verb: "moved")
+        return (destination, result.done.count)
     }
 
-    /// Asks for a destination folder, as Move does, then copies the files there;
-    /// the originals stay put. A name already taken gets a Finder-style number
-    /// ("Report 2.pdf"), so copying into the same folder makes a duplicate.
+    /// The same as `moveWithPrompt`, copying instead: the originals stay put.
     @discardableResult
     static func copyWithPrompt(_ urls: [URL]) -> (destination: URL, copiedCount: Int)? {
         guard let destination = chooseDestination(for: urls, verb: "Copy") else { return nil }
-        let result = copy(urls, into: destination)
+        let result = transfer(urls, into: destination, operation: .copy, prompt: askAboutConflict)
         report(result.failures, verb: "copied")
-        return (destination, result.copied.count)
+        return (destination, result.done.count)
     }
 
-    /// Copies each item into `destination` with its attributes and dates (and
-    /// folders with everything inside), never over an existing file.
-    static func copy(_ urls: [URL], into destination: URL) -> (copied: [URL], failures: [String]) {
-        var copied: [URL] = []
+    enum Transfer: Sendable {
+        case move, copy
+    }
+
+    /// What to do when the name is taken at the destination.
+    enum ConflictChoice: Equatable, Sendable {
+        /// Put the existing item in the Trash, then this one in its place.
+        case overwrite
+        /// Give this one a Finder-style number: "Report 2.pdf".
+        case keepBoth
+        /// Leave this one where it is and the existing one alone.
+        case skip
+    }
+
+    struct ConflictDecision: Equatable, Sendable {
+        var choice: ConflictChoice
+        /// Use the same choice for the rest of this move or copy.
+        var applyToAll = false
+    }
+
+    /// Asked about one name clash: the item's name, the destination folder,
+    /// and whether to offer "Apply to all" (more clashes follow).
+    typealias ConflictPrompt = (_ name: String, _ destination: URL, _ offersApplyToAll: Bool) -> ConflictDecision
+
+    /// Moves or copies each item into `destination`. A copy keeps attributes,
+    /// dates and quarantine, and takes folders whole (FileManager). When a name
+    /// is taken, `prompt` decides; Overwrite sends the existing item (a folder
+    /// whole, never merged) to the Trash through `trash`, so it can be got back.
+    /// An item already in `destination` is left as it is when moving and
+    /// duplicated when copying, without asking.
+    static func transfer(
+        _ urls: [URL],
+        into destination: URL,
+        operation: Transfer,
+        prompt: ConflictPrompt,
+        trash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+    ) -> (done: [URL], skipped: Int, failures: [String]) {
+        let fileManager = FileManager.default
+        func isAlreadyThere(_ url: URL) -> Bool {
+            url.deletingLastPathComponent().standardizedFileURL.path == destination.standardizedFileURL.path
+        }
+        func numbered(_ url: URL) -> URL {
+            OutputNaming.uniqueURL(in: destination, baseName: url.deletingPathExtension().lastPathComponent, pathExtension: url.pathExtension.isEmpty ? nil : url.pathExtension)
+        }
+        let clashes = urls.filter { !isAlreadyThere($0) && fileManager.fileExists(atPath: destination.appendingPathComponent($0.lastPathComponent).path) }.count
+
+        var done: [URL] = []
+        var skipped = 0
         var failures: [String] = []
+        var remembered: ConflictChoice?
+        var asked = 0
         for url in urls {
-            let pathExtension = url.pathExtension.isEmpty ? nil : url.pathExtension
-            let target = OutputNaming.uniqueURL(in: destination, baseName: url.deletingPathExtension().lastPathComponent, pathExtension: pathExtension)
+            var target = destination.appendingPathComponent(url.lastPathComponent)
             do {
-                try FileManager.default.copyItem(at: url, to: target)
-                copied.append(target)
+                if isAlreadyThere(url) {
+                    // Moving onto itself changes nothing.
+                    guard operation == .copy else { continue }
+                    target = numbered(url)
+                } else if fileManager.fileExists(atPath: target.path) {
+                    let choice: ConflictChoice
+                    if let remembered {
+                        choice = remembered
+                    } else {
+                        asked += 1
+                        let decision = prompt(url.lastPathComponent, destination, clashes - asked > 0)
+                        choice = decision.choice
+                        if decision.applyToAll { remembered = choice }
+                    }
+                    switch choice {
+                    case .skip:
+                        skipped += 1
+                        continue
+                    case .keepBoth:
+                        target = numbered(url)
+                    case .overwrite:
+                        try trash(target)
+                    }
+                }
+                switch operation {
+                case .move: try fileManager.moveItem(at: url, to: target)
+                case .copy: try fileManager.copyItem(at: url, to: target)
+                }
+                done.append(target)
             } catch {
                 failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
-        return (copied, failures)
+        return (done, skipped, failures)
+    }
+
+    /// Finder's question: Keep Both (the default, Return), Overwrite, or
+    /// Cancel (Esc), with "Apply to all" when more clashes follow.
+    private static func askAboutConflict(_ name: String, in destination: URL, offersApplyToAll: Bool) -> ConflictDecision {
+        let alert = NSAlert()
+        alert.messageText = "“\(name)” already exists in “\(destination.lastPathComponent)”."
+        alert.informativeText = "Overwrite moves the existing one to the Trash. Keep Both gives the new one a number."
+        alert.addButton(withTitle: "Keep Both")
+        alert.addButton(withTitle: "Overwrite")
+        let cancel = alert.addButton(withTitle: "Cancel")
+        cancel.keyEquivalent = "\u{1b}"
+        if offersApplyToAll {
+            alert.showsSuppressionButton = true
+            alert.suppressionButton?.title = "Apply to all"
+        }
+        NSApp.activate()
+        let response = alert.runModal()
+        let choice: ConflictChoice = switch response {
+        case .alertFirstButtonReturn: .keepBoth
+        case .alertSecondButtonReturn: .overwrite
+        default: .skip
+        }
+        return ConflictDecision(choice: choice, applyToAll: alert.suppressionButton?.state == .on)
     }
 
     /// Move's and Copy's folder picker, starting where the first file is.
