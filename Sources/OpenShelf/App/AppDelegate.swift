@@ -114,6 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
                 return
             }
+            if kind == .tools, let tool = MissingToolAdvice.blockingTool(forToolsWheel: urls, tools: tools) {
+                ToastController.shared.show(MissingToolAdvice.toast(for: urls, needing: tool, tools: tools), near: location, for: .seconds(4))
+                return
+            }
             let title = kind == .convert ? "No conversions for this file" : "No tools for this file yet"
             ToastController.shared.show(Toast(systemImage: "nosign", title: title), near: location)
             return

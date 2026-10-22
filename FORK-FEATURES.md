@@ -288,6 +288,12 @@ A Tools-wheel wedge that saves a re-formatted copy as `name.formatted.ext` next 
 - Files: `Sources/OpenShelf/Tools/PrettyPrint.swift`, `Convert/ExternalTools.swift` (`Formatters`), `Tools/FileTool.swift`, `Tools/ToolLauncher.swift`, `Convert/ConversionRunner.swift` (`unchangedLabel`)
 - Check: `swift test --filter PrettyPrintTests`. `configsNearTheFileAreIgnored` plants configs next to the file and in the folder above it, and fails if any formatter follows one.
 
+### 45. Settings lists every tool, and missing-tool hints name it
+Settings → Extra Formats has a collapsed "Command-Line Tools · N of M installed" row under ffmpeg and LibreOffice. It opens to every other tool OpenShelf finds: cwebp, calibre, pandoc, yq, cjxl, DuckDB, jet and the ten Pretty Print formatters. Each row shows Installed · Homebrew (path on hover) or Copy Homebrew Command; jet's row says its tap is third-party, not homebrew-core. Whether the list is open is remembered. The "X needs Y" toast uses the same list: an EPUB without calibre says "EPUB needs calibre / brew install --cask calibre", and an empty Tools wheel names the missing formatter ("PY needs ruff"). Wheels offering only ZIP, tar and 7z count as having nothing.
+- Commits: this one
+- Files: `Sources/OpenShelf/Convert/CommandLineTool.swift`, `Convert/ExtraFormats.swift` (`MissingTool`, `MissingToolAdvice`), `Settings/ExtraFormatsPane.swift`, `Settings/SettingsTab.swift`, `App/Preferences.swift` (`showsCommandLineTools`), `App/AppDelegate.swift`
+- Check: `swift test --filter CommandLineToolTests` (fails when `ExternalTools` resolves a tool with no Settings row), `--filter MissingToolAdviceTests` and `--filter panesHaveAHeightToFit` (collapsed pane under 700 pt).
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

@@ -163,7 +163,7 @@ enum FileTool: CaseIterable, Hashable {
     static func convertFirstToast(for urls: [URL], convertKeys: String, tools: ExternalTools) -> Toast {
         let unreadable = urls.filter { !MediaFormats.isAVFoundationReadable($0) }
         if tools.ffmpeg == nil, !unreadable.isEmpty {
-            return MissingToolAdvice.toast(for: unreadable, needing: .ffmpeg, tools: tools)
+            return MissingToolAdvice.toast(for: unreadable, needing: .extra(.ffmpeg), tools: tools)
         }
         let kinds = Set(urls.map { FileKind(url: $0) })
         var format = "MP4 or M4A"

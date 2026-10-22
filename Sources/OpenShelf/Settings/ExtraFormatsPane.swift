@@ -2,9 +2,12 @@ import AppKit
 import SwiftUI
 
 /// Settings → Extra Formats: ffmpeg and LibreOffice, whether they're on this
-/// Mac and where from, and installing or removing them.
+/// Mac and where from, and installing or removing them; then the other tools
+/// OpenShelf uses when Homebrew has put them there.
 struct ExtraFormatsPane: View {
     let installer: ToolInstaller
+    /// The command-line tools list starts collapsed, keeping the pane short.
+    @Bindable private var preferences = Preferences.shared
 
     var body: some View {
         Form {
@@ -14,6 +17,19 @@ struct ExtraFormatsPane: View {
                 }
             } footer: {
                 Text("Free software, downloaded only when you click Install: ffmpeg (LGPL/GPL) from [ffmpeg.martin-riedl.de](https://ffmpeg.martin-riedl.de), LibreOffice (MPL) from [libreoffice.org](https://www.libreoffice.org). When the ffmpeg server is down, the same signed build comes from OpenShelf’s mirror on GitHub.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                DisclosureGroup(isExpanded: $preferences.showsCommandLineTools) {
+                    ForEach(CommandLineTool.allCases) { tool in
+                        CommandLineToolRow(tool: tool, path: tool.path(in: installer.tools))
+                    }
+                } label: {
+                    Text(CommandLineTool.title(tools: installer.tools))
+                }
+            } footer: {
+                Text("Found where Homebrew installs them. Install one in Terminal, then come back here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -29,6 +45,33 @@ struct ExtraFormatsPane: View {
         case .installed(let info): "installed \(info.canRemove)"
         case .installing(let progress): "installing \(progress.source != nil)"
         case .failed(let message): "failed \(message) \(installer.offers(for: tool))"
+        }
+    }
+}
+
+/// A tool OpenShelf finds but doesn't install: where it is, or the
+/// Homebrew command to get it.
+private struct CommandLineToolRow: View {
+    let tool: CommandLineTool
+    let path: URL?
+
+    var body: some View {
+        LabeledContent {
+            if let path {
+                let source = ToolInstaller.source(of: path)
+                Label {
+                    Text(source == .other ? "Installed" : "Installed · \(source.rawValue)")
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                .help(path.path)
+            } else {
+                CopyCommandButton(command: tool.homebrewCommand)
+            }
+        } label: {
+            Text(tool.name)
+            Text(tool.isThirdPartyTap ? "\(tool.adds) · \(tool.homebrewCommand), a third-party tap, not homebrew-core" : tool.adds)
         }
     }
 }
@@ -138,7 +181,6 @@ private struct FailureControls: View {
     let tool: ExtraTool
     let offers: [InstallOffer]
     let installer: ToolInstaller
-    @State private var hasCopiedCommand = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
@@ -157,22 +199,32 @@ private struct FailureControls: View {
             Button("Install with Homebrew") { installer.installWithHomebrew(tool) }
                 .help("Runs “\(tool.homebrewCommand)” for you.")
         case .copyHomebrewCommand:
-            Button(hasCopiedCommand ? "Copied" : "Copy Homebrew Command") { copyHomebrewCommand() }
-                .buttonStyle(.link)
-                .font(.caption)
-                .help(tool.homebrewCommand)
+            CopyCommandButton(command: tool.homebrewCommand)
         case .getHomebrew:
             EmptyView()
         }
     }
+}
 
-    private func copyHomebrewCommand() {
+/// "Copy Homebrew Command", which says "Copied" for a moment.
+private struct CopyCommandButton: View {
+    let command: String
+    @State private var hasCopied = false
+
+    var body: some View {
+        Button(hasCopied ? "Copied" : "Copy Homebrew Command") { copy() }
+            .buttonStyle(.link)
+            .font(.caption)
+            .help(command)
+    }
+
+    private func copy() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(tool.homebrewCommand, forType: .string)
-        hasCopiedCommand = true
+        NSPasteboard.general.setString(command, forType: .string)
+        hasCopied = true
         Task {
             try? await Task.sleep(for: .seconds(1.5))
-            hasCopiedCommand = false
+            hasCopied = false
         }
     }
 }

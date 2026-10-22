@@ -65,6 +65,46 @@ enum ExtraTool: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// A tool Settings → Extra Formats lists: one it installs, or one Homebrew does.
+enum MissingTool: Equatable, Sendable {
+    case extra(ExtraTool)
+    case commandLine(CommandLineTool)
+
+    /// ffmpeg and LibreOffice first, as Settings lists them.
+    static var allCases: [MissingTool] {
+        ExtraTool.allCases.map(MissingTool.extra) + CommandLineTool.allCases.map(MissingTool.commandLine)
+    }
+
+    var name: String {
+        switch self {
+        case .extra(let tool): tool.name
+        case .commandLine(let tool): tool.name
+        }
+    }
+
+    /// The toast's second line: where to install it.
+    var installHint: String {
+        switch self {
+        case .extra: MissingToolAdvice.installHint
+        case .commandLine(let tool): tool.homebrewCommand
+        }
+    }
+
+    func isInstalled(in tools: ExternalTools) -> Bool {
+        switch self {
+        case .extra(let tool): tool.isInstalled(in: tools)
+        case .commandLine(let tool): tool.isInstalled(in: tools)
+        }
+    }
+
+    func assumedInstalled(in tools: ExternalTools) -> ExternalTools {
+        switch self {
+        case .extra(let tool): tool.assumedInstalled(in: tools)
+        case .commandLine(let tool): tool.assumedInstalled(in: tools)
+        }
+    }
+}
+
 /// What to say when a missing tool is the reason a wheel has little to offer.
 /// Pure decisions, so they can be tested without a drag.
 enum MissingToolAdvice {
@@ -75,19 +115,33 @@ enum MissingToolAdvice {
     /// Convert wheel, when installing it would offer real conversions. Nil
     /// for folders, unknown files, Keynote decks and mixes that share no
     /// format anyway: their ZIP wheel is all there is.
-    static func blockingTool(for urls: [URL], formats: [OutputFormat], tools: ExternalTools) -> ExtraTool? {
-        guard !urls.isEmpty, formats == [.zip] else { return nil }
-        return ExtraTool.allCases.first { tool in
+    static func blockingTool(for urls: [URL], formats: [OutputFormat], tools: ExternalTools) -> MissingTool? {
+        guard !urls.isEmpty, onlyArchives(formats) else { return nil }
+        return MissingTool.allCases.first { tool in
             !tool.isInstalled(in: tools)
-                && ConversionCatalog.formats(for: urls, tools: tool.assumedInstalled(in: tools)).contains { $0 != .zip }
+                && !onlyArchives(ConversionCatalog.formats(for: urls, tools: tool.assumedInstalled(in: tools)))
+        }
+    }
+
+    /// A wheel of ZIP, tar and 7z only: packing the file, not converting it.
+    static func onlyArchives(_ formats: [OutputFormat]) -> Bool {
+        !formats.isEmpty && formats.allSatisfy(ConversionCatalog.archiveFormats.contains)
+    }
+
+    /// The tool whose absence leaves these files with an empty Tools wheel
+    /// (a Python file without ruff), or nil.
+    static func blockingTool(forToolsWheel urls: [URL], tools: ExternalTools) -> MissingTool? {
+        guard !urls.isEmpty, FileTool.available(for: urls, tools: tools).isEmpty else { return nil }
+        return MissingTool.allCases.first { tool in
+            !tool.isInstalled(in: tools) && !FileTool.available(for: urls, tools: tool.assumedInstalled(in: tools)).isEmpty
         }
     }
 
     /// "MKV needs ffmpeg", shown instead of a ZIP-only wheel. Names only the
     /// files that need the tool (not the MP4 dragged along with an MKV). One
     /// line each, like every toast.
-    static func toast(for urls: [URL], needing tool: ExtraTool, tools: ExternalTools) -> Toast {
-        let blocked = urls.filter { ConversionCatalog.formats(for: [$0], tools: tools) == [.zip] }
+    static func toast(for urls: [URL], needing tool: MissingTool, tools: ExternalTools) -> Toast {
+        let blocked = urls.filter { onlyArchives(ConversionCatalog.formats(for: [$0], tools: tools)) }
         let names = uniqueNames(of: blocked.isEmpty ? urls : blocked)
         var title = "These files need \(tool.name)"
         if !names.contains("") {
@@ -100,7 +154,7 @@ enum MissingToolAdvice {
         if title.count > 28 {
             title = "These files need \(tool.name)"
         }
-        return Toast(systemImage: "puzzlepiece.extension", title: title, subtitle: installHint)
+        return Toast(systemImage: "puzzlepiece.extension", title: title, subtitle: tool.installHint)
     }
 
     /// A one-time note for audio and video that convert natively but would get

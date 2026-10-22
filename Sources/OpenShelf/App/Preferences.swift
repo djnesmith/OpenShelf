@@ -12,6 +12,7 @@ final class Preferences {
         static let restoresShelves = "restoresShelves"
         static let hidesDockedShelves = "hidesDockedShelves"
         static let openWheelShortcut = "openWheelShortcut"
+        static let showsCommandLineTools = "showsCommandLineTools"
 
         static func trigger(_ kind: WheelKind) -> String {
             switch kind {
@@ -37,6 +38,11 @@ final class Preferences {
         didSet { defaults.set(restoresShelves, forKey: Key.restoresShelves) }
     }
 
+    /// Settings → Extra Formats shows the command-line tools list, not just its count.
+    var showsCommandLineTools: Bool {
+        didSet { defaults.set(showsCommandLineTools, forKey: Key.showsCommandLineTools) }
+    }
+
     /// Slide shelves docked to a screen edge out of the way, leaving a tab.
     var hidesDockedShelves: Bool {
         didSet { defaults.set(hidesDockedShelves, forKey: Key.hidesDockedShelves) }
@@ -59,6 +65,7 @@ final class Preferences {
         removeAfterDragOut = defaults.bool(forKey: Key.removeAfterDragOut)
         restoresShelves = defaults.object(forKey: Key.restoresShelves) as? Bool ?? true
         hidesDockedShelves = defaults.object(forKey: Key.hidesDockedShelves) as? Bool ?? true
+        showsCommandLineTools = defaults.bool(forKey: Key.showsCommandLineTools)
         openWheelShortcut = Self.decode(defaults.string(forKey: Key.openWheelShortcut))
     }
 

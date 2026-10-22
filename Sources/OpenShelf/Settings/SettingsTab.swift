@@ -58,6 +58,8 @@ enum SettingsTab: String, CaseIterable, Sendable {
             Preferences.shared.conflictingWheels.map(\.title).sorted()
         case .extraFormats:
             ExtraTool.allCases.map { ExtraFormatsPane.layout(of: $0, installer: .shared) }
+                + CommandLineTool.allCases.map { "\($0.rawValue) \($0.path(in: ToolInstaller.shared.tools) != nil)" }
+                + ["expanded \(Preferences.shared.showsCommandLineTools)"]
         case .general, .shelves:
             []
         }

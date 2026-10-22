@@ -68,18 +68,18 @@ struct MissingToolAdviceTests {
     let ffmpegOnly = ExternalTools(ffmpeg: URL(fileURLWithPath: "/usr/bin/true"))
     private func urls(_ names: String...) -> [URL] { names.map { URL(fileURLWithPath: "/tmp/\($0)") } }
 
-    private func blocking(_ urls: [URL], _ tools: ExternalTools) -> ExtraTool? {
+    private func blocking(_ urls: [URL], _ tools: ExternalTools) -> MissingTool? {
         MissingToolAdvice.blockingTool(for: urls, formats: ConversionCatalog.formats(for: urls, tools: tools), tools: tools)
     }
 
     @Test func namesTheToolThatWouldUnlockConversions() {
         for name in ["a.mkv", "a.webm", "a.avi", "a.ogg", "a.wma"] {
-            #expect(blocking(urls(name), none) == .ffmpeg, "\(name)")
+            #expect(blocking(urls(name), none) == .extra(.ffmpeg), "\(name)")
         }
         for name in ["a.pptx", "a.ppt", "a.odp", "a.xls", "a.ods"] {
-            #expect(blocking(urls(name), none) == .libreOffice, "\(name)")
+            #expect(blocking(urls(name), none) == .extra(.libreOffice), "\(name)")
         }
-        #expect(blocking(urls("a.pptx"), ffmpegOnly) == .libreOffice)
+        #expect(blocking(urls("a.pptx"), ffmpegOnly) == .extra(.libreOffice))
     }
 
     @Test func zipWheelsStayWhenNoToolWouldHelp() throws {
@@ -98,14 +98,51 @@ struct MissingToolAdviceTests {
         #expect(blocking(urls("a.zip"), none) == nil)
     }
 
+    /// Every tool Settings lists can be the one a hint names, with its brew command.
+    @Test func namesCommandLineToolsWithTheirHomebrewCommand() {
+        #expect(blocking(urls("a.epub"), none) == .commandLine(.calibre))
+        #expect(blocking(urls("a.parquet"), none) == .commandLine(.duckdb))
+        #expect(blocking(urls("a.rst"), none) == .commandLine(.pandoc))
+        #expect(blocking(urls("a.edn"), none) == .commandLine(.jet))
+        // LaTeX converts without pandoc, so nothing is missing.
+        #expect(blocking(urls("a.tex"), none) == nil)
+        let book = MissingToolAdvice.toast(for: urls("a.epub"), needing: .commandLine(.calibre), tools: none)
+        #expect(book.title == "EPUB needs calibre")
+        #expect(book.subtitle == "brew install --cask calibre")
+        #expect(MissingToolAdvice.toast(for: urls("a.edn"), needing: .commandLine(.jet), tools: none).subtitle == "brew install borkdude/brew/jet")
+        // Installed, they're not named.
+        var calibre = none
+        calibre.ebookConvert = URL(fileURLWithPath: "/usr/bin/true")
+        #expect(blocking(urls("a.epub"), calibre) == nil)
+    }
+
+    @Test func emptyToolsWheelsNameTheFormatter() {
+        #expect(MissingToolAdvice.blockingTool(forToolsWheel: urls("a.py"), tools: none) == .commandLine(.ruff))
+        #expect(MissingToolAdvice.blockingTool(forToolsWheel: urls("a.rs"), tools: none) == .commandLine(.rustfmt))
+        #expect(MissingToolAdvice.blockingTool(forToolsWheel: urls("a.json"), tools: none) == .commandLine(.deno))
+        #expect(MissingToolAdvice.toast(for: urls("a.py"), needing: .commandLine(.ruff), tools: none).title == "PY needs ruff")
+        // No formatter for plain text, and a wheel with tools needs no hint.
+        #expect(MissingToolAdvice.blockingTool(forToolsWheel: urls("a.txt"), tools: none) == nil)
+        var ruff = none
+        ruff.formatters.ruff = URL(fileURLWithPath: "/usr/bin/true")
+        #expect(MissingToolAdvice.blockingTool(forToolsWheel: urls("a.py"), tools: ruff) == nil)
+    }
+
+    @Test func everyHomebrewHintFitsTheToast() {
+        for tool in MissingTool.allCases {
+            let width = (tool.installHint as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width
+            #expect(width <= 220, "\(tool): \(tool.installHint)")
+        }
+    }
+
     @Test func mixedSelectionsNameOnlyTheBlockedFiles() {
-        #expect(blocking(urls("a.mkv", "b.mp4"), none) == .ffmpeg)
-        #expect(MissingToolAdvice.toast(for: urls("a.mkv", "b.mp4"), needing: .ffmpeg, tools: none).title == "MKV needs ffmpeg")
+        #expect(blocking(urls("a.mkv", "b.mp4"), none) == .extra(.ffmpeg))
+        #expect(MissingToolAdvice.toast(for: urls("a.mkv", "b.mp4"), needing: .extra(.ffmpeg), tools: none).title == "MKV needs ffmpeg")
     }
 
     @Test func toastTitles() {
         func title(_ names: String..., tool: ExtraTool) -> String {
-            MissingToolAdvice.toast(for: names.map { URL(fileURLWithPath: "/tmp/\($0)") }, needing: tool, tools: none).title
+            MissingToolAdvice.toast(for: names.map { URL(fileURLWithPath: "/tmp/\($0)") }, needing: .extra(tool), tools: none).title
         }
         #expect(title("a.mkv", tool: .ffmpeg) == "MKV needs ffmpeg")
         #expect(title("a.mkv", "b.mkv", tool: .ffmpeg) == "MKV needs ffmpeg")
@@ -114,13 +151,13 @@ struct MissingToolAdviceTests {
         #expect(title("a.mkv", "b.webm", "c.avi", tool: .ffmpeg) == "These files need ffmpeg")
         #expect(title("a.xls", "b.ods", tool: .libreOffice) == "XLS and ODS need LibreOffice")
         #expect(title("a.pptx", "b.xls", tool: .libreOffice) == "These files need LibreOffice")
-        let toast = MissingToolAdvice.toast(for: urls("a.ogg"), needing: .ffmpeg, tools: none)
+        let toast = MissingToolAdvice.toast(for: urls("a.ogg"), needing: .extra(.ffmpeg), tools: none)
         #expect(toast.subtitle == "Install it in Settings → Extra Formats")
     }
 
     @Test func toastLinesFitTheToast() {
         // ConfirmationPill: 12 pt semibold title, 11 pt subtitle capped at 220 pt.
-        let toast = MissingToolAdvice.toast(for: urls("a.pptx"), needing: .libreOffice, tools: none)
+        let toast = MissingToolAdvice.toast(for: urls("a.pptx"), needing: .extra(.libreOffice), tools: none)
         let titleWidth = (toast.title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]).width
         let subtitleWidth = ((toast.subtitle ?? "") as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11)]).width
         #expect(titleWidth <= 240)
