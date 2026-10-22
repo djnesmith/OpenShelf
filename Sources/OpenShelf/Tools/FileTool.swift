@@ -40,6 +40,7 @@ enum FileTool: CaseIterable, Hashable {
     case fitSize
     case compressAudio
     case pdfImages
+    case frameRate
 
     var title: String {
         switch self {
@@ -78,6 +79,7 @@ enum FileTool: CaseIterable, Hashable {
         case .fitSize: "Fit Size"
         case .compressAudio: "Compress"
         case .pdfImages: "Images"
+        case .frameRate: "Frame Rate"
         }
     }
 
@@ -110,6 +112,7 @@ enum FileTool: CaseIterable, Hashable {
         case .volume: "speaker.wave.3"
         case .ocr: "text.viewfinder"
         case .pdfImages: "photo.on.rectangle.angled"
+        case .frameRate: "film.stack"
         case .transcribe: "captions.bubble"
         case .fitSize: "externaldrive.badge.checkmark"
         }
@@ -176,7 +179,7 @@ enum FileTool: CaseIterable, Hashable {
         let hasFFmpeg = tools.ffmpeg != nil
         if kinds == [.video] {
             return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame, .grayscale, .transcribe]
-                + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume, .fitSize] : [])
+                + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume, .fitSize, .frameRate] : [])
         }
         if kinds == [.audio] {
             return merge + [.trim, .speed, .splitMedia, .compressAudio, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : [])

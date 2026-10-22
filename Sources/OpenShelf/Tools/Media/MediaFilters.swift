@@ -87,6 +87,29 @@ extension MediaTools {
         return destination
     }
 
+    // MARK: Frame rate
+
+    static let frameRates: [Int] = [24, 25, 30, 50, 60]
+
+    /// The picture re-timed to `fps` frames a second (frames dropped or
+    /// repeated, the length unchanged); sound is copied.
+    static func changeFrameRate(
+        _ url: URL,
+        to fps: Int,
+        tools: ExternalTools = .current,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> URL {
+        let ffmpeg = try requireFFmpeg(tools)
+        let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
+        guard let video = probed.video else { throw MediaToolError.noVideo(url) }
+        let destination = OutputNaming.destination(for: url, suffix: "\(fps)fps", pathExtension: videoContainer(for: url).pathExtension)
+        try SaveError.checkWritable(destination)
+        let arguments: [String] = ["-i", url.path, "-map", "0:V:0", "-map", "0:a?", "-vf", "fps=\(fps)"]
+            + FFmpegEdits.videoEncoding(for: video) + FFmpegEdits.audioCopyOrAAC(probed.audio)
+        try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
+        return destination
+    }
+
     static func requireFFmpeg(_ tools: ExternalTools) throws -> URL {
         guard let ffmpeg = tools.ffmpeg else { throw MissingToolError(name: "ffmpeg") }
         return ffmpeg

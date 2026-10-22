@@ -375,4 +375,16 @@ struct MoreMediaToolTests {
         let fromOgg = try await MediaTools.compressAudio(ogg, kilobits: 96, tools: tools) { _ in }
         #expect(try await probe(fromOgg).audio.first?.codec == "aac")
     }
+
+    // MARK: Frame rate
+
+    @Test(.enabled(if: hasFFmpeg)) func changesTheFrameRateKeepingTheLength() async throws {
+        let folder = try workspace()
+        let output = try await MediaTools.changeFrameRate(folder.appendingPathComponent("clip.mp4"), to: 60, tools: tools) { _ in }
+        #expect(output.lastPathComponent == "clip 60fps.mp4")
+        let probed = try await probe(output)
+        #expect(probed.video?.framesPerSecond == 60)
+        #expect(abs(probed.duration - 3) < 0.1)
+        #expect(probed.audio.first?.codec == "aac")
+    }
 }
