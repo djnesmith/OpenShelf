@@ -35,6 +35,7 @@ enum FileTool: CaseIterable, Hashable {
     case normalize
     case grayscale
     case volume
+    case ocr
 
     var title: String {
         switch self {
@@ -68,6 +69,7 @@ enum FileTool: CaseIterable, Hashable {
         case .normalize: "Loudness"
         case .grayscale: "Grayscale"
         case .volume: "Volume"
+        case .ocr: "OCR"
         }
     }
 
@@ -98,6 +100,7 @@ enum FileTool: CaseIterable, Hashable {
         case .normalize: "waveform"
         case .grayscale: "circle.lefthalf.filled"
         case .volume: "speaker.wave.3"
+        case .ocr: "text.viewfinder"
         }
     }
 
@@ -147,11 +150,11 @@ enum FileTool: CaseIterable, Hashable {
         let combine: [FileTool] = urls.count > 1 && kinds.isSubset(of: [.image, .pdf]) ? [.combinePDF] : []
 
         if kinds == [.image] {
-            return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR] + combine
+            return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr] + combine
         }
         if kinds == [.pdf] {
             let singlePage: [FileTool] = urls.count == 1 ? [.organizePages, .splitPDF] : []
-            return combine + singlePage + [.compressPDF, .pdfMetadata]
+            return combine + singlePage + [.compressPDF, .pdfMetadata, .ocr]
         }
         if kinds.isSubset(of: [.video, .audio]),
            !urls.allSatisfy({ editableMediaExtensions.contains($0.resolvingSymlinksInPath().pathExtension.lowercased()) }) {

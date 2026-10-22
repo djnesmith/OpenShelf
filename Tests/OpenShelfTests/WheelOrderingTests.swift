@@ -36,13 +36,13 @@ struct WheelOrderingTests {
     @Test func imageToolsLeadWithTheEverydayOnes() {
         #expect(tools(urls("a.jpg")) == [
             .compress, .crop, .resize, .annotate, .removeBackground, .edit,
-            .metadata, .redact, .addBackground, .readQR,
+            .metadata, .redact, .addBackground, .readQR, .ocr,
         ])
     }
 
     @Test func severalImagesAddCombineAtTheEnd() {
         let tools = tools(urls("a.jpg", "b.png"))
-        #expect(tools.count == 11)
+        #expect(tools.count == 12)
         #expect(firstPage(tools) == [.compress, .crop, .resize, .annotate, .removeBackground, .edit])
         #expect(tools.last == .combinePDF)
     }
@@ -56,7 +56,7 @@ struct WheelOrderingTests {
     }
 
     @Test func toolWheelsThatFitOnOnePageKeepTheirOrder() {
-        #expect(tools(urls("a.pdf")) == [.organizePages, .splitPDF, .compressPDF, .pdfMetadata])
+        #expect(tools(urls("a.pdf")) == [.organizePages, .splitPDF, .compressPDF, .pdfMetadata, .ocr])
         #expect(tools(urls("a.mp3", "b.m4a")) == [.mergeMedia, .trim, .speed, .splitMedia])
     }
 
