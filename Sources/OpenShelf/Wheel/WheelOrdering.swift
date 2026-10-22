@@ -13,7 +13,7 @@ enum WheelOrdering {
 
     /// Video tools; Merge only appears for several files.
     static let videoTools: [FileTool] = [
-        .mergeMedia, .trim, .compressVideo, .cropVideo, .rotateVideo, .splitMedia,
+        .mergeMedia, .trim, .compressVideo, .fitSize, .cropVideo, .rotateVideo, .splitMedia,
         .speed, .mute, .stillFrame, .grayscale, .transcribe, .reverse, .mediaMetadata, .normalize, .volume, .mono,
     ]
 

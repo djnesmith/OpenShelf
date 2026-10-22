@@ -317,4 +317,37 @@ struct MoreMediaToolTests {
         #expect(clip.lastPathComponent == "clip Louder.mp4")
         #expect(try await probe(clip).video?.codec == "h264")
     }
+
+    // MARK: Fit size
+
+    @Test func plansBitratesForASize() throws {
+        // 25 MB over a minute: about 3.2 Mbit/s, so 128k sound and 1080p at most.
+        let video = try FitSizePlan.make(bytes: 25_000_000, duration: 60, hasVideo: true)
+        #expect(video.audioBitRate == 128_000 && video.videoBitRate == 3_038_666 && video.maximumHeight == 1080)
+        let audio = try FitSizePlan.make(bytes: 10_000_000, duration: 600, hasVideo: false)
+        #expect(audio.videoBitRate == nil && audio.audioBitRate == 126_666)
+        #expect(throws: MediaToolError.self) { try FitSizePlan.make(bytes: 1_000_000, duration: 3600, hasVideo: true) }
+        let tiny = try FitSizePlan.make(bytes: 2_000_000, duration: 60, hasVideo: true)
+        #expect(tiny.maximumHeight == 360 && tiny.audioBitRate == 64_000)
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func fitsUnderTheSize() async throws {
+        let folder = try workspace()
+        // 10 seconds of busy 720p at a generous rate: several MB.
+        let big = folder.appendingPathComponent("big.mp4")
+        try Self.run(Self.ffmpeg, ["-f", "lavfi", "-i", "testsrc2=duration=10:size=1280x720:rate=30", "-f", "lavfi", "-i", "sine=duration=10",
+            "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "8M", "-pix_fmt", "yuv420p", "-c:a", "aac", big.path])
+        let target: Int64 = 1_000_000
+        let output = try await MediaTools.fitSize(big, bytes: target, tools: tools) { _ in }
+        #expect(output.lastPathComponent == "big 1MB.mp4")
+        let size = try #require(try output.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        #expect(size <= target && size > target / 2)
+        #expect(try await probe(output).video?.height == 480)
+        // No two-pass logs left behind.
+        let logs = try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path).filter { $0.hasPrefix("openshelf-2pass-") }
+        #expect(logs.isEmpty)
+
+        let tone = folder.appendingPathComponent("tone.m4a")
+        await #expect(throws: MediaToolError.self) { try await MediaTools.fitSize(tone, bytes: 50_000_000, tools: tools) { _ in } }
+    }
 }
