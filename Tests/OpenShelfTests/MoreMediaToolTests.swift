@@ -113,4 +113,39 @@ struct MoreMediaToolTests {
         let sound = try await MediaTools.reverse(folder.appendingPathComponent("tone.m4a"), tools: tools) { _ in }
         #expect(sound.lastPathComponent == "tone Reversed.m4a")
     }
+
+    // MARK: Strip metadata
+
+    /// The container's and streams' tags, as ffprobe lists them.
+    func tags(_ url: URL) throws -> String {
+        let process = Process()
+        process.executableURL = Self.ffprobe
+        process.arguments = ["-v", "error", "-show_entries", "format_tags:stream_tags", "-of", "json", url.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func stripsTagsWithoutReencoding() async throws {
+        let folder = try workspace()
+        let clip = folder.appendingPathComponent("clip.mp4")
+        #expect(try tags(clip).contains("Secret title"))
+        let output = try await MediaTools.stripMetadata(clip, tools: tools) { _ in }
+        #expect(output.lastPathComponent == "clip Clean.mp4")
+        let left = try tags(output)
+        #expect(!left.contains("Secret title"))
+        #expect(!left.contains("48.8584"))
+        #expect(!left.contains("Lavf"))
+        let probed = try await probe(output)
+        #expect(probed.video?.codec == "h264" && probed.audio.count == 1)
+
+        let tone = folder.appendingPathComponent("tone.m4a")
+        #expect(try tags(tone).contains("Someone"))
+        let sound = try await MediaTools.stripMetadata(tone, tools: tools) { _ in }
+        #expect(sound.lastPathComponent == "tone Clean.m4a")
+        #expect(!(try tags(sound).contains("Someone")))
+    }
 }

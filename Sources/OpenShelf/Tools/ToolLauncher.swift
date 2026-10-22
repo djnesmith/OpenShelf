@@ -43,6 +43,11 @@ enum ToolLauncher {
                 [try await MediaTools.reverse(sources[0], progress: progress)]
             }
 
+        case .mediaMetadata:
+            runner.run(title: "Removing metadata", jobs: urls.map { [$0] }, near: location) { sources, progress in
+                [try await MediaTools.stripMetadata(sources[0], progress: progress)]
+            }
+
         case .organizePages:
             EditorWindowController.present(size: PDFPagesEditor.windowSize, near: location) { PDFPagesEditor(url: first, actions: $0) }
         case .splitPDF:

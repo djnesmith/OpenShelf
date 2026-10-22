@@ -19,6 +19,21 @@ extension MediaTools {
         return destination
     }
 
+    // MARK: Strip metadata
+
+    /// A copy without its tags (title, location, dates, camera), chapters,
+    /// cover art or timed-metadata tracks. Picture and sound are copied as
+    /// they are, so nothing is re-encoded; subtitles are left out.
+    static func stripMetadata(_ url: URL, tools: ExternalTools = .current, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
+        let ffmpeg = try requireFFmpeg(tools)
+        let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
+        guard probed.video != nil || !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
+        let destination = OutputNaming.destination(for: url, suffix: MetadataSuffix.removed, pathExtension: url.pathExtension.lowercased())
+        try SaveError.checkWritable(destination)
+        try await FFmpegJob.export(ffmpeg, ["-i", url.path] + FFmpegEdits.stripMetadata, to: destination, duration: probed.duration, progress: progress)
+        return destination
+    }
+
     static func requireFFmpeg(_ tools: ExternalTools) throws -> URL {
         guard let ffmpeg = tools.ffmpeg else { throw MissingToolError(name: "ffmpeg") }
         return ffmpeg
@@ -56,6 +71,14 @@ enum ReverseLimit {
 }
 
 extension FFmpegEdits {
+    /// Every picture and sound stream copied, with no global, stream or
+    /// chapter metadata and no encoder tag.
+    static let stripMetadata: [String] = [
+        "-map", "0:V?", "-map", "0:a?", "-c", "copy",
+        "-map_metadata", "-1", "-map_chapters", "-1",
+        "-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact",
+    ]
+
     /// Picture and every sound track reversed; video re-encoded, sound as AAC.
     static func reverse(_ probed: ProbedMedia) -> [String] {
         var graph: [String] = []

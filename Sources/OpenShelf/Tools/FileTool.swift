@@ -30,6 +30,7 @@ enum FileTool: CaseIterable, Hashable {
     case rotateVideo
     case stillFrame
     case reverse
+    case mediaMetadata
 
     var title: String {
         switch self {
@@ -58,13 +59,14 @@ enum FileTool: CaseIterable, Hashable {
         case .rotateVideo: "Rotate"
         case .stillFrame: "Still"
         case .reverse: "Reverse"
+        case .mediaMetadata: "Metadata"
         }
     }
 
     var systemImage: String {
         switch self {
         case .compress, .compressPDF, .compressVideo: "arrow.down.right.and.arrow.up.left"
-        case .metadata, .pdfMetadata: "tag"
+        case .metadata, .pdfMetadata, .mediaMetadata: "tag"
         case .edit: "slider.horizontal.3"
         case .annotate: "pencil.tip.crop.circle"
         case .addBackground: "photo.on.rectangle"
@@ -148,10 +150,10 @@ enum FileTool: CaseIterable, Hashable {
         let hasFFmpeg = tools.ffmpeg != nil
         if kinds == [.video] {
             return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame]
-                + (hasFFmpeg ? [.reverse] : [])
+                + (hasFFmpeg ? [.reverse, .mediaMetadata] : [])
         }
         if kinds == [.audio] {
-            return merge + [.trim, .speed, .splitMedia] + (hasFFmpeg ? [.reverse] : [])
+            return merge + [.trim, .speed, .splitMedia] + (hasFFmpeg ? [.reverse, .mediaMetadata] : [])
         }
         return combine
     }
