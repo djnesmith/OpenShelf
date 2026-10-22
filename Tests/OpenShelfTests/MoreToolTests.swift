@@ -129,4 +129,35 @@ struct MoreToolTests {
         let image = try EditableImage.load(outputs[0]).cgImage
         #expect(image.width == 1190 && image.height == 1684)
     }
+
+    // MARK: Smart crop
+
+    @Test func cropsAroundTheSubject() {
+        let bounds = CGRect(x: 0, y: 0, width: 1000, height: 500)
+        let subject = CGRect(x: 700, y: 200, width: 100, height: 100)
+        // Free: the subject with a tenth around it.
+        #expect(SmartCrop.crop(around: subject, ratio: nil, in: bounds) == CGRect(x: 690, y: 190, width: 120, height: 120))
+        // 16:9 widens around it.
+        let wide = SmartCrop.crop(around: subject, ratio: 16 / 9, in: bounds)
+        #expect(wide.contains(subject) && abs(wide.width / wide.height - 16 / 9) < 0.02)
+        // Too big a ratio for the bounds: the largest that fits, kept over the subject.
+        let tall = SmartCrop.crop(around: CGRect(x: 900, y: 0, width: 100, height: 500), ratio: 9 / 16, in: bounds)
+        #expect(tall.height == 500 && tall.maxX == 1000)
+    }
+
+    @Test func visionFindsTheSubject() throws {
+        // A dark blob on the right of a plain light picture.
+        let size = CGSize(width: 800, height: 400)
+        let context = try #require(CGContext(
+            data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(CGColor(gray: 0.95, alpha: 1))
+        context.fill(CGRect(origin: .zero, size: size))
+        context.setFillColor(CGColor(red: 0.8, green: 0.1, blue: 0.1, alpha: 1))
+        context.fillEllipse(in: CGRect(x: 560, y: 120, width: 160, height: 160))
+        let picture = try #require(context.makeImage())
+        let subject = try #require(try SmartCrop.subject(in: picture))
+        #expect(subject.midX > 400)
+    }
 }

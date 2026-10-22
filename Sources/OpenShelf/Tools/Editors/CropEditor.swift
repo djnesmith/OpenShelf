@@ -1,7 +1,8 @@
 import SwiftUI
+import Vision
 
-/// Crops an image to a rectangle chosen with handles, an aspect preset, or exact
-/// pixel dimensions.
+/// Crops an image to a rectangle chosen with handles, an aspect preset, exact
+/// pixel dimensions, or around the subject Vision finds.
 struct CropEditor: View {
     static let windowSize = CGSize(width: 440, height: 600)
 
@@ -58,6 +59,9 @@ struct CropEditor: View {
                             .frame(width: 72)
                         Text("px").foregroundStyle(.secondary)
                         Spacer(minLength: 0)
+                        Button("Crop to Subject", systemImage: "viewfinder", action: cropToSubject)
+                            .labelStyle(.iconOnly)
+                            .help("Crop to Subject: around what the picture is of, in the chosen aspect ratio")
                     }
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12))
@@ -140,6 +144,14 @@ struct CropEditor: View {
     private func snap(to ratio: CropRatio) {
         guard let value = ratio.value else { return }
         crop = CropMath.largest(ratio: value, centeredAt: CGPoint(x: crop.midX, y: crop.midY), in: bounds)
+    }
+
+    private func cropToSubject() {
+        guard let subject = try? SmartCrop.subject(in: image.cgImage) else {
+            actions.failed(ConversionError.failed("No clear subject was found."))
+            return
+        }
+        crop = SmartCrop.crop(around: subject, ratio: ratio.value, in: bounds)
     }
 
     private func reset() {
@@ -387,5 +399,36 @@ enum CropMath {
         rect.origin.x = min(max(rect.minX, bounds.minX), bounds.maxX - width)
         rect.origin.y = min(max(rect.minY, bounds.minY), bounds.maxY - height)
         return snapped(rect, in: bounds)
+    }
+}
+
+/// Finds what an image is of with Vision's attention-based saliency, for a
+/// crop that keeps it.
+enum SmartCrop {
+    /// Where people's eyes go first, in pixels from the top left; nil when Vision sees nothing.
+    static func subject(in image: CGImage) throws -> CGRect? {
+        let request = VNGenerateAttentionBasedSaliencyImageRequest()
+        try VNImageRequestHandler(cgImage: image).perform([request])
+        guard let boxes = request.results?.first?.salientObjects?.map(\.boundingBox), let first = boxes.first else { return nil }
+        let box = boxes.dropFirst().reduce(first) { $0.union($1) }
+        let width = CGFloat(image.width), height = CGFloat(image.height)
+        return CGRect(x: box.minX * width, y: (1 - box.maxY) * height, width: box.width * width, height: box.height * height)
+    }
+
+    /// The crop around `subject` with a tenth of breathing room, in `ratio`
+    /// when one is chosen: as tight as possible, or as large as fits.
+    static func crop(around subject: CGRect, ratio: CGFloat?, in bounds: CGRect) -> CGRect {
+        let padded = subject.insetBy(dx: -subject.width * 0.1, dy: -subject.height * 0.1).intersection(bounds)
+        guard let ratio else { return CropMath.snapped(padded, in: bounds) }
+        var size = padded.size
+        if size.width / size.height < ratio { size.width = size.height * ratio } else { size.height = size.width / ratio }
+        let center = CGPoint(x: padded.midX, y: padded.midY)
+        guard size.width <= bounds.width, size.height <= bounds.height else {
+            return CropMath.largest(ratio: ratio, centeredAt: center, in: bounds)
+        }
+        var rect = CGRect(x: (center.x - size.width / 2).rounded(), y: (center.y - size.height / 2).rounded(), width: size.width.rounded(), height: size.height.rounded())
+        rect.origin.x = min(max(rect.minX, bounds.minX), bounds.maxX - rect.width)
+        rect.origin.y = min(max(rect.minY, bounds.minY), bounds.maxY - rect.height)
+        return CropMath.snapped(rect, in: bounds)
     }
 }
