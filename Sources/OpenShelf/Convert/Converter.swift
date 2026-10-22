@@ -39,10 +39,8 @@ enum Converter {
         switch format {
         case .zip:
             return [try await ArchiveConversion.zip([source])]
-        case .tar:
-            return [try await ArchiveConversion.tar([source], gzip: false)]
-        case .tgz:
-            return [try await ArchiveConversion.tar([source], gzip: true)]
+        case .tar, .tgz, .txz, .tzst, .sevenZip:
+            return [try await ArchiveConversion.archive([source], as: format)]
         case .extract:
             return [try await ArchiveConversion.extract(source)]
         default:

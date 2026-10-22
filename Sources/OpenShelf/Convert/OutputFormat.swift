@@ -16,6 +16,8 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     case srt, vtt
     // Archives
     case zip, tar, tgz, extract
+    case txz, tzst
+    case sevenZip = "7z"
     // Ebooks (calibre)
     case mobi, azw3, fb2
     // Markup (pandoc)
@@ -29,6 +31,8 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .extract: "UNZIP"
         case .tgz: "TAR.GZ"
+        case .txz: "TAR.XZ"
+        case .tzst: "TAR.ZST"
         case .tex: "LATEX"
         case .apng: "APNG"
         case .typ: "TYPST"
@@ -41,6 +45,8 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .extract: nil
         case .tgz: "tar.gz"
+        case .txz: "tar.xz"
+        case .tzst: "tar.zst"
         case .apng: "png"
         default: rawValue
         }
@@ -59,6 +65,8 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         case .md: return ["md", "markdown"].contains(ext)
         case .ogg: return ["ogg", "oga"].contains(ext)
         case .tgz: return ext == "tgz"
+        case .txz: return ext == "txz"
+        case .tzst: return ext == "tzst"
         case .apng: return ext == "apng"
         case .tex: return ["tex", "latex"].contains(ext)
         case .adoc: return ["adoc", "asciidoc"].contains(ext)
@@ -99,6 +107,9 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
 /// seven are shown over two pages, in `WheelOrdering`'s order. PAGES is never
 /// offered: it's Apple's private format.
 enum ConversionCatalog {
+    /// What folders and other files can be packed into.
+    static let archiveFormats: [OutputFormat] = [.zip, .tar, .tgz, .txz, .tzst, .sevenZip]
+
     /// The most wedges a wheel shows; the last one is always ZIP.
     static let maxWedges = 12
 
@@ -177,12 +188,12 @@ enum ConversionCatalog {
             formats = DataConversion.formats(forExtension: ext, tools: tools)
         case .ebook:
             // Without calibre a book is just a file, as before.
-            guard tools.ebookConvert != nil else { return [.zip, .tar, .tgz] }
+            guard tools.ebookConvert != nil else { return archiveFormats }
             formats = EbookConversion.formats
         case .archive:
             return [.extract]
         case .folder, .other:
-            return [.zip, .tar, .tgz]
+            return archiveFormats
         }
         formats.removeAll { $0.matches(extension: ext) }
         return Array(formats.prefix(maxWedges - 1)) + [.zip]

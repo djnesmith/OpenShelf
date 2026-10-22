@@ -37,7 +37,7 @@ struct MoreConversionTests {
     }
 
     @Test func booksConvertOnlyWithCalibre() {
-        #expect(ConversionCatalog.formats(for: url("a.epub"), tools: none) == [.zip, .tar, .tgz])
+        #expect(ConversionCatalog.formats(for: url("a.epub"), tools: none) == ConversionCatalog.archiveFormats)
         #expect(ConversionCatalog.formats(for: url("a.epub"), tools: calibre) == [.mobi, .azw3, .fb2, .pdf, .docx, .txt, .zip])
         #expect(ConversionCatalog.formats(for: url("a.mobi"), tools: calibre) == [.epub, .azw3, .fb2, .pdf, .docx, .txt, .zip])
         #expect(!ConversionCatalog.formats(for: url("a.pdf"), tools: none).contains(.mobi))
@@ -177,5 +177,38 @@ struct MoreConversionTests {
         // A property list through JSON to YAML.
         let fromPlist = try await Converter.convert(plist[0], to: .yaml, tools: yq) { _ in }
         #expect(try String(contentsOf: fromPlist[0], encoding: .utf8).contains("name: Ada"))
+    }
+
+    // MARK: More archives
+
+    @Test func bsdtarWritesEachFormat() async throws {
+        let folder = try workspace()
+        let photos = folder.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photos, withIntermediateDirectories: true)
+        try "hello".write(to: photos.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "".write(to: photos.appendingPathComponent(".DS_Store"), atomically: true, encoding: .utf8)
+        let expected: [(OutputFormat, String, String)] = [(.txz, "Photos.tar.xz", "XZ"), (.tzst, "Photos.tar.zst", "Zstandard"), (.sevenZip, "Photos.7z", "7-zip")]
+        for (format, name, magic) in expected {
+            let archive = try await Converter.convert(photos, to: format, tools: none) { _ in }
+            #expect(archive.map(\.lastPathComponent) == [name])
+            let check = Process()
+            check.executableURL = URL(fileURLWithPath: "/usr/bin/file")
+            check.arguments = ["-b", archive[0].path]
+            let pipe = Pipe()
+            check.standardOutput = pipe
+            try check.run()
+            check.waitUntilExit()
+            #expect(String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).contains(magic), "\(name)")
+
+            // And back: the folder comes out without the Finder file.
+            #expect(FileKind(url: archive[0]) == .archive)
+            try FileManager.default.removeItem(at: photos)
+            let extracted = try await Converter.convert(archive[0], to: .extract, tools: none) { _ in }
+            #expect(try FileManager.default.contentsOfDirectory(atPath: extracted[0].path) == ["a.txt"], "\(name)")
+            try FileManager.default.moveItem(at: extracted[0], to: photos)
+            try "".write(to: photos.appendingPathComponent(".DS_Store"), atomically: true, encoding: .utf8)
+        }
+        #expect(OutputFormat.sevenZip.title == "7Z" && OutputFormat.sevenZip.fileExtension == "7z")
+        #expect(FileKind(url: url("notes.txt.zst")) != .archive)
     }
 }

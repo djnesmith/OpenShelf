@@ -90,9 +90,30 @@ enum ArchiveConversion {
     /// A tar archive (gzip-compressed when `gzip` is true) of one file or folder
     /// ("<name>.tar.gz"), or of several ("Archive.tar.gz" next to the first).
     static func tar(_ sources: [URL], gzip: Bool) async throws -> URL {
+        try await archive(sources, as: gzip ? .tgz : .tar)
+    }
+
+    /// How bsdtar writes each archive format.
+    static func bsdtarFlags(for format: OutputFormat) -> [String]? {
+        switch format {
+        case .tar: ["-cf"]
+        case .tgz: ["-czf"]
+        case .txz: ["-cJf"]
+        case .tzst: ["--zstd", "-cf"]
+        case .sevenZip: ["--format", "7zip", "-cf"]
+        default: nil
+        }
+    }
+
+    /// One file or folder as "<name>.<ext>", or several as "Archive.<ext>"
+    /// next to the first, in any format bsdtar writes: tar, tar.gz, tar.xz,
+    /// tar.zst or 7z.
+    static func archive(_ sources: [URL], as format: OutputFormat) async throws -> URL {
         guard let first = sources.first else { throw ConversionError.failed("Nothing to archive.") }
+        guard let flags = bsdtarFlags(for: format), let pathExtension = format.fileExtension else {
+            throw ConversionError.unsupported("archives as \(format.title)")
+        }
         let directory = first.deletingLastPathComponent()
-        let pathExtension = gzip ? "tar.gz" : "tar"
         let baseName = sources.count == 1 ? first.lastPathComponent : "Archive"
         let destination = OutputNaming.uniqueURL(in: directory, baseName: baseName, pathExtension: pathExtension)
         // Paths relative to the first file's folder keep the structure; files from
@@ -104,7 +125,7 @@ enum ArchiveConversion {
         do {
             try await ProcessRunner.run(
                 tar,
-                [gzip ? "-czf" : "-cf", destination.path, "--no-mac-metadata"] + excludes + ["-C", directory.path] + names
+                flags + [destination.path, "--no-mac-metadata"] + excludes + ["-C", directory.path] + names
             )
         } catch {
             try? FileManager.default.removeItem(at: destination)

@@ -52,8 +52,8 @@ struct MissingToolCatalogTests {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("folder-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        #expect(ConversionCatalog.formats(for: [folder], tools: none) == [.zip, .tar, .tgz])
-        #expect(ConversionCatalog.formats(for: [folder], tools: all) == [.zip, .tar, .tgz])
+        #expect(ConversionCatalog.formats(for: [folder], tools: none) == ConversionCatalog.archiveFormats)
+        #expect(ConversionCatalog.formats(for: [folder], tools: all) == ConversionCatalog.archiveFormats)
     }
 
     @Test func gifNoLongerNeedsFFmpeg() {

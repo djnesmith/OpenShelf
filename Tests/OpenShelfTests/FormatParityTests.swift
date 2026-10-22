@@ -156,7 +156,7 @@ struct FormatCatalogTests {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("folder-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        #expect(ConversionCatalog.formats(for: [folder], tools: none) == [.zip, .tar, .tgz])
+        #expect(ConversionCatalog.formats(for: [folder], tools: none) == [.zip, .tar, .tgz, .txz, .tzst, .sevenZip])
         #expect(OutputFormat.tgz.fileExtension == "tar.gz")
         #expect(OutputFormat.tgz.title == "TAR.GZ")
     }

@@ -31,6 +31,11 @@ enum FileKind: Hashable {
             self = kind
             return
         }
+        // A zstd tarball; a lone .zst file is something bsdtar can't unpack.
+        if extensionName == "zst", url.deletingPathExtension().pathExtension.lowercased() == "tar" {
+            self = .archive
+            return
+        }
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentTypeKey])
         if values?.isDirectory == true {
             self = .folder
@@ -56,6 +61,7 @@ enum FileKind: Hashable {
     static let kindsByExtension: [String: FileKind] = {
         var kinds: [String: FileKind] = ["srt": .subtitle, "vtt": .subtitle, "rtfd": .document]
         for ext in ["epub", "mobi", "azw", "azw3", "fb2"] { kinds[ext] = .ebook }
+        for ext in ["tzst", "7z", "txz"] { kinds[ext] = .archive }
         for ext in ["json", "yaml", "yml", "xml", "plist"] { kinds[ext] = .data }
         for ext in PandocConversion.markupExtensions { kinds[ext] = .document }
         for ext in ["csv", "tsv", "xlsx", "xls", "ods"] { kinds[ext] = .spreadsheet }
