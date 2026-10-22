@@ -63,21 +63,22 @@ enum ProcessRunner {
             process.standardInput = try FileHandle(forReadingFrom: standardInputFile)
         }
 
+        // Each pipe is read to its end on a thread of its own, and the run
+        // waits for that after the tool exits: with readability handlers, the
+        // last data (afconvert's error, which decides the ffmpeg fallback, or a
+        // last output line) could still be on its way when the result was read.
+        let readers = DispatchGroup()
         let errorPipe = Pipe()
         process.standardError = errorPipe
-        errorPipe.fileHandleForReading.readabilityHandler = { handle in
-            box.appendError(handle.availableData)
-        }
+        readToEnd(errorPipe.fileHandleForReading, group: readers) { box.appendError($0) }
 
-        let outputPipe = Pipe()
         if let standardOutputFile {
             FileManager.default.createFile(atPath: standardOutputFile.path, contents: nil)
             process.standardOutput = try FileHandle(forWritingTo: standardOutputFile)
         } else {
+            let outputPipe = Pipe()
             process.standardOutput = outputPipe
-            outputPipe.fileHandleForReading.readabilityHandler = { handle in
-                box.appendOutput(handle.availableData, onLine: onOutputLine)
-            }
+            readToEnd(outputPipe.fileHandleForReading, group: readers) { box.appendOutput($0, onLine: onOutputLine) }
         }
 
         try await withTaskCancellationHandler {
@@ -94,13 +95,45 @@ enum ProcessRunner {
             box.terminate()
         }
 
-        errorPipe.fileHandleForReading.readabilityHandler = nil
-        outputPipe.fileHandleForReading.readabilityHandler = nil
+        // A process the tool started may keep a pipe open; don't wait on it for long.
+        await waitForReaders(readers, upTo: .seconds(2))
+        box.finishOutput(onLine: onOutputLine)
         try Task.checkCancellation()
         guard process.terminationStatus == 0 else {
             throw ProcessFailure(tool: executable.lastPathComponent, message: box.lastErrorLine, errorOutput: box.errorText)
         }
     }
+}
+
+/// Reads `handle` until its end on a thread of its own, passing each chunk on.
+private func readToEnd(_ handle: FileHandle, group: DispatchGroup, chunk: @escaping @Sendable (Data) -> Void) {
+    group.enter()
+    Thread.detachNewThread {
+        while true {
+            let data = handle.availableData
+            guard !data.isEmpty else { break }
+            chunk(data)
+        }
+        group.leave()
+    }
+}
+
+/// Waits until every reader has reached the end of its pipe, or `limit` passes.
+private func waitForReaders(_ group: DispatchGroup, upTo limit: Duration) async {
+    let once = OnceFlag()
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        group.notify(queue: .global()) { if once.claim() { continuation.resume() } }
+        Task {
+            try? await Task.sleep(for: limit)
+            if once.claim() { continuation.resume() }
+        }
+    }
+}
+
+private final class OnceFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+    func claim() -> Bool { lock.withLock { defer { claimed = true }; return !claimed } }
 }
 
 /// Owns a `Process` and its buffered output so they can be shared with the
@@ -133,6 +166,16 @@ private final class ProcessBox: @unchecked Sendable {
                 .map(String.init)?
                 .trimmingCharacters(in: .whitespaces) ?? ""
         }
+    }
+
+    /// Delivers a last line that had no line break after it.
+    func finishOutput(onLine: (@Sendable (String) -> Void)?) {
+        guard let onLine else { return }
+        let rest: String = lock.withLock {
+            defer { pendingOutput = "" }
+            return pendingOutput
+        }
+        if !rest.isEmpty { onLine(rest) }
     }
 
     func appendOutput(_ data: Data, onLine: (@Sendable (String) -> Void)?) {
