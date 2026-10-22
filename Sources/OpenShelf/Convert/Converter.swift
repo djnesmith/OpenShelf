@@ -69,7 +69,7 @@ enum Converter {
         case .audio, .video:
             return [try await MediaConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .subtitle:
-            return [try SubtitleConversion.convert(source, to: format)]
+            return [try await SubtitleConversion.convert(source, to: format, tools: tools)]
         case .ebook:
             return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .archive, .folder, .other:

@@ -1,7 +1,52 @@
 import Foundation
 
-/// SubRip (SRT) and WebVTT subtitles: convert between them or strip to plain text.
+/// SubRip (SRT) and WebVTT subtitles: convert between them or strip to plain
+/// text. With ffmpeg, also Advanced SubStation Alpha (ASS), SubStation Alpha
+/// (SSA) and TTML, in and out.
 enum SubtitleConversion {
+    /// What only ffmpeg reads or writes.
+    static let ffmpegFormats: [OutputFormat] = [.ass, .ssa, .ttml]
+    static let ffmpegExtensions: Set<String> = ["ass", "ssa"]
+
+    static func formats(for url: URL, tools: ExternalTools) -> [OutputFormat] {
+        let extras = tools.ffmpeg != nil ? ffmpegFormats : []
+        if ffmpegExtensions.contains(url.pathExtension.lowercased()) {
+            return tools.ffmpeg != nil ? [.srt, .vtt, .txt] + extras : []
+        }
+        return [.txt, .srt, .vtt] + extras
+    }
+
+    static func convert(_ source: URL, to format: OutputFormat, tools: ExternalTools) async throws -> URL {
+        let fromFFmpegFormat = ffmpegExtensions.contains(source.pathExtension.lowercased())
+        guard fromFFmpegFormat || ffmpegFormats.contains(format) else { return try convert(source, to: format) }
+        guard let ffmpeg = tools.ffmpeg else { throw MissingToolError(name: "ffmpeg") }
+        guard format != .txt else {
+            // Through SRT, which this file reads.
+            let srt = FileManager.default.temporaryDirectory.appendingPathComponent("openshelf-\(UUID().uuidString).srt")
+            defer { try? FileManager.default.removeItem(at: srt) }
+            try await FFmpegJob.run(ffmpeg, ffmpegArguments(source, to: .srt), output: srt, duration: 0) { _ in }
+            guard let text = try? String(contentsOf: srt, encoding: .utf8) else { throw ConversionError.unreadable(source) }
+            let destination = OutputNaming.destination(for: source, pathExtension: "txt")
+            try plainText(parse(text)).write(to: destination, atomically: true, encoding: .utf8)
+            return destination
+        }
+        guard let pathExtension = format.fileExtension else { throw ConversionError.unsupported("subtitles to \(format.title)") }
+        let destination = OutputNaming.destination(for: source, pathExtension: pathExtension)
+        try await FFmpegJob.export(ffmpeg, ffmpegArguments(source, to: format), to: destination, duration: 0) { _ in }
+        return destination
+    }
+
+    static func ffmpegArguments(_ source: URL, to format: OutputFormat) -> [String] {
+        let codec = switch format {
+        case .vtt: "webvtt"
+        case .srt: "srt"
+        default: format.rawValue
+        }
+        // TTML needs its muxer named; the rest follow the file's extension.
+        let muxer: [String] = format == .ttml ? ["-f", "ttml"] : []
+        return ["-i", source.path, "-map", "0:s:0", "-c:s", codec] + muxer
+    }
+
     struct Cue: Equatable {
         var start: String
         var end: String

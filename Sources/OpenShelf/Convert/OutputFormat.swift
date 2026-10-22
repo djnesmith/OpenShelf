@@ -13,7 +13,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     case mp4, mov, m4a, mp3, wav, aiff, flac, ogg, opus, wma
     case mkv, webm, avi, wmv
     // Subtitles
-    case srt, vtt
+    case srt, vtt, ass, ssa, ttml
     // Archives
     case zip, tar, tgz, extract
     case txz, tzst
@@ -183,7 +183,7 @@ enum ConversionCatalog {
                 formats.removeAll(where: \.isAudioOnly)
             }
         case .subtitle:
-            formats = [.txt, .srt, .vtt]
+            formats = SubtitleConversion.formats(for: url, tools: tools)
         case .data:
             formats = DataConversion.formats(forExtension: ext, tools: tools)
         case .ebook:

@@ -211,4 +211,38 @@ struct MoreConversionTests {
         #expect(OutputFormat.sevenZip.title == "7Z" && OutputFormat.sevenZip.fileExtension == "7z")
         #expect(FileKind(url: url("notes.txt.zst")) != .archive)
     }
+
+    // MARK: More subtitles
+
+    static let ffmpeg = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
+    static var hasFFmpeg: Bool { FileManager.default.isExecutableFile(atPath: ffmpeg.path) }
+
+    @Test func subtitleFormatsWithFFmpeg() {
+        let withFFmpeg = ExternalTools(ffmpeg: Self.ffmpeg)
+        #expect(FileKind(url: url("a.ass")) == .subtitle && FileKind(url: url("a.ssa")) == .subtitle)
+        #expect(ConversionCatalog.formats(for: url("a.srt"), tools: none) == [.txt, .vtt, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.srt"), tools: withFFmpeg) == [.txt, .vtt, .ass, .ssa, .ttml, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.ass"), tools: none) == [.zip])
+        #expect(ConversionCatalog.formats(for: url("a.ass"), tools: withFFmpeg) == [.srt, .vtt, .txt, .ssa, .ttml, .zip])
+        #expect(SubtitleConversion.ffmpegArguments(url("a.srt"), to: .ttml) == ["-i", "/tmp/a.srt", "-map", "0:s:0", "-c:s", "ttml", "-f", "ttml"])
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func convertsSubtitlesThroughFFmpeg() async throws {
+        let folder = try workspace()
+        let srt = folder.appendingPathComponent("Film.srt")
+        try "1\n00:00:01,000 --> 00:00:02,500\nHello there\n\n2\n00:00:03,000 --> 00:00:04,000\nGoodbye\n".write(to: srt, atomically: true, encoding: .utf8)
+        let withFFmpeg = ExternalTools(ffmpeg: Self.ffmpeg)
+        let ass = try await Converter.convert(srt, to: .ass, tools: withFFmpeg) { _ in }
+        let assText = try String(contentsOf: ass[0], encoding: .utf8)
+        #expect(ass.map(\.lastPathComponent) == ["Film.ass"] && assText.contains("[Events]") && assText.contains("Hello there"))
+        let ttml = try await Converter.convert(srt, to: .ttml, tools: withFFmpeg) { _ in }
+        #expect(try String(contentsOf: ttml[0], encoding: .utf8).contains("<tt"))
+        _ = try XMLDocument(contentsOf: ttml[0])
+
+        try FileManager.default.removeItem(at: srt)
+        let back = try await Converter.convert(ass[0], to: .srt, tools: withFFmpeg) { _ in }
+        #expect(try String(contentsOf: back[0], encoding: .utf8).contains("00:00:01,000 --> 00:00:02,500"))
+        let text = try await Converter.convert(ass[0], to: .txt, tools: withFFmpeg) { _ in }
+        #expect(try String(contentsOf: text[0], encoding: .utf8).contains("Goodbye"))
+    }
 }

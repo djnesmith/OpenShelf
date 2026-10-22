@@ -59,7 +59,7 @@ enum FileKind: Hashable {
     /// whose types conform to plain text (CSV), and media containers that
     /// macOS doesn't play itself.
     static let kindsByExtension: [String: FileKind] = {
-        var kinds: [String: FileKind] = ["srt": .subtitle, "vtt": .subtitle, "rtfd": .document]
+        var kinds: [String: FileKind] = ["srt": .subtitle, "vtt": .subtitle, "ass": .subtitle, "ssa": .subtitle, "rtfd": .document]
         for ext in ["epub", "mobi", "azw", "azw3", "fb2"] { kinds[ext] = .ebook }
         for ext in ["tzst", "7z", "txz"] { kinds[ext] = .archive }
         for ext in ["json", "yaml", "yml", "xml", "plist"] { kinds[ext] = .data }
