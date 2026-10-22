@@ -16,6 +16,8 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     case srt, vtt
     // Archives
     case zip, tar, tgz, extract
+    // Ebooks (calibre)
+    case mobi, azw3, fb2
 
     var title: String {
         switch self {
@@ -116,6 +118,7 @@ enum ConversionCatalog {
             if tools.canEncodeWebP { formats.insert(.webp, at: 2) }
         case .pdf:
             formats = [.docx, .jpg, .png, .txt, .md, .epub, .pptx, .xlsx]
+            if tools.ebookConvert != nil { formats += EbookConversion.calibreOnly.sortedLike(EbookConversion.formats) }
         case .document:
             formats = [.pdf, .docx, .txt, .md, .epub, .html, .rtf]
         case .spreadsheet:
@@ -145,6 +148,10 @@ enum ConversionCatalog {
             }
         case .subtitle:
             formats = [.txt, .srt, .vtt]
+        case .ebook:
+            // Without calibre a book is just a file, as before.
+            guard tools.ebookConvert != nil else { return [.zip, .tar, .tgz] }
+            formats = EbookConversion.formats
         case .archive:
             return [.extract]
         case .folder, .other:
@@ -164,5 +171,12 @@ enum ConversionCatalog {
             // XLS and ODS can only be opened by LibreOffice.
             return hasOffice ? [.xlsx, .csv, .pdf, .ods] : []
         }
+    }
+}
+
+extension Set<OutputFormat> {
+    /// These formats in `order`'s order.
+    func sortedLike(_ order: [OutputFormat]) -> [OutputFormat] {
+        order.filter(contains)
     }
 }

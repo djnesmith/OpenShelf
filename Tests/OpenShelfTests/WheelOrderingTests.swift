@@ -8,7 +8,8 @@ struct WheelOrderingTests {
         ffmpeg: URL(fileURLWithPath: "/usr/bin/true"),
         cwebp: URL(fileURLWithPath: "/usr/bin/true"),
         ffprobe: nil,
-        libreOffice: URL(fileURLWithPath: "/usr/bin/true")
+        libreOffice: URL(fileURLWithPath: "/usr/bin/true"),
+        ebookConvert: URL(fileURLWithPath: "/usr/bin/true")
     )
 
     private func urls(_ names: String...) -> [URL] {
@@ -108,7 +109,7 @@ struct WheelOrderingTests {
     @Test func everyCatalogFormatHasAPriority() {
         let sources: [(String, FileKind)] = [
             ("a.png", .image), ("a.gif", .image), ("a.pdf", .pdf),
-            ("a.mov", .video), ("a.mkv", .video), ("a.mp3", .audio), ("a.ogg", .audio),
+            ("a.mov", .video), ("a.mkv", .video), ("a.mp3", .audio), ("a.ogg", .audio), ("a.epub", .ebook),
         ]
         for (name, kind) in sources {
             let priority = Set(WheelOrdering.formatsBySource[kind] ?? [])

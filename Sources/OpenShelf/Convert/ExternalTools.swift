@@ -1,11 +1,13 @@
 import Foundation
 
-/// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, and LibreOffice.
+/// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
+/// and calibre's ebook-convert.
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
     var cwebp: URL?
     var ffprobe: URL? = nil
     var libreOffice: URL? = nil
+    var ebookConvert: URL? = nil
 
     /// Never runs ffmpeg: see `WebPEncoder.isOffered`.
     var canEncodeWebP: Bool {
@@ -65,6 +67,9 @@ struct ExternalTools: Equatable, Sendable {
             ffprobe: find("ffprobe", ignoredAs: "ffmpeg"),
             libreOffice: apps
                 .map { $0.appendingPathComponent("Contents/MacOS/soffice") }
+                .first { FileManager.default.isExecutableFile(atPath: $0.path) },
+            ebookConvert: (locations.calibreApps.map { $0.appendingPathComponent("Contents/MacOS/ebook-convert") }
+                + locations.commandDirectories.map { $0.appendingPathComponent("ebook-convert") })
                 .first { FileManager.default.isExecutableFile(atPath: $0.path) }
         )
     }
@@ -87,6 +92,7 @@ struct ToolLocations: Sendable {
     /// Where OpenShelf installs tools itself (see `ToolInstallation`).
     var ownCommandDirectories: [URL] = []
     var ownLibreOfficeApps: [URL] = []
+    var calibreApps: [URL] = []
 
     /// Homebrew, MacPorts and the PATH come first: tools people installed
     /// themselves and keep up to date. OpenShelf's own copies (`ManagedTools`)
@@ -103,7 +109,11 @@ struct ToolLocations: Sendable {
                 + [ManagedTools.directory],
             libreOfficeApps: [URL(fileURLWithPath: "/Applications/LibreOffice.app"), ownApp],
             ownCommandDirectories: [ManagedTools.directory],
-            ownLibreOfficeApps: [ownApp]
+            ownLibreOfficeApps: [ownApp],
+            calibreApps: [
+                URL(fileURLWithPath: "/Applications/calibre.app"),
+                FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/calibre.app"),
+            ]
         )
     }
 }

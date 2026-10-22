@@ -52,6 +52,8 @@ enum Converter {
         switch FileKind(url: source) {
         case .image:
             return [try await ImageConversion.convert(source, to: format, tools: tools)]
+        case .pdf where EbookConversion.calibreOnly.contains(format):
+            return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .pdf:
             return try PDFConversion.convert(source, to: format)
         case .document:
@@ -64,6 +66,8 @@ enum Converter {
             return [try await MediaConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .subtitle:
             return [try SubtitleConversion.convert(source, to: format)]
+        case .ebook:
+            return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .archive, .folder, .other:
             throw ConversionError.unsupported("\(source.pathExtension.uppercased()) to \(format.title)")
         }
