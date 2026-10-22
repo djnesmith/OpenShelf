@@ -58,6 +58,8 @@ enum Converter {
             return [try await PandocConversion.convert(source, to: format, tools: tools)]
         case .document:
             return [try await DocumentConversion.convert(source, to: format)]
+        case .data where EdnConversion.handles(source, to: format):
+            return [try await EdnConversion.convert(source, to: format, tools: tools)]
         case .data where DatabaseConversion.handles(source, to: format):
             return try await DatabaseConversion.convert(source, to: format, tools: tools)
         case .spreadsheet where DatabaseConversion.handles(source, to: format):

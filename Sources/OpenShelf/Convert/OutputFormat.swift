@@ -23,7 +23,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     // Markup (pandoc)
     case tex, adoc, rst, org, typ
     // Data files
-    case json, yaml, xml, plist, parquet, sqlite
+    case json, yaml, xml, plist, parquet, sqlite, edn
     // Animated PNG, written as .png
     case apng
     case jxl
@@ -189,6 +189,7 @@ enum ConversionCatalog {
             formats = SubtitleConversion.formats(for: url, tools: tools)
         case .data:
             formats = DataConversion.formats(forExtension: ext, tools: tools) + DatabaseConversion.formats(forExtension: ext, tools: tools)
+                + EdnConversion.formats(forExtension: ext, tools: tools)
         case .ebook:
             // Without calibre a book is just a file, as before.
             guard tools.ebookConvert != nil else { return archiveFormats }

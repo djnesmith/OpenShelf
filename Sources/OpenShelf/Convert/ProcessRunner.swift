@@ -3,6 +3,9 @@ import Foundation
 struct ProcessFailure: LocalizedError {
     let tool: String
     let message: String
+    /// Everything the tool wrote to standard error (the first 4 KB), for
+    /// callers that recognise particular failures.
+    var errorOutput: String = ""
 
     var errorDescription: String? {
         message.isEmpty ? "\(tool) failed." : "\(tool) failed: \(FailureMessage.sanitized(message))"
@@ -95,7 +98,7 @@ enum ProcessRunner {
         outputPipe.fileHandleForReading.readabilityHandler = nil
         try Task.checkCancellation()
         guard process.terminationStatus == 0 else {
-            throw ProcessFailure(tool: executable.lastPathComponent, message: box.lastErrorLine)
+            throw ProcessFailure(tool: executable.lastPathComponent, message: box.lastErrorLine, errorOutput: box.errorText)
         }
     }
 }
@@ -116,6 +119,10 @@ private final class ProcessBox: @unchecked Sendable {
 
     func appendError(_ data: Data) {
         lock.withLock { errorData.append(data) }
+    }
+
+    var errorText: String {
+        lock.withLock { String(decoding: errorData.prefix(4096), as: UTF8.self) }
     }
 
     var lastErrorLine: String {

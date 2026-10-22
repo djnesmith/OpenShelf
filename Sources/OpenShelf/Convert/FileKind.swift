@@ -67,7 +67,7 @@ enum FileKind: Hashable {
         var kinds: [String: FileKind] = ["srt": .subtitle, "vtt": .subtitle, "ass": .subtitle, "ssa": .subtitle, "rtfd": .document]
         for ext in ["epub", "mobi", "azw", "azw3", "fb2"] { kinds[ext] = .ebook }
         for ext in ["tzst", "7z", "txz"] { kinds[ext] = .archive }
-        for ext in ["json", "yaml", "yml", "xml", "plist", "parquet", "sqlite", "sqlite3"] { kinds[ext] = .data }
+        for ext in ["json", "yaml", "yml", "xml", "plist", "parquet", "sqlite", "sqlite3", "edn"] { kinds[ext] = .data }
         for ext in PandocConversion.markupExtensions { kinds[ext] = .document }
         for ext in ["csv", "tsv", "xlsx", "xls", "ods"] { kinds[ext] = .spreadsheet }
         for ext in ["ppt", "pptx", "odp", "key"] { kinds[ext] = .presentation }

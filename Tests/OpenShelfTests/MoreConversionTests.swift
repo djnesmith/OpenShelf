@@ -371,4 +371,61 @@ struct MoreConversionTests {
         #expect(saved.count == 2)
         #expect(try await DatabaseConversion.tables(in: database).contains("keep"))
     }
+
+    // MARK: EDN
+
+    static let jet = URL(fileURLWithPath: "/opt/homebrew/bin/jet")
+    static var hasJet: Bool { FileManager.default.isExecutableFile(atPath: jet.path) }
+
+    @Test func ednFormatsOnlyWithJet() {
+        #expect(FileKind(url: url("a.edn")) == .data)
+        #expect(ConversionCatalog.formats(for: url("a.edn"), tools: none) == [.zip])
+        #expect(ConversionCatalog.formats(for: url("a.edn"), tools: ExternalTools(yq: Self.yq, jet: Self.jet)) == [.json, .yaml, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.json"), tools: ExternalTools(jet: Self.jet)).contains(.edn))
+        #expect(EdnConversion.arguments(from: "json", to: "edn") == ["--from", "json", "--to", "edn", "--keywordize", EdnConversion.keywordizeValidKeys])
+        #expect(EdnConversion.arguments(from: "edn", to: "json") == ["--from", "edn", "--to", "json"])
+    }
+
+    @Test(.enabled(if: hasJet && hasYQ)) func ednRoundTrips() async throws {
+        let folder = try workspace()
+        let tools = ExternalTools(yq: Self.yq, jet: Self.jet)
+        let edn = folder.appendingPathComponent("Config.edn")
+        try #"{:name "OpenShelf", :sizes [1 2.5 -3], :nested {:on true, :off nil}, :tags #{:a}, :sym hello}"#.write(to: edn, atomically: true, encoding: .utf8)
+
+        let json = try await Converter.convert(edn, to: .json, tools: tools) { _ in }
+        let object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: json[0]), options: [.fragmentsAllowed]) as? [String: Any])
+        #expect(object["name"] as? String == "OpenShelf")
+        #expect(object["sizes"] as? [Double] == [1, 2.5, -3])
+        #expect((object["nested"] as? [String: Any])?["off"] is NSNull)
+        #expect(object["tags"] as? [String] == ["a"])
+        #expect(object["sym"] as? String == "hello")
+
+        // And back: keys become keywords again, nil stays nil.
+        try FileManager.default.removeItem(at: edn)
+        let back = try await Converter.convert(json[0], to: .edn, tools: tools) { _ in }
+        let text = try String(contentsOf: back[0], encoding: .utf8)
+        #expect(text.contains(#":name "OpenShelf""#) && text.contains(":off nil") && text.contains("[1 2.5 -3]"))
+
+        // A key that isn't a valid keyword stays a string, so it reads back the same.
+        let odd = folder.appendingPathComponent("Odd.json")
+        try #"{"weird key": 1, "ok": 2}"#.write(to: odd, atomically: true, encoding: .utf8)
+        let oddEdn = try String(contentsOf: try await Converter.convert(odd, to: .edn, tools: tools) { _ in }[0], encoding: .utf8)
+        #expect(oddEdn.contains(#""weird key" 1"#) && oddEdn.contains(":ok 2"))
+
+        let yaml = try await Converter.convert(back[0], to: .yaml, tools: tools) { _ in }
+        #expect(try String(contentsOf: yaml[0], encoding: .utf8).contains("name: OpenShelf"))
+    }
+
+    @Test(.enabled(if: hasJet)) func refusesTaggedValuesJSONCantHold() async throws {
+        let folder = try workspace()
+        let edn = folder.appendingPathComponent("Tagged.edn")
+        try #"{:x #my/tag [1 2]}"#.write(to: edn, atomically: true, encoding: .utf8)
+        do {
+            _ = try await Converter.convert(edn, to: .json, tools: ExternalTools(jet: Self.jet)) { _ in }
+            Issue.record("A tagged literal was turned into JSON")
+        } catch {
+            #expect(error.localizedDescription.contains("tagged value"), "\(error.localizedDescription)")
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["Tagged.edn"])
+    }
 }

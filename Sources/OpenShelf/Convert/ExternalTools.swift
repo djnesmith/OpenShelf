@@ -1,7 +1,7 @@
 import Foundation
 
 /// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
-/// calibre's ebook-convert, pandoc, yq, cjxl (JPEG XL) and DuckDB.
+/// calibre's ebook-convert, pandoc, yq, cjxl (JPEG XL), DuckDB and jet (EDN).
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
     var cwebp: URL?
@@ -12,6 +12,7 @@ struct ExternalTools: Equatable, Sendable {
     var yq: URL? = nil
     var cjxl: URL? = nil
     var duckdb: URL? = nil
+    var jet: URL? = nil
 
     /// Never runs ffmpeg: see `WebPEncoder.isOffered`.
     var canEncodeWebP: Bool {
@@ -78,7 +79,8 @@ struct ExternalTools: Equatable, Sendable {
             pandoc: find("pandoc", ignoredAs: "pandoc"),
             yq: find("yq", ignoredAs: "yq"),
             cjxl: find("cjxl", ignoredAs: "cjxl"),
-            duckdb: find("duckdb", ignoredAs: "duckdb")
+            duckdb: find("duckdb", ignoredAs: "duckdb"),
+            jet: find("jet", ignoredAs: "jet")
         )
     }
 
