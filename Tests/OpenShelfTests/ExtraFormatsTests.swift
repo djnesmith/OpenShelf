@@ -24,7 +24,7 @@ struct MissingToolCatalogTests {
 
     @Test func videoGetsGIFWithoutFFmpeg() {
         #expect(formats("a.mp4", none) == [.mov, .m4a, .gif, .zip])
-        #expect(formats("a.mp4", all) == [.mov, .m4a, .gif, .mp3, .mkv, .webm, .avi, .wmv, .zip])
+        #expect(formats("a.mp4", all) == [.mov, .m4a, .gif, .mp3, .mkv, .webm, .avi, .wmv, .apng, .zip])
         #expect(formats("a.mov", none).contains(.gif))
     }
 
@@ -36,7 +36,7 @@ struct MissingToolCatalogTests {
 
     @Test func containersMacOSCantOpen() {
         #expect(formats("a.mkv", none) == [.zip])
-        #expect(formats("a.mkv", all) == [.mp4, .mov, .m4a, .gif, .mp3, .webm, .avi, .wmv, .zip])
+        #expect(formats("a.mkv", all) == [.mp4, .mov, .m4a, .gif, .mp3, .webm, .avi, .wmv, .apng, .zip])
     }
 
     @Test func slidesAndSpreadsheets() {

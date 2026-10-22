@@ -387,4 +387,15 @@ struct MoreMediaToolTests {
         #expect(abs(probed.duration - 3) < 0.1)
         #expect(probed.audio.first?.codec == "aac")
     }
+
+    // MARK: Animated PNG from video
+
+    @Test(.enabled(if: hasFFmpeg)) func videoBecomesAnAnimatedPNG() async throws {
+        let folder = try workspace()
+        let output = try await MediaConversion.convert(folder.appendingPathComponent("clip.mp4"), to: .apng, tools: tools) { _ in }
+        #expect(output.lastPathComponent == "clip.png")
+        let source = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+        // 3 seconds at 12 fps.
+        #expect(CGImageSourceGetCount(source) >= 30)
+    }
 }

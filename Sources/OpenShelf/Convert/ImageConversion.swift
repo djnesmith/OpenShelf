@@ -17,6 +17,8 @@ enum ImageConversion {
             try DocxWriter.write(images: [image.cgImage], to: destination)
         case .webp:
             try await writeWebP(image, to: destination, tools: tools)
+        case .apng:
+            try AnimatedPNG.write(gif: source, to: destination)
         default:
             guard let type = format.imageIOType else {
                 throw ConversionError.unsupported("image to \(format.title)")

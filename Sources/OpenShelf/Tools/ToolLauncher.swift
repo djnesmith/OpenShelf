@@ -74,6 +74,11 @@ enum ToolLauncher {
         case .pdfImages:
             EditorWindowController.present(size: PDFImagesEditor.windowSize, near: location) { PDFImagesEditor(url: first, actions: $0) }
 
+        case .icon:
+            runner.run(title: "Making icons", jobs: urls.map { [$0] }, near: location) { sources, _ in
+                try await IconMaker.make(sources[0])
+            }
+
         case .gifLoop:
             EditorWindowController.present(size: GIFLoopEditor.windowSize, near: location) { GIFLoopEditor(urls: urls, actions: $0) }
 

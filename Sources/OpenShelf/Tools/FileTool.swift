@@ -42,6 +42,7 @@ enum FileTool: CaseIterable, Hashable {
     case pdfImages
     case frameRate
     case gifLoop
+    case icon
 
     var title: String {
         switch self {
@@ -82,6 +83,7 @@ enum FileTool: CaseIterable, Hashable {
         case .pdfImages: "Images"
         case .frameRate: "Frame Rate"
         case .gifLoop: "Loop"
+        case .icon: "Icon"
         }
     }
 
@@ -116,6 +118,7 @@ enum FileTool: CaseIterable, Hashable {
         case .pdfImages: "photo.on.rectangle.angled"
         case .frameRate: "film.stack"
         case .gifLoop: "repeat"
+        case .icon: "app.dashed"
         case .transcribe: "captions.bubble"
         case .fitSize: "externaldrive.badge.checkmark"
         }
@@ -168,7 +171,7 @@ enum FileTool: CaseIterable, Hashable {
 
         if kinds == [.image] {
             let gifs: [FileTool] = urls.allSatisfy { $0.pathExtension.lowercased() == "gif" } ? [.gifLoop] : []
-            return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr] + gifs + combine
+            return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr, .icon] + gifs + combine
         }
         if kinds == [.pdf] {
             let singlePage: [FileTool] = urls.count == 1 ? [.organizePages, .splitPDF, .pdfImages] : []

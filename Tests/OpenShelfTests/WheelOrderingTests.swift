@@ -36,13 +36,13 @@ struct WheelOrderingTests {
     @Test func imageToolsLeadWithTheEverydayOnes() {
         #expect(tools(urls("a.jpg")) == [
             .compress, .crop, .resize, .annotate, .removeBackground, .edit,
-            .metadata, .redact, .addBackground, .readQR, .ocr,
+            .metadata, .redact, .addBackground, .readQR, .ocr, .icon,
         ])
     }
 
     @Test func severalImagesAddCombineAtTheEnd() {
         let tools = tools(urls("a.jpg", "b.png"))
-        #expect(tools.count == 12)
+        #expect(tools.count == 13)
         #expect(firstPage(tools) == [.compress, .crop, .resize, .annotate, .removeBackground, .edit])
         #expect(tools.last == .combinePDF)
     }
@@ -68,7 +68,7 @@ struct WheelOrderingTests {
     }
 
     @Test func imageFormatsWithoutAWebPEncoder() {
-        #expect(formats(urls("a.gif"), noTools) == [.png, .jpg, .heic, .pdf, .avif, .tiff, .bmp, .docx, .zip])
+        #expect(formats(urls("a.gif"), noTools) == [.png, .jpg, .heic, .pdf, .avif, .tiff, .bmp, .docx, .apng, .zip])
     }
 
     @Test func pdfFormats() {
@@ -76,8 +76,8 @@ struct WheelOrderingTests {
     }
 
     @Test func videoFormatsWithFFmpeg() {
-        #expect(formats(urls("a.mov"), allTools) == [.mp4, .gif, .mp3, .m4a, .webm, .mkv, .avi, .wmv, .zip])
-        #expect(formats(urls("a.mkv"), allTools) == [.mp4, .mov, .gif, .mp3, .m4a, .webm, .avi, .wmv, .zip])
+        #expect(formats(urls("a.mov"), allTools) == [.mp4, .gif, .mp3, .m4a, .webm, .mkv, .avi, .wmv, .apng, .zip])
+        #expect(formats(urls("a.mkv"), allTools) == [.mp4, .mov, .gif, .mp3, .m4a, .webm, .avi, .wmv, .apng, .zip])
     }
 
     @Test func videoFormatsWithoutFFmpegFitOnOnePage() {

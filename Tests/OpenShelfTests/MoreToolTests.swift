@@ -198,4 +198,50 @@ struct MoreToolTests {
         #expect(GIFLoop.loopCount(of: once) == 1)
         #expect(try Data(contentsOf: once).range(of: Data("NETSCAPE2.0".utf8)) == nil)
     }
+
+    // MARK: Icons and animated PNG
+
+    @Test func makesIconsWithEverySize() async throws {
+        let folder = try workspace()
+        let png = folder.appendingPathComponent("Logo.png")
+        try EditableImage.write(try Self.picture(of: "OS", size: CGSize(width: 600, height: 400)), to: png, type: .png)
+        let outputs = try await IconMaker.make(png)
+        #expect(outputs.map(\.lastPathComponent) == ["Logo.icns", "Logo.ico"])
+        // iconutil lists the icns's members; 64 and 1024 are the @2x of 32 and 512.
+        let listing = Process()
+        listing.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+        let set = folder.appendingPathComponent("Check.iconset")
+        listing.arguments = ["-c", "iconset", outputs[0].path, "-o", set.path]
+        try listing.run()
+        listing.waitUntilExit()
+        let names = try FileManager.default.contentsOfDirectory(atPath: set.path)
+        #expect(Set(names) == Set(IconMaker.iconsetEntries.map { "icon_\($0.points)x\($0.points)\($0.scale == 2 ? "@2x" : "").png" }))
+        let ico = try #require(CGImageSourceCreateWithURL(outputs[1] as CFURL, nil))
+        let widths = (0..<CGImageSourceGetCount(ico)).compactMap { CGImageSourceCreateImageAtIndex(ico, $0, nil)?.width }
+        #expect(Set(widths) == Set(IconMaker.icoSizes), "\(widths)")
+        // Wide pictures are fitted, not stretched: the corners stay clear.
+        let square = try #require(IconMaker.square(try Self.picture(of: "", size: CGSize(width: 400, height: 200)), side: 64))
+        #expect(square.width == 64 && square.height == 64)
+    }
+
+    @Test func turnsAGIFIntoAnAnimatedPNG() async throws {
+        let folder = try workspace()
+        let gif = folder.appendingPathComponent("Anim.gif")
+        let destination = try #require(CGImageDestinationCreateWithURL(gif as CFURL, "com.compuserve.gif" as CFString, 2, nil))
+        for text in ["A", "B"] {
+            CGImageDestinationAddImage(destination, try Self.picture(of: text, size: CGSize(width: 120, height: 120)),
+                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.5]] as CFDictionary)
+        }
+        #expect(CGImageDestinationFinalize(destination))
+        #expect(ConversionCatalog.formats(for: gif, tools: ExternalTools()).contains(.apng))
+        #expect(!ConversionCatalog.formats(for: folder.appendingPathComponent("a.jpg"), tools: ExternalTools()).contains(.apng))
+
+        let output = try await Converter.convert(gif, to: .apng, tools: ExternalTools()) { _ in }
+        #expect(output.map(\.lastPathComponent) == ["Anim.png"])
+        let source = try #require(CGImageSourceCreateWithURL(output[0] as CFURL, nil))
+        #expect(CGImageSourceGetCount(source) == 2)
+        let frame = CGImageSourceCopyPropertiesAtIndex(source, 1, nil) as? [CFString: Any]
+        let png = frame?[kCGImagePropertyPNGDictionary] as? [CFString: Any]
+        #expect(png?[kCGImagePropertyAPNGDelayTime] as? Double == 0.5)
+    }
 }

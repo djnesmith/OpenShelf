@@ -11,7 +11,7 @@ struct FileToolTests {
     }
 
     @Test func imagesGetTheVideoToolOrderPlusReadQR() {
-        #expect(FileTool.available(for: urls("a.jpg"), tools: ExternalTools()) == [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr])
+        #expect(FileTool.available(for: urls("a.jpg"), tools: ExternalTools()) == [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr, .icon])
     }
 
     @Test func severalImagesCanBeCombined() {

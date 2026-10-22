@@ -203,6 +203,9 @@ enum FFmpegArguments {
         case .gif:
             // Two-pass palette for clean colours; capped at 720 px wide and 12 fps to keep files small.
             return ["-vf", "fps=12,scale='min(720,iw)':-2:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse", "-loop", "0"]
+        case .apng:
+            // Like GIF, but in full colour; written as .png, so the muxer is named.
+            return ["-an", "-vf", "fps=12,scale='min(720,iw)':-2:flags=lanczos", "-plays", "0", "-f", "apng"]
         default:
             return []
         }

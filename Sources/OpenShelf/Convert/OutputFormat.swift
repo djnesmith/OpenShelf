@@ -22,12 +22,15 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     case tex, adoc, rst, org, typ
     // Data files
     case json, yaml, xml, plist
+    // Animated PNG, written as .png
+    case apng
 
     var title: String {
         switch self {
         case .extract: "UNZIP"
         case .tgz: "TAR.GZ"
         case .tex: "LATEX"
+        case .apng: "APNG"
         case .typ: "TYPST"
         default: rawValue.uppercased()
         }
@@ -38,6 +41,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .extract: nil
         case .tgz: "tar.gz"
+        case .apng: "png"
         default: rawValue
         }
     }
@@ -55,6 +59,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         case .md: return ["md", "markdown"].contains(ext)
         case .ogg: return ["ogg", "oga"].contains(ext)
         case .tgz: return ext == "tgz"
+        case .apng: return ext == "apng"
         case .tex: return ["tex", "latex"].contains(ext)
         case .adoc: return ["adoc", "asciidoc"].contains(ext)
         case .yaml: return ["yaml", "yml"].contains(ext)
@@ -79,7 +84,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     /// Formats only ffmpeg can write from audio or video. (GIF has a native
     /// fallback, `VideoGIF`.)
     var needsFFmpeg: Bool {
-        [.mp3, .ogg, .opus, .wma, .mkv, .webm, .avi, .wmv].contains(self)
+        [.mp3, .ogg, .opus, .wma, .mkv, .webm, .avi, .wmv, .apng].contains(self)
     }
 
     /// Audio-only outputs, which need a sound track in the source.
@@ -125,6 +130,7 @@ enum ConversionCatalog {
         case .image:
             formats = [.png, .jpg, .heic, .tiff, .avif, .bmp, .pdf, .docx]
             if tools.canEncodeWebP { formats.insert(.webp, at: 2) }
+            if ext == "gif" { formats.append(.apng) }
         case .pdf:
             formats = [.docx, .jpg, .png, .txt, .md, .epub, .pptx, .xlsx]
             if tools.ebookConvert != nil { formats += EbookConversion.calibreOnly.sortedLike(EbookConversion.formats) }
@@ -157,9 +163,9 @@ enum ConversionCatalog {
             if MediaFormats.isAVFoundationReadable(url) {
                 // GIF is made natively when ffmpeg isn't installed.
                 formats = [.mp4, .mov, .m4a, .gif]
-                if hasFFmpeg { formats += [.mp3, .mkv, .webm, .avi, .wmv] }
+                if hasFFmpeg { formats += [.mp3, .mkv, .webm, .avi, .wmv, .apng] }
             } else {
-                formats = hasFFmpeg ? [.mp4, .mov, .m4a, .gif, .mp3, .mkv, .webm, .avi, .wmv] : []
+                formats = hasFFmpeg ? [.mp4, .mov, .m4a, .gif, .mp3, .mkv, .webm, .avi, .wmv, .apng] : []
             }
             // Silent videos have nothing to extract as audio.
             if MediaProbe.hasAudioTrack(url.resolvingSymlinksInPath(), ffprobe: tools.ffprobe) == false {

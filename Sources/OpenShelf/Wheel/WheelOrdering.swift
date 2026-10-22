@@ -8,7 +8,7 @@ enum WheelOrdering {
     /// Image tools; Combine only appears for several files.
     static let imageTools: [FileTool] = [
         .compress, .crop, .resize, .annotate, .removeBackground, .edit,
-        .metadata, .redact, .addBackground, .readQR, .ocr, .gifLoop, .combinePDF,
+        .metadata, .redact, .addBackground, .readQR, .ocr, .icon, .gifLoop, .combinePDF,
     ]
 
     /// Video tools; Merge only appears for several files.
@@ -19,11 +19,11 @@ enum WheelOrdering {
 
     /// Conversions by the kind of file being converted. ZIP stays last.
     static let formatsBySource: [FileKind: [OutputFormat]] = [
-        .image: [.png, .jpg, .heic, .webp, .pdf, .avif, .tiff, .bmp, .docx, .zip],
+        .image: [.png, .jpg, .heic, .webp, .pdf, .avif, .tiff, .bmp, .docx, .apng, .zip],
         .pdf: [.docx, .jpg, .png, .txt, .pptx, .xlsx, .md, .epub, .mobi, .azw3, .fb2, .zip],
         .ebook: EbookConversion.formats + [.zip],
         .spreadsheet: [.xlsx, .csv, .tsv, .pdf, .ods, .json, .yaml, .xml, .zip],
-        .video: [.mp4, .mov, .gif, .mp3, .m4a, .webm, .mkv, .avi, .wmv, .zip],
+        .video: [.mp4, .mov, .gif, .mp3, .m4a, .webm, .mkv, .avi, .wmv, .apng, .zip],
         .audio: [.mp3, .m4a, .wav, .flac, .aiff, .ogg, .opus, .wma, .zip],
     ]
 
