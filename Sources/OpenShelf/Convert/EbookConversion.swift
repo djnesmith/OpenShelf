@@ -31,10 +31,8 @@ enum EbookConversion {
     /// PDF needs no GPU, so Chromium is told not to use one, as calibre itself
     /// does in some setups. Any flags already set are kept.
     static func environment(_ base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
-        var environment = base
         let flags = [base["QTWEBENGINE_CHROMIUM_FLAGS"], "--disable-gpu"].compactMap { $0 }.filter { !$0.isEmpty }
-        environment["QTWEBENGINE_CHROMIUM_FLAGS"] = flags.joined(separator: " ")
-        return environment
+        return ChildEnvironment.minimal(from: base, extra: ["QTWEBENGINE_CHROMIUM_FLAGS": flags.joined(separator: " ")])
     }
 
     /// ebook-convert prints "34% Running transforms on e-book" as it goes.

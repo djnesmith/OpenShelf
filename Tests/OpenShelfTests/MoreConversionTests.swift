@@ -53,7 +53,9 @@ struct MoreConversionTests {
     }
 
     @Test func calibreRunsWithoutTheGPU() {
-        #expect(EbookConversion.environment(["HOME": "/Users/x"]) == ["HOME": "/Users/x", "QTWEBENGINE_CHROMIUM_FLAGS": "--disable-gpu"])
+        #expect(EbookConversion.environment(["HOME": "/Users/x", "GITHUB_TOKEN": "x"]) == [
+            "HOME": "/Users/x", "PATH": ChildEnvironment.searchPath, "QTWEBENGINE_CHROMIUM_FLAGS": "--disable-gpu",
+        ])
         #expect(EbookConversion.environment(["QTWEBENGINE_CHROMIUM_FLAGS": "--no-sandbox"])["QTWEBENGINE_CHROMIUM_FLAGS"] == "--no-sandbox --disable-gpu")
     }
 

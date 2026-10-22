@@ -54,9 +54,8 @@ enum ProcessRunner {
         if let currentDirectory {
             process.currentDirectoryURL = currentDirectory
         }
-        if let environment {
-            process.environment = environment
-        }
+        // Never the app's own environment; see `ChildEnvironment`.
+        process.environment = environment ?? ChildEnvironment.minimal()
         if let standardInputFile {
             process.standardInput = try FileHandle(forReadingFrom: standardInputFile)
         }
