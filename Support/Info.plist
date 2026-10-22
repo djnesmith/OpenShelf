@@ -30,6 +30,8 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>OpenShelf asks Finder which files are selected, so the keyboard shortcut can open a wheel for them. It never changes anything in Finder.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>OpenShelf turns speech in your audio and video files into text and subtitles, on this Mac only.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License</string>
 </dict>

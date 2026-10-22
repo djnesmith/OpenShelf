@@ -36,6 +36,7 @@ enum FileTool: CaseIterable, Hashable {
     case grayscale
     case volume
     case ocr
+    case transcribe
 
     var title: String {
         switch self {
@@ -70,6 +71,7 @@ enum FileTool: CaseIterable, Hashable {
         case .grayscale: "Grayscale"
         case .volume: "Volume"
         case .ocr: "OCR"
+        case .transcribe: "Transcribe"
         }
     }
 
@@ -101,6 +103,7 @@ enum FileTool: CaseIterable, Hashable {
         case .grayscale: "circle.lefthalf.filled"
         case .volume: "speaker.wave.3"
         case .ocr: "text.viewfinder"
+        case .transcribe: "captions.bubble"
         }
     }
 
@@ -164,11 +167,11 @@ enum FileTool: CaseIterable, Hashable {
         // Tools only ffmpeg does.
         let hasFFmpeg = tools.ffmpeg != nil
         if kinds == [.video] {
-            return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame, .grayscale]
+            return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame, .grayscale, .transcribe]
                 + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume] : [])
         }
         if kinds == [.audio] {
-            return merge + [.trim, .speed, .splitMedia] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume] : [])
+            return merge + [.trim, .speed, .splitMedia, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume] : [])
         }
         return combine
     }

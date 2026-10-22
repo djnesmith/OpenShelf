@@ -31,13 +31,13 @@ struct FileToolTests {
     }
 
     @Test func mediaTools() {
-        #expect(FileTool.available(for: urls("a.mov"), tools: ExternalTools()) == [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame, .grayscale])
-        #expect(FileTool.available(for: urls("a.mp3"), tools: ExternalTools()) == [.trim, .speed, .splitMedia])
+        #expect(FileTool.available(for: urls("a.mov"), tools: ExternalTools()) == [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame, .grayscale, .transcribe])
+        #expect(FileTool.available(for: urls("a.mp3"), tools: ExternalTools()) == [.trim, .speed, .splitMedia, .transcribe])
     }
 
     @Test func severalMediaFilesCanBeMerged() {
         #expect(FileTool.available(for: urls("a.mov", "b.mp4"), tools: ExternalTools()).first == .mergeMedia)
-        #expect(FileTool.available(for: urls("a.mp3", "b.m4a"), tools: ExternalTools()) == [.mergeMedia, .trim, .speed, .splitMedia])
+        #expect(FileTool.available(for: urls("a.mp3", "b.m4a"), tools: ExternalTools()) == [.mergeMedia, .trim, .speed, .splitMedia, .transcribe])
         #expect(!FileTool.available(for: urls("a.mov", "b.mp3"), tools: ExternalTools()).contains(.mergeMedia))
     }
 

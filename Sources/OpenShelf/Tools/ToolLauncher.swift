@@ -66,6 +66,11 @@ enum ToolLauncher {
         case .ocr:
             EditorWindowController.present(size: OCREditor.windowSize, near: location) { OCREditor(urls: urls, actions: $0) }
 
+        case .transcribe:
+            runner.run(title: "Transcribing", jobs: urls.map { [$0] }, near: location) { sources, progress in
+                try await Transcription.transcribe(sources[0], progress: progress)
+            }
+
         case .organizePages:
             EditorWindowController.present(size: PDFPagesEditor.windowSize, near: location) { PDFPagesEditor(url: first, actions: $0) }
         case .splitPDF:
