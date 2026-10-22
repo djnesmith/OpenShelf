@@ -1,5 +1,7 @@
 import AppKit
 import CoreGraphics
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import CoreText
 import Darwin
 import Foundation
@@ -110,6 +112,42 @@ struct MoreToolTests {
             #expect(images.count == 40)
         }
         #expect(rise < 700, "rose \(Int(rise)) MB")
+    }
+
+    // MARK: Shared Core Image contexts
+
+    func pixels(_ image: CGImage) -> Data? {
+        image.dataProvider?.data as Data?
+    }
+
+    /// Resizing with the shared context gives exactly what a context of its
+    /// own did, and the context is made once per colour space.
+    @Test func sharedContextsRenderTheSame() throws {
+        let picture = try Self.picture(of: "Resize me", size: CGSize(width: 800, height: 300))
+        let size = CGSize(width: 333, height: 125)
+        let shared = try #require(ImageResizer.resize(picture, to: size))
+        let again = try #require(ImageResizer.resize(picture, to: size))
+
+        // What ResizeEditor did before: a fresh context in the image's colour space.
+        let filter = CIFilter.lanczosScaleTransform()
+        filter.inputImage = CIImage(cgImage: picture).clampedToExtent()
+        filter.scale = Float(size.height / CGFloat(picture.height))
+        filter.aspectRatio = Float((size.width / CGFloat(picture.width)) / (size.height / CGFloat(picture.height)))
+        let rect = CGRect(origin: .zero, size: size)
+        let space = picture.colorSpace!
+        let fresh = try #require(CIContext(options: [.workingColorSpace: space]).createCGImage(filter.outputImage!.cropped(to: rect), from: rect, format: .RGBA8, colorSpace: space))
+
+        #expect(pixels(shared) == pixels(fresh))
+        #expect(pixels(again) == pixels(fresh))
+        let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+        #expect(ImageContexts.working(in: sRGB) === ImageContexts.working(in: sRGB))
+        #expect(ImageContexts.working(in: sRGB) !== ImageContexts.working(in: CGColorSpace(name: CGColorSpace.displayP3)!))
+
+        // The standard context (Remove Background's) renders as a fresh default one does.
+        let image = CIImage(cgImage: picture).applyingGaussianBlur(sigma: 3).cropped(to: CGRect(x: 0, y: 0, width: 800, height: 300))
+        let standard = try #require(ImageContexts.standard.createCGImage(image, from: image.extent, format: .RGBA8, colorSpace: sRGB))
+        let plain = try #require(CIContext().createCGImage(image, from: image.extent, format: .RGBA8, colorSpace: sRGB))
+        #expect(pixels(standard) == pixels(plain))
     }
 
     @Test func picksSystemLanguagesVisionKnows() {
