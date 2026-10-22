@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import CoreText
+import Darwin
 import Foundation
 import ImageIO
 import PDFKit
@@ -280,5 +281,46 @@ struct MoreToolTests {
         let path = try #require(actions.firstIndex(of: .copyPath))
         #expect(actions[path + 1] == .copyName)
         #expect(NSImage(systemSymbolName: FileAction.copyName.systemImage, accessibilityDescription: nil) != nil)
+    }
+
+    // MARK: Copy to a folder
+
+    @MainActor
+    @Test func copiesIntoAFolderKeepingTheOriginals() throws {
+        let folder = try workspace()
+        let source = folder.appendingPathComponent("Source", isDirectory: true)
+        let target = folder.appendingPathComponent("Target", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let report = source.appendingPathComponent("Report.pdf")
+        try "pdf".write(to: report, atomically: true, encoding: .utf8)
+        // A folder with something inside, an extended attribute and an old date.
+        let album = source.appendingPathComponent("Album", isDirectory: true)
+        try FileManager.default.createDirectory(at: album.appendingPathComponent("Inner"), withIntermediateDirectories: true)
+        try "x".write(to: album.appendingPathComponent("Inner/photo.jpg"), atomically: true, encoding: .utf8)
+        let old = Date(timeIntervalSince1970: 1_000_000_000)
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: report.path)
+        #expect(setxattr(report.path, "com.example.tag", "kept", 4, 0, 0) == 0)
+
+        let clipboard = NSPasteboard.general.changeCount
+        let first = FileActions.copy([report, album], into: target)
+        #expect(first.failures.isEmpty)
+        #expect(first.copied.map(\.lastPathComponent) == ["Report.pdf", "Album"])
+        // The originals stay, and the clipboard is left alone.
+        #expect(FileManager.default.fileExists(atPath: report.path) && FileManager.default.fileExists(atPath: album.path))
+        #expect(NSPasteboard.general.changeCount == clipboard)
+        // Everything inside, the attribute and the date come along.
+        #expect(FileManager.default.fileExists(atPath: target.appendingPathComponent("Album/Inner/photo.jpg").path))
+        var value = [CChar](repeating: 0, count: 8)
+        #expect(getxattr(target.appendingPathComponent("Report.pdf").path, "com.example.tag", &value, 8, 0, 0) == 4)
+        let copiedDate = try FileManager.default.attributesOfItem(atPath: target.appendingPathComponent("Report.pdf").path)[.modificationDate] as? Date
+        #expect(copiedDate == old)
+
+        // Again: the names are taken, so the copies are numbered, never overwritten.
+        let second = FileActions.copy([report, album], into: target)
+        #expect(second.copied.map(\.lastPathComponent) == ["Report 2.pdf", "Album 2"])
+        // Into the file's own folder: a duplicate beside it.
+        #expect(FileActions.copy([report], into: source).copied.map(\.lastPathComponent) == ["Report 2.pdf"])
+        #expect(try String(contentsOf: target.appendingPathComponent("Report.pdf"), encoding: .utf8) == "pdf")
     }
 }

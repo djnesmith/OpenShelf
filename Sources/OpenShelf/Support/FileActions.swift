@@ -59,15 +59,7 @@ enum FileActions {
     /// moved, or nil when cancelled.
     @discardableResult
     static func moveWithPrompt(_ urls: [URL]) -> (destination: URL, movedCount: Int)? {
-        let panel = NSOpenPanel()
-        panel.title = urls.count == 1 ? "Move “\(urls[0].lastPathComponent)” to…" : "Move \(urls.count) Files to…"
-        panel.prompt = "Move"
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.directoryURL = urls.first?.deletingLastPathComponent()
-        NSApp.activate()
-        guard panel.runModal() == .OK, let destination = panel.url else { return nil }
+        guard let destination = chooseDestination(for: urls, verb: "Move") else { return nil }
 
         var failures: [String] = []
         for url in urls {
@@ -77,13 +69,59 @@ enum FileActions {
                 failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
-        if !failures.isEmpty {
-            let alert = NSAlert()
-            alert.messageText = failures.count == 1 ? "A file couldn’t be moved" : "\(failures.count) files couldn’t be moved"
-            alert.informativeText = failures.joined(separator: "\n")
-            alert.runModal()
-        }
+        report(failures, verb: "moved")
         return (destination, urls.count - failures.count)
+    }
+
+    /// Asks for a destination folder, as Move does, then copies the files there;
+    /// the originals stay put. A name already taken gets a Finder-style number
+    /// ("Report 2.pdf"), so copying into the same folder makes a duplicate.
+    @discardableResult
+    static func copyWithPrompt(_ urls: [URL]) -> (destination: URL, copiedCount: Int)? {
+        guard let destination = chooseDestination(for: urls, verb: "Copy") else { return nil }
+        let result = copy(urls, into: destination)
+        report(result.failures, verb: "copied")
+        return (destination, result.copied.count)
+    }
+
+    /// Copies each item into `destination` with its attributes and dates (and
+    /// folders with everything inside), never over an existing file.
+    static func copy(_ urls: [URL], into destination: URL) -> (copied: [URL], failures: [String]) {
+        var copied: [URL] = []
+        var failures: [String] = []
+        for url in urls {
+            let pathExtension = url.pathExtension.isEmpty ? nil : url.pathExtension
+            let target = OutputNaming.uniqueURL(in: destination, baseName: url.deletingPathExtension().lastPathComponent, pathExtension: pathExtension)
+            do {
+                try FileManager.default.copyItem(at: url, to: target)
+                copied.append(target)
+            } catch {
+                failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        return (copied, failures)
+    }
+
+    /// Move's and Copy's folder picker, starting where the first file is.
+    private static func chooseDestination(for urls: [URL], verb: String) -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = urls.count == 1 ? "\(verb) “\(urls[0].lastPathComponent)” to…" : "\(verb) \(urls.count) Files to…"
+        panel.prompt = verb
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.directoryURL = urls.first?.deletingLastPathComponent()
+        NSApp.activate()
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
+    }
+
+    private static func report(_ failures: [String], verb: String) {
+        guard !failures.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = failures.count == 1 ? "A file couldn’t be \(verb)" : "\(failures.count) files couldn’t be \(verb)"
+        alert.informativeText = failures.joined(separator: "\n")
+        alert.runModal()
     }
 
     /// Total size of the regular files among `urls`, or nil if it includes a folder.

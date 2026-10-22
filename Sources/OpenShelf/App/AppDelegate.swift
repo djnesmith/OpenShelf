@@ -146,8 +146,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .airDrop:
             FileActions.airDrop(urls)
         case .copy:
-            FileActions.copyFiles(urls)
-            toasts.show(Toast(systemImage: "doc.on.doc", title: "Copied \(count)", subtitle: "Paste in Finder to make a copy"))
+            guard let result = FileActions.copyWithPrompt(urls), result.copiedCount > 0 else { return }
+            let copied = result.copiedCount == 1 ? "1 file" : "\(result.copiedCount) files"
+            toasts.show(Toast(systemImage: "doc.on.doc", title: "Copied \(copied)", subtitle: "to \(result.destination.lastPathComponent)"))
         case .move:
             guard let result = FileActions.moveWithPrompt(urls), result.movedCount > 0 else { return }
             let moved = result.movedCount == 1 ? "1 file" : "\(result.movedCount) files"
