@@ -77,4 +77,41 @@ struct HideShelvesTests {
         manager.hideAll()
         #expect(!manager.areHidden)
     }
+
+    // MARK: The wheel shortcut on shelf items
+
+    @Test func shortcutPicksTheSelectionInFront() {
+        let a = [URL(fileURLWithPath: "/tmp/a.txt")], b = [URL(fileURLWithPath: "/tmp/b.txt")]
+        let cases: [([URL]?, [URL], Bool, WheelSelectionSource)] = [
+            (a, b, false, .shelf(a)),   // a focused shelf with a selection wins, Finder in front or not
+            (a, b, true, .shelf(a)),
+            ([], b, false, .finder),    // a focused shelf with nothing selected: Finder's
+            (nil, b, false, .finder),   // no shelf focused, Finder in front
+            (nil, b, true, .shelf(b)),  // OpenShelf in front (an editor): the last-used shelf's
+            (nil, [], true, .finder),
+        ]
+        for (key, recent, frontmost, expected) in cases {
+            #expect(WheelSelectionSource.choose(keyShelfSelection: key, recentShelfSelection: recent, isOpenShelfFrontmost: frontmost) == expected)
+        }
+    }
+
+    @Test func aMoveFromTheWheelMovesTheShelfItemsToo() throws {
+        let manager = ShelfManager(storeURL: store)
+        defer { manager.closeAll() }
+        let urls = try files(3)
+        let shelf = manager.newShelf(with: urls, near: NSPoint(x: 300, y: 300))
+        shelf.selection = Set(shelf.items.prefix(2).map(\.id))
+        let target = FileManager.default.temporaryDirectory.appendingPathComponent("openshelf-moved-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+
+        let result = FileActions.transfer(Array(urls.prefix(2)), into: target, operation: .move) { _, _, _ in
+            FileActions.ConflictDecision(choice: .skip)
+        }
+        manager.relocate(result.moves)
+        // Same order, the moved two now in the target folder, still selected and present.
+        #expect(shelf.items.map(\.url.lastPathComponent) == ["File 1.txt", "File 2.txt", "File 3.txt"])
+        #expect(shelf.items.prefix(2).allSatisfy { $0.url.deletingLastPathComponent().standardizedFileURL == target.standardizedFileURL && $0.exists })
+        #expect(shelf.selectedItems.map(\.url.lastPathComponent) == ["File 1.txt", "File 2.txt"])
+        #expect(shelf.items[2].url == urls[2].standardizedFileURL)
+    }
 }

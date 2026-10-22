@@ -51,6 +51,19 @@ final class Shelf: Identifiable {
         selection.subtract(ids)
     }
 
+    /// Points items at the files' new places after a Move, keeping their
+    /// order and selection.
+    func relocate(_ moves: [URL: URL]) {
+        var replaced: [ShelfItem.ID: ShelfItem.ID] = [:]
+        items = items.map { item in
+            guard let target = moves[item.url.standardizedFileURL] else { return item }
+            let moved = ShelfItem(url: target.standardizedFileURL)
+            replaced[item.id] = moved.id
+            return moved
+        }
+        selection = Set(selection.map { replaced[$0] ?? $0 })
+    }
+
     func removeMissingFiles() {
         remove(Set(items.filter { !$0.exists }.map(\.id)))
     }

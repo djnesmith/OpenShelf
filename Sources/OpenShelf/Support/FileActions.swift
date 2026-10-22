@@ -58,11 +58,11 @@ enum FileActions {
     /// to do about each name already taken there (see `transfer`). Returns where
     /// files went and how many moved, or nil when cancelled.
     @discardableResult
-    static func moveWithPrompt(_ urls: [URL]) -> (destination: URL, movedCount: Int)? {
+    static func moveWithPrompt(_ urls: [URL]) -> (destination: URL, movedCount: Int, moves: [URL: URL])? {
         guard let destination = chooseDestination(for: urls, verb: "Move") else { return nil }
         let result = transfer(urls, into: destination, operation: .move, prompt: askAboutConflict)
         report(result.failures, verb: "moved")
-        return (destination, result.done.count)
+        return (destination, result.done.count, result.moves)
     }
 
     /// The same as `moveWithPrompt`, copying instead: the originals stay put.
@@ -110,7 +110,7 @@ enum FileActions {
         operation: Transfer,
         prompt: ConflictPrompt,
         trash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
-    ) -> (done: [URL], skipped: Int, failures: [String]) {
+    ) -> (done: [URL], skipped: Int, failures: [String], moves: [URL: URL]) {
         let fileManager = FileManager.default
         func isAlreadyThere(_ url: URL) -> Bool {
             url.deletingLastPathComponent().standardizedFileURL.path == destination.standardizedFileURL.path
@@ -123,6 +123,7 @@ enum FileActions {
         var done: [URL] = []
         var skipped = 0
         var failures: [String] = []
+        var moves: [URL: URL] = [:]
         var remembered: ConflictChoice?
         var asked = 0
         for url in urls {
@@ -153,15 +154,18 @@ enum FileActions {
                     }
                 }
                 switch operation {
-                case .move: try fileManager.moveItem(at: url, to: target)
-                case .copy: try fileManager.copyItem(at: url, to: target)
+                case .move:
+                    try fileManager.moveItem(at: url, to: target)
+                    moves[url.standardizedFileURL] = target
+                case .copy:
+                    try fileManager.copyItem(at: url, to: target)
                 }
                 done.append(target)
             } catch {
                 failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
-        return (done, skipped, failures)
+        return (done, skipped, failures, moves)
     }
 
     /// Finder's question: Keep Both (the default, Return), Overwrite, or

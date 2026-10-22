@@ -24,6 +24,24 @@ final class ShelfManager {
     /// Open shelves, most recently used first, for the menu-bar menu.
     var openShelves: [Shelf] { controllers.reversed().map(\.shelf) }
 
+    /// The selected files of the shelf that has keyboard focus, or nil when none has.
+    var keyShelfSelection: [URL]? {
+        controllers.first { $0.window?.isKeyWindow == true }.map { $0.shelf.selectedItems.map(\.url) }
+    }
+
+    /// The selected files of the most recently used shelf.
+    var recentShelfSelection: [URL] {
+        controllers.last?.shelf.selectedItems.map(\.url) ?? []
+    }
+
+    /// After a Move, every shelf holding a moved file follows it.
+    func relocate(_ moves: [URL: URL]) {
+        guard !moves.isEmpty else { return }
+        for controller in controllers {
+            controller.shelf.relocate(moves)
+        }
+    }
+
     /// Puts every shelf out of sight, edge tabs too, keeping each as it is.
     func hideAll() {
         guard hasShelves else { return }
