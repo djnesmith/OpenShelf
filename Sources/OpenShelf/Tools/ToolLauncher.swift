@@ -65,6 +65,9 @@ enum ToolLauncher {
         case .rotateVideo:
             showOneFileNote(tool, urls: urls)
             EditorWindowController.present(size: VideoRotateEditor.windowSize, near: location) { VideoRotateEditor(url: first, actions: $0) }
+        case .stillFrame:
+            showOneFileNote(tool, urls: urls)
+            EditorWindowController.present(size: StillFrameEditor.windowSize, near: location) { StillFrameEditor(url: first, actions: $0) }
         }
     }
 

@@ -30,7 +30,7 @@ struct FileToolTests {
     }
 
     @Test func mediaTools() {
-        #expect(FileTool.available(for: urls("a.mov")) == [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute])
+        #expect(FileTool.available(for: urls("a.mov")) == [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame])
         #expect(FileTool.available(for: urls("a.mp3")) == [.trim, .speed, .splitMedia])
     }
 

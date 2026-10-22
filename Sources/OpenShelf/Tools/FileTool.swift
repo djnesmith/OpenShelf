@@ -28,6 +28,7 @@ enum FileTool: CaseIterable, Hashable {
     case mergeMedia
     case splitMedia
     case rotateVideo
+    case stillFrame
 
     var title: String {
         switch self {
@@ -54,6 +55,7 @@ enum FileTool: CaseIterable, Hashable {
         case .mergeMedia: "Merge"
         case .splitMedia: "Split"
         case .rotateVideo: "Rotate"
+        case .stillFrame: "Still"
         }
     }
 
@@ -78,6 +80,7 @@ enum FileTool: CaseIterable, Hashable {
         case .mergeMedia: "arrow.triangle.merge"
         case .splitMedia: "scissors"
         case .rotateVideo: "rotate.right"
+        case .stillFrame: "photo"
         }
     }
 
@@ -139,7 +142,7 @@ enum FileTool: CaseIterable, Hashable {
         }
         let merge: [FileTool] = urls.count > 1 ? [.mergeMedia] : []
         if kinds == [.video] {
-            return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute]
+            return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame]
         }
         if kinds == [.audio] {
             return merge + [.trim, .speed, .splitMedia]
