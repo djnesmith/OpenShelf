@@ -7,9 +7,12 @@ import Testing
 struct MoreConversionTests {
     static let ebookConvert = URL(fileURLWithPath: "/Applications/calibre.app/Contents/MacOS/ebook-convert")
     static var hasCalibre: Bool { FileManager.default.isExecutableFile(atPath: ebookConvert.path) }
+    static let pandoc = URL(fileURLWithPath: "/opt/homebrew/bin/pandoc")
+    static var hasPandoc: Bool { FileManager.default.isExecutableFile(atPath: pandoc.path) }
 
     let none = ExternalTools()
     let calibre = ExternalTools(ebookConvert: Self.ebookConvert)
+    let pandoc = ExternalTools(pandoc: Self.pandoc)
 
     func url(_ name: String) -> URL {
         URL(fileURLWithPath: "/tmp/\(name)")
@@ -59,5 +62,54 @@ struct MoreConversionTests {
         #expect(try String(contentsOf: text, encoding: .utf8).contains("dark and stormy night"))
         // Nothing half-written is left behind.
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).allSatisfy { !$0.hasPrefix(".openshelf-") })
+    }
+
+    // MARK: pandoc
+
+    @Test func markupIsADocument() {
+        for name in ["a.tex", "a.adoc", "a.asciidoc", "a.rst", "a.org", "a.typ"] {
+            #expect(FileKind(url: url(name)) == .document, "\(name)")
+        }
+    }
+
+    @Test func markupFormatsOnlyWithPandoc() {
+        #expect(!ConversionCatalog.formats(for: url("a.md"), tools: none).contains(.tex))
+        #expect(ConversionCatalog.formats(for: url("a.md"), tools: pandoc).suffix(6) == [.tex, .typ, .rst, .adoc, .org, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.rst"), tools: none) == [.zip])
+        #expect(ConversionCatalog.formats(for: url("a.tex"), tools: none).first == .pdf)
+        #expect(ConversionCatalog.formats(for: url("a.typ"), tools: pandoc) == [.docx, .md, .html, .epub, .txt, .tex, .rst, .adoc, .org, .zip])
+        // Formats pandoc can't read get no markup outputs.
+        #expect(!ConversionCatalog.formats(for: url("a.rtfd"), tools: pandoc).contains(.tex))
+    }
+
+    @Test func pandocRunsSandboxed() {
+        let arguments = PandocConversion.arguments(source: url("a.md"), to: .tex, output: url("b.tex"))
+        #expect(arguments == ["--sandbox", "--from", "markdown", "--to", "latex", "--standalone", "--output", "/tmp/b.tex", "/tmp/a.md"])
+        #expect(PandocConversion.handles(url("a.rst"), to: .docx))
+        #expect(!PandocConversion.handles(url("a.md"), to: .docx))
+        #expect(!PandocConversion.handles(url("a.md"), to: .pdf))
+    }
+
+    @Test(.enabled(if: hasPandoc)) func convertsMarkupBothWays() async throws {
+        let folder = try workspace()
+        let markdown = folder.appendingPathComponent("Notes.md")
+        try "# Title\n\nSome *emphasis* here.\n".write(to: markdown, atomically: true, encoding: .utf8)
+        let expected: [(OutputFormat, String, String)] = [
+            (.tex, "Notes.tex", "\\emph{emphasis}"),
+            (.typ, "Notes.typ", "#emph[emphasis]"),
+            (.rst, "Notes.rst", "*emphasis*"),
+            (.adoc, "Notes.adoc", "_emphasis_"),
+            (.org, "Notes.org", "/emphasis/"),
+        ]
+        for (format, name, snippet) in expected {
+            let output = try await Converter.convert(markdown, to: format, tools: pandoc) { _ in }
+            #expect(output.map(\.lastPathComponent) == [name])
+            #expect(try String(contentsOf: output[0], encoding: .utf8).contains(snippet), "\(name)")
+        }
+        let rst = folder.appendingPathComponent("Notes.rst")
+        let docx = try await Converter.convert(rst, to: .docx, tools: pandoc) { _ in }
+        #expect(docx.map(\.lastPathComponent) == ["Notes.docx"])
+        let back = try await Converter.convert(folder.appendingPathComponent("Notes.tex"), to: .md, tools: pandoc) { _ in }
+        #expect(try String(contentsOf: back[0], encoding: .utf8).contains("*emphasis*"))
     }
 }

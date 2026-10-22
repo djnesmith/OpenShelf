@@ -54,6 +54,7 @@ enum FileKind: Hashable {
     static let kindsByExtension: [String: FileKind] = {
         var kinds: [String: FileKind] = ["srt": .subtitle, "vtt": .subtitle, "rtfd": .document]
         for ext in ["epub", "mobi", "azw", "azw3", "fb2"] { kinds[ext] = .ebook }
+        for ext in PandocConversion.markupExtensions { kinds[ext] = .document }
         for ext in ["csv", "tsv", "xlsx", "xls", "ods"] { kinds[ext] = .spreadsheet }
         for ext in ["ppt", "pptx", "odp", "key"] { kinds[ext] = .presentation }
         for ext in MediaFormats.ffmpegOnlyVideoExtensions { kinds[ext] = .video }

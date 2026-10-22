@@ -18,11 +18,15 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     case zip, tar, tgz, extract
     // Ebooks (calibre)
     case mobi, azw3, fb2
+    // Markup (pandoc)
+    case tex, adoc, rst, org, typ
 
     var title: String {
         switch self {
         case .extract: "UNZIP"
         case .tgz: "TAR.GZ"
+        case .tex: "LATEX"
+        case .typ: "TYPST"
         default: rawValue.uppercased()
         }
     }
@@ -49,6 +53,8 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         case .md: return ["md", "markdown"].contains(ext)
         case .ogg: return ["ogg", "oga"].contains(ext)
         case .tgz: return ext == "tgz"
+        case .tex: return ["tex", "latex"].contains(ext)
+        case .adoc: return ["adoc", "asciidoc"].contains(ext)
         default: return ext == rawValue
         }
     }
@@ -119,8 +125,18 @@ enum ConversionCatalog {
         case .pdf:
             formats = [.docx, .jpg, .png, .txt, .md, .epub, .pptx, .xlsx]
             if tools.ebookConvert != nil { formats += EbookConversion.calibreOnly.sortedLike(EbookConversion.formats) }
+        case .document where PandocConversion.markupExtensions.contains(ext):
+            if tools.pandoc != nil {
+                formats = PandocConversion.formatsForMarkup
+            } else {
+                // As before pandoc: LaTeX, Typst, AsciiDoc and Org read as plain text.
+                formats = ext == "rst" ? [] : [.pdf, .docx, .txt, .md, .epub, .html, .rtf]
+            }
         case .document:
             formats = [.pdf, .docx, .txt, .md, .epub, .html, .rtf]
+            if tools.pandoc != nil, PandocConversion.reader(for: url) != nil {
+                formats += PandocConversion.markupFormats
+            }
         case .spreadsheet:
             formats = spreadsheetFormats(ext: ext, tools: tools)
         case .presentation:

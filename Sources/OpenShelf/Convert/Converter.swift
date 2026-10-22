@@ -56,6 +56,8 @@ enum Converter {
             return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .pdf:
             return try PDFConversion.convert(source, to: format)
+        case .document where tools.pandoc != nil && PandocConversion.handles(source, to: format):
+            return [try await PandocConversion.convert(source, to: format, tools: tools)]
         case .document:
             return [try await DocumentConversion.convert(source, to: format)]
         case .spreadsheet:
