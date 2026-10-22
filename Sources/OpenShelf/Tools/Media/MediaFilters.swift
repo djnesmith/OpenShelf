@@ -66,6 +66,27 @@ extension MediaTools {
         return destination
     }
 
+    // MARK: Volume
+
+    /// Every sound track made `decibels` louder (or quieter, below 0), with a
+    /// limiter so a boost can't clip. A video's picture is copied as it is.
+    static func changeVolume(
+        _ url: URL,
+        by decibels: Int,
+        tools: ExternalTools = .current,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> URL {
+        let ffmpeg = try requireFFmpeg(tools)
+        let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
+        guard !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
+        let container = probed.video != nil ? videoContainer(for: url).pathExtension : FFmpegEdits.filteredAudioContainer(for: url)
+        let destination = OutputNaming.destination(for: url, suffix: decibels > 0 ? "Louder" : "Quieter", pathExtension: container)
+        try SaveError.checkWritable(destination)
+        let arguments: [String] = ["-i", url.path] + FFmpegEdits.volume(probed, decibels: decibels, container: container)
+        try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
+        return destination
+    }
+
     static func requireFFmpeg(_ tools: ExternalTools) throws -> URL {
         guard let ffmpeg = tools.ffmpeg else { throw MissingToolError(name: "ffmpeg") }
         return ffmpeg
@@ -127,6 +148,25 @@ extension FFmpegEdits {
     }
 
     // MARK: Sound filters
+
+    /// The range the Volume tool offers, in dB.
+    static let volumeRange: ClosedRange<Int> = -20...20
+
+    /// Every sound track's gain changed by `decibels`, then through
+    /// `alimiter` holding peaks at -1 dBFS (0.891), without its automatic
+    /// levelling, so loud parts flatten instead of clipping. A picture is copied.
+    static func volume(_ probed: ProbedMedia, decibels: Int, container: String) -> [String] {
+        var graph: [String] = []
+        var arguments: [String] = []
+        if let video = probed.video {
+            arguments += ["-map", "0:V:0"] + videoCopy(for: video)
+        }
+        for (index, track) in probed.audio.enumerated() {
+            graph.append("[0:a:\(index)]volume=\(decibels)dB,alimiter=limit=0.891:level=false[a\(index)]")
+            arguments += ["-map", "[a\(index)]"] + filteredAudio(container, track: track, index: index)
+        }
+        return ["-filter_complex", graph.joined(separator: ";")] + arguments
+    }
 
     /// Target loudness for `normalizeLoudness`, in LUFS.
     static let loudnessTarget = -16

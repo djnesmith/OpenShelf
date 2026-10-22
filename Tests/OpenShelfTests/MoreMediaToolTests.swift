@@ -99,6 +99,8 @@ struct MoreMediaToolTests {
         #expect(!FileTool.available(for: clip, tools: ExternalTools()).contains(.reverse))
         #expect(FileTool.available(for: clip, tools: tools).contains(.reverse))
         #expect(FileTool.available(for: [URL(fileURLWithPath: "/tmp/a.m4a")], tools: tools).contains(.reverse))
+        #expect(FileTool.available(for: clip, tools: tools).contains(.volume))
+        #expect(!FileTool.available(for: clip, tools: ExternalTools()).contains(.volume))
     }
 
     @Test(.enabled(if: hasFFmpeg)) func reversesPictureAndSound() async throws {
@@ -253,5 +255,66 @@ struct MoreMediaToolTests {
         let viaFFmpeg = try await MediaTools.grayscaleWithFFmpeg(clip, ffmpeg: Self.ffmpeg, tools: tools) { _ in }
         let (fr, fg, fb) = try centreColour(try await MediaTools.frame(of: viaFFmpeg, at: 1, maximumSize: nil, tools: tools))
         #expect(max(abs(fr - fg), abs(fg - fb), abs(fr - fb)) < 8)
+    }
+
+    // MARK: Volume
+
+    /// ffmpeg volumedetect's mean and peak, in dBFS.
+    func levels(_ url: URL) throws -> (mean: Double, peak: Double) {
+        let process = Process()
+        process.executableURL = Self.ffmpeg
+        process.arguments = ["-nostats", "-i", url.path, "-map", "0:a:0", "-af", "volumedetect", "-f", "null", "-"]
+        let pipe = Pipe()
+        process.standardError = pipe
+        try process.run()
+        let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        func value(_ key: String) throws -> Double {
+            let line = try #require(text.components(separatedBy: "\n").first { $0.contains(key) })
+            return try #require(Double(line.components(separatedBy: key)[1].trimmingCharacters(in: .whitespaces).components(separatedBy: " ")[0]))
+        }
+        return (try value("mean_volume:"), try value("max_volume:"))
+    }
+
+    @Test func volumeArguments() {
+        let probed = ProbedMedia(
+            duration: 3,
+            video: ProbedMedia.Video(width: 320, height: 240, codec: "h264"),
+            audio: [ProbedMedia.Audio(codec: "pcm_s16le", channels: 2)]
+        )
+        let arguments = FFmpegEdits.volume(probed, decibels: 6, container: "wav")
+        #expect(arguments == [
+            "-filter_complex", "[0:a:0]volume=6dB,alimiter=limit=0.891:level=false[a0]",
+            "-map", "0:V:0", "-c:v", "copy", "-map", "[a0]", "-c:a:0", "pcm_s16le",
+        ])
+        #expect(FFmpegEdits.volume(probed, decibels: -20, container: "m4a")[1].hasPrefix("[0:a:0]volume=-20dB,"))
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func changesVolumeWithoutClipping() async throws {
+        let folder = try workspace()
+        let tone = folder.appendingPathComponent("tone.m4a")
+        let before = try levels(tone)
+
+        let louder = try await MediaTools.changeVolume(tone, by: 6, tools: tools) { _ in }
+        #expect(louder.lastPathComponent == "tone Louder.m4a")
+        #expect(abs(try levels(louder).mean - before.mean - 6) < 1)
+
+        let quieter = try await MediaTools.changeVolume(tone, by: -6, tools: tools) { _ in }
+        #expect(quieter.lastPathComponent == "tone Quieter.m4a")
+        #expect(abs(try levels(quieter).mean - before.mean + 6) < 1)
+
+        // +20 dB would put the peaks well above full scale; the limiter holds
+        // them at -1 dBFS. Checked on WAV, which stays WAV: AAC's own encoding
+        // can overshoot a heavily limited tone slightly.
+        #expect(before.peak + 20 > 1)
+        let wav = folder.appendingPathComponent("tone.wav")
+        try Self.run(Self.ffmpeg, ["-i", tone.path, "-c:a", "pcm_s16le", wav.path])
+        let loudest = try await MediaTools.changeVolume(wav, by: 20, tools: tools) { _ in }
+        #expect(loudest.lastPathComponent == "tone Louder.wav")
+        #expect(try levels(loudest).peak <= -0.9)
+
+        let clip = try await MediaTools.changeVolume(folder.appendingPathComponent("clip.mp4"), by: 3, tools: tools) { _ in }
+        #expect(clip.lastPathComponent == "clip Louder.mp4")
+        #expect(try await probe(clip).video?.codec == "h264")
     }
 }

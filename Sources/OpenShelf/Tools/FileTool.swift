@@ -34,6 +34,7 @@ enum FileTool: CaseIterable, Hashable {
     case mono
     case normalize
     case grayscale
+    case volume
 
     var title: String {
         switch self {
@@ -66,6 +67,7 @@ enum FileTool: CaseIterable, Hashable {
         case .mono: "Mono"
         case .normalize: "Loudness"
         case .grayscale: "Grayscale"
+        case .volume: "Volume"
         }
     }
 
@@ -95,6 +97,7 @@ enum FileTool: CaseIterable, Hashable {
         case .mono: "speaker.wave.1"
         case .normalize: "waveform"
         case .grayscale: "circle.lefthalf.filled"
+        case .volume: "speaker.wave.3"
         }
     }
 
@@ -159,10 +162,10 @@ enum FileTool: CaseIterable, Hashable {
         let hasFFmpeg = tools.ffmpeg != nil
         if kinds == [.video] {
             return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame, .grayscale]
-                + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize] : [])
+                + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume] : [])
         }
         if kinds == [.audio] {
-            return merge + [.trim, .speed, .splitMedia] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize] : [])
+            return merge + [.trim, .speed, .splitMedia] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume] : [])
         }
         return combine
     }
