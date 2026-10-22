@@ -61,7 +61,15 @@ struct FileToolTests {
     @Test func mediaToolsOnlyForFormatsTheMediaFrameworkEdits() {
         for name in ["a.mkv", "a.webm", "a.avi", "a.wmv", "a.flv", "a.wma"] {
             #expect(FileTool.available(for: urls(name), tools: ExternalTools()).isEmpty, "\(name) should not offer tools")
-            #expect(FileTool.needsConversionForTools(urls(name)))
+            #expect(FileTool.needsConversionForTools(urls(name), tools: ExternalTools()))
+        }
+        // With ffmpeg, MKV, WebM and AVI are edited through it; WMV, FLV and WMA still convert first.
+        for name in ["a.mkv", "a.webm", "a.avi"] {
+            #expect(FileTool.available(for: urls(name), tools: ffmpeg).contains(.trim), "\(name)")
+            #expect(!FileTool.needsConversionForTools(urls(name), tools: ffmpeg))
+        }
+        for name in ["a.wmv", "a.flv", "a.wma"] {
+            #expect(FileTool.available(for: urls(name), tools: ffmpeg).isEmpty, "\(name)")
         }
         #expect(FileTool.available(for: urls("a.mp4", "b.mkv"), tools: ExternalTools()).isEmpty)
         #expect(!FileTool.available(for: urls("a.ogg"), tools: ExternalTools()).isEmpty)

@@ -102,10 +102,10 @@ extension MediaTools {
         let ffmpeg = try requireFFmpeg(tools)
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard let video = probed.video else { throw MediaToolError.noVideo(url) }
-        let destination = OutputNaming.destination(for: url, suffix: "\(fps)fps", pathExtension: videoContainer(for: url).pathExtension)
+        let destination = OutputNaming.destination(for: url, suffix: "\(fps)fps", pathExtension: KeepFormat.container(for: url))
         try SaveError.checkWritable(destination)
         let arguments: [String] = ["-i", url.path, "-map", "0:V:0", "-map", "0:a?", "-vf", "fps=\(fps)"]
-            + FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
+            + FFmpegEdits.videoEncoding(for: video, container: KeepFormat.container(for: url)) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: KeepFormat.container(for: url))
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -114,7 +114,7 @@ extension MediaTools {
     /// file keeps its own format (see `KeepFormat`); a video keeps its container.
     static func soundPlan(_ url: URL, probed: ProbedMedia, ffmpeg: URL) -> (container: String, encode: @Sendable (Int, ProbedMedia.Audio) -> [String]) {
         if probed.video != nil {
-            let container = videoContainer(for: url).pathExtension
+            let container = KeepFormat.container(for: url)
             return (container, { index, track in FFmpegEdits.filteredAudio(container, track: track, index: index) })
         }
         let plan = KeepFormat.audio(for: url, track: probed.audio.first, encoders: FFmpegEncoders.available(in: ffmpeg))
@@ -234,9 +234,11 @@ extension FFmpegEdits {
     /// The codec for filtered sound in `container`: lossless containers stay
     /// lossless, and a video's sound keeps its codec when the container holds it.
     static func filteredAudio(_ container: String, track: ProbedMedia.Audio, index: Int) -> [String] {
-        if ["mp4", "m4v", "mov"].contains(container), KeepFormat.holds(container, audio: track.codec), let encoder = KeepFormat.encoder(forAudioCodec: track.codec) {
+        if ["mp4", "m4v", "mov", "mkv", "webm", "avi"].contains(container), KeepFormat.holds(container, audio: track.codec), let encoder = KeepFormat.encoder(forAudioCodec: track.codec) {
             let rate: [String] = ["aac", "libmp3lame", "ac3", "eac3", "libopus"].contains(encoder) ? ["-b:a:\(index)", "\(track.bitRate ?? AudioBitRate.target(for: .aac, source: track.source))"] : []
-            return ["-c:a:\(index)", encoder] + rate
+            // ffmpeg's own Vorbis encoder is experimental and stereo only.
+            let vorbis: [String] = encoder == "vorbis" ? ["-strict", "experimental", "-ac:a:\(index)", "2"] : []
+            return ["-c:a:\(index)", encoder] + rate + vorbis
         }
         return switch container {
         case "wav": ["-c:a:\(index)", "pcm_s16le"]

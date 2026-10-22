@@ -12,12 +12,12 @@ extension MediaTools {
     static func muteWithFFmpeg(_ url: URL, ffmpeg: URL, tools: ExternalTools, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard let video = probed.video else { throw MediaToolError.noVideo(url) }
-        let destination = OutputNaming.destination(for: url, suffix: "Muted", pathExtension: videoContainer(for: url).pathExtension)
+        let destination = OutputNaming.destination(for: url, suffix: "Muted", pathExtension: KeepFormat.container(for: url))
         try SaveError.checkWritable(destination)
 
         // Every picture stream, copied, unless the container can't hold its codec.
         let input: [String] = ["-i", url.path, "-map", "0:V"]
-        let attempts: [[String]] = [input + FFmpegEdits.videoCopy(for: video), input + FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension)]
+        let attempts: [[String]] = [input + FFmpegEdits.videoCopy(for: video), input + FFmpegEdits.videoEncoding(for: video, container: KeepFormat.container(for: url))]
         try await FFmpegJob.export(ffmpeg, attempts: attempts, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -36,10 +36,10 @@ extension MediaTools {
         let pathExtension: String
         let streams: [String]
         if let video = probed.video {
-            pathExtension = videoContainer(for: url).pathExtension
+            pathExtension = KeepFormat.container(for: url)
             // A cut rarely falls on a keyframe, so the picture is re-encoded to
             // start exactly there; AAC sound is copied.
-            streams = ["-map", "0:V", "-map", "0:a?"] + FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
+            streams = ["-map", "0:V", "-map", "0:a?"] + FFmpegEdits.videoEncoding(for: video, container: KeepFormat.container(for: url)) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: KeepFormat.container(for: url))
         } else {
             guard !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
             let sound = soundPlan(url, probed: probed, ffmpeg: ffmpeg)
@@ -75,13 +75,13 @@ extension MediaTools {
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard let video = probed.video else { throw MediaToolError.noVideo(url) }
         let crop = evenRect(rect.integral.intersection(CGRect(origin: .zero, size: video.displaySize)))
-        let destination = OutputNaming.destination(for: url, suffix: "Cropped", pathExtension: videoContainer(for: url).pathExtension)
+        let destination = OutputNaming.destination(for: url, suffix: "Cropped", pathExtension: KeepFormat.container(for: url))
         try SaveError.checkWritable(destination)
 
         // ffmpeg turns frames upright before filtering them, so the crop
         // applies to the picture as the editor showed it.
         var arguments: [String] = ["-i", url.path, "-map", "0:V:0", "-map", "0:a?", "-vf", FFmpegEdits.cropFilter(crop)]
-        arguments += FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
+        arguments += FFmpegEdits.videoEncoding(for: video, container: KeepFormat.container(for: url)) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: KeepFormat.container(for: url))
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -95,20 +95,21 @@ extension MediaTools {
     ) async throws -> URL {
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard let video = probed.video else { throw MediaToolError.noVideo(url) }
-        let destination = OutputNaming.destination(for: url, suffix: "Rotated", pathExtension: videoContainer(for: url).pathExtension)
+        let destination = OutputNaming.destination(for: url, suffix: "Rotated", pathExtension: KeepFormat.container(for: url))
         try SaveError.checkWritable(destination)
 
         let streams: [String] = ["-map", "0:V:0", "-map", "0:a?"]
-        let audio: [String] = FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
+        let audio: [String] = FFmpegEdits.audioCopyOrAAC(probed.audio, container: KeepFormat.container(for: url))
         var attempts: [[String]] = []
-        if rotation.isLossless {
+        // AVI has no rotation tag, so a turn there rewrites the frames.
+        if rotation.isLossless, KeepFormat.container(for: url) != "avi" {
             // As with AVFoundation, a turn only changes the angle players show
             // the frames at. ffmpeg before 6.0 can't set it, and re-encodes.
             let angle: Int = FFmpegEdits.displayRotation(turning: video, by: rotation)
             attempts.append(["-display_rotation:v:0", "\(angle)", "-i", url.path] + streams + FFmpegEdits.videoCopy(for: video) + audio)
         }
         let turned: [String] = ["-i", url.path] + streams + ["-vf", FFmpegEdits.rotationFilter(rotation)]
-        attempts.append(turned + FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + audio)
+        attempts.append(turned + FFmpegEdits.videoEncoding(for: video, container: KeepFormat.container(for: url)) + audio)
         try await FFmpegJob.export(ffmpeg, attempts: attempts, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
@@ -180,6 +181,14 @@ enum FFmpegEdits {
             return ["-c:v", "prores_ks", "-profile:v", "\(profile)", "-pix_fmt", profile >= 4 ? "yuva444p10le" : "yuv422p10le"]
         case "mpeg4":
             return ["-c:v", "mpeg4", "-q:v", "2", "-pix_fmt", "yuv420p"]
+        // Matroska and WebM hold the open codecs; Apple's containers get H.264 below.
+        case "vp9" where ["mkv", "webm"].contains(container):
+            return ["-c:v", "libvpx-vp9", "-crf", "30", "-b:v", "0", "-deadline", "good", "-cpu-used", "4", "-row-mt", "1",
+                    "-pix_fmt", keptPixelFormat(video, allowed: ["yuv420p", "yuv420p10le", "yuv444p"], otherwise: "yuv420p")]
+        case "vp8" where ["mkv", "webm"].contains(container):
+            return ["-c:v", "libvpx", "-crf", "10", "-b:v", "2M", "-pix_fmt", "yuv420p"]
+        case "av1" where ["mkv", "webm", "mp4"].contains(container):
+            return ["-c:v", "libsvtav1", "-preset", "8", "-crf", "30", "-pix_fmt", keptPixelFormat(video, allowed: ["yuv420p", "yuv420p10le"], otherwise: "yuv420p")]
         default:
             if video?.isHDR == true { return hevc + ["-pix_fmt", "yuv420p10le"] }
             return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", keptPixelFormat(video, allowed: ["yuv420p", "yuv422p", "yuv444p"], otherwise: "yuv420p")]
@@ -218,7 +227,14 @@ enum FFmpegEdits {
         var arguments: [String] = []
         for (index, track) in tracks.enumerated() {
             let copies = container.map { KeepFormat.holds($0, audio: track.codec) } ?? (track.codec == "aac")
-            arguments += copies ? ["-c:a:\(index)", "copy"] : aac(track, index: index)
+            if copies {
+                arguments += ["-c:a:\(index)", "copy"]
+            } else if container == "webm" {
+                // WebM holds only Opus and Vorbis.
+                arguments += ["-c:a:\(index)", "libopus", "-b:a:\(index)", "\(track.bitRate ?? 128_000)"]
+            } else {
+                arguments += aac(track, index: index)
+            }
         }
         return arguments
     }

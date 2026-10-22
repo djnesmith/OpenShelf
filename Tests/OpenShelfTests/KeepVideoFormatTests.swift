@@ -98,4 +98,94 @@ struct KeepVideoFormatTests {
             }
         }
     }
+
+    // MARK: MKV, WebM and AVI, through ffmpeg
+
+    /// H.264 + AAC in MKV, VP9 + Opus in WebM, MPEG-4 + MP3 in AVI.
+    func ffmpegSources() throws -> [String: URL] {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("openshelf-keepffmpeg-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let input = ["-f", "lavfi", "-i", "testsrc=duration=2:size=320x240:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:duration=2:sample_rate=48000"]
+        let recipes: [(String, [String])] = [
+            ("clip.mkv", ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "2"]),
+            ("clip.webm", ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "500k", "-c:a", "libopus", "-ac", "2"]),
+            ("clip.avi", ["-c:v", "mpeg4", "-q:v", "4", "-c:a", "libmp3lame", "-ac", "2"]),
+        ]
+        var urls: [String: URL] = [:]
+        for (name, codecs) in recipes {
+            let url = folder.appendingPathComponent(name)
+            let process = Process()
+            process.executableURL = Self.ffmpeg
+            process.arguments = ["-y", "-loglevel", "error"] + input + codecs + [url.path]
+            try process.run()
+            process.waitUntilExit()
+            urls[name] = url
+        }
+        return urls
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func ffmpegContainersKeepTheirFormat() async throws {
+        let files = try ffmpegSources()
+        let tools = tools
+        typealias Edit = (name: String, run: @Sendable (URL) async throws -> URL)
+        let edits: [Edit] = [
+            ("grayscale", { try await MediaTools.grayscale($0, tools: tools) { _ in } }),
+            ("crop", { try await MediaTools.crop($0, to: CGRect(x: 0, y: 0, width: 160, height: 120), tools: tools) { _ in } }),
+            ("flip", { try await MediaTools.rotate($0, by: .flipHorizontal, tools: tools) { _ in } }),
+            ("turn", { try await MediaTools.rotate($0, by: .right, tools: tools) { _ in } }),
+            ("trim", { try await MediaTools.trim($0, range: CMTimeRange(start: .zero, duration: MediaTime.cmTime(1)), tools: tools) { _ in } }),
+            ("speed", { try await MediaTools.changeSpeed($0, rate: 2, keepsPitch: true, tools: tools) { _ in } }),
+            ("reverse", { try await MediaTools.reverse($0, tools: tools) { _ in } }),
+            ("frame rate", { try await MediaTools.changeFrameRate($0, to: 30, tools: tools) { _ in } }),
+            ("volume", { try await MediaTools.changeVolume($0, by: 3, tools: tools) { _ in } }),
+            ("loudness", { try await MediaTools.normalizeLoudness($0, tools: tools) { _ in } }),
+            ("metadata", { try await MediaTools.stripMetadata($0, tools: tools) { _ in } }),
+            ("mute", { try await MediaTools.mute($0, tools: tools) { _ in } }),
+        ]
+        for (fileName, source) in files.sorted(by: { $0.key < $1.key }) {
+            let original = try await probe(source)
+            for edit in edits {
+                let label = "\(edit.name) on \(fileName)"
+                let output: URL
+                do { output = try await edit.run(source) } catch {
+                    Issue.record("\(label) failed: \(error.localizedDescription)")
+                    continue
+                }
+                #expect(output.pathExtension == source.pathExtension, "\(label): \(output.lastPathComponent)")
+                let edited = try await probe(output)
+                #expect(edited.video?.codec == original.video?.codec, "\(label): \(edited.video?.codec ?? "none")")
+                if edit.name == "mute" {
+                    #expect(edited.audio.isEmpty, "\(label)")
+                } else {
+                    #expect(edited.audio.first?.codec == original.audio.first?.codec, "\(label): \(edited.audio.first?.codec ?? "none")")
+                }
+                if edit.name == "turn" {
+                    #expect(edited.video?.displaySize == CGSize(width: 240, height: 320), "\(label): \(String(describing: edited.video?.displaySize))")
+                }
+                try? FileManager.default.removeItem(at: output)
+            }
+            let frame = try await MediaTools.stillFrame(source, at: 1, tools: tools)
+            #expect(frame.pathExtension == "png", "still frame on \(fileName)")
+        }
+    }
+
+    /// The editors' loading, which shows frames ffmpeg decodes for files AVFoundation can't open.
+    @MainActor
+    @Test(.enabled(if: hasFFmpeg)) func editorsOpenFFmpegContainers() async throws {
+        for (name, url) in try ffmpegSources().sorted(by: { $0.key < $1.key }) {
+            let trim = TrimModel(url: url)
+            await trim.load()
+            #expect(trim.loadError == nil && trim.duration > 1.5, "trim \(name): \(trim.loadError ?? "")")
+            let crop = VideoCropModel(url: url)
+            await crop.load()
+            #expect(crop.frame != nil && crop.loadError == nil, "crop \(name)")
+            let rotate = RotateModel(url: url)
+            await rotate.load()
+            #expect(rotate.frame != nil && rotate.loadError == nil, "rotate \(name)")
+            let still = StillFrameModel(url: url)
+            await still.load()
+            await still.updatePreview()
+            #expect(still.preview != nil && still.loadError == nil, "still \(name)")
+        }
+    }
 }

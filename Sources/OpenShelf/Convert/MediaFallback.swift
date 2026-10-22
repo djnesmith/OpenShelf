@@ -19,6 +19,10 @@ enum MediaFallback {
         native: () async throws -> T,
         fallback: (_ ffmpeg: URL) async throws -> T
     ) async throws -> T {
+        // MKV, WebM and AVI are edited only through ffmpeg, which keeps their container.
+        if let source, KeepFormat.isFFmpegContainer(source), let ffmpeg = tools.ffmpeg {
+            return try await fallback(ffmpeg)
+        }
         do {
             return try await native()
         } catch {

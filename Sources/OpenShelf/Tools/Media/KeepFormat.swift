@@ -87,12 +87,27 @@ enum KeepFormat {
 
     // MARK: Video
 
+    /// Video containers only ffmpeg edits.
+    static let ffmpegContainers: Set<String> = ["mkv", "webm", "avi"]
+
+    static func isFFmpegContainer(_ url: URL) -> Bool {
+        ffmpegContainers.contains(url.resolvingSymlinksInPath().pathExtension.lowercased())
+    }
+
+    /// The container an ffmpeg edit of the video `url` writes: its own.
+    static func container(for url: URL) -> String {
+        isFFmpegContainer(url) ? url.pathExtension.lowercased() : MediaTools.videoContainer(for: url).pathExtension
+    }
+
     /// Whether a video container holds sound in `codec`, so an edit can keep it.
     static func holds(_ container: String, audio codec: String) -> Bool {
         let mp4: Set<String> = ["aac", "alac", "mp3", "ac3", "eac3", "flac", "opus"]
         switch container {
         case "mp4", "m4v": return mp4.contains(codec)
         case "mov": return mp4.contains(codec) || codec.hasPrefix("pcm_")
+        case "mkv": return true
+        case "webm": return ["opus", "vorbis"].contains(codec)
+        case "avi": return ["mp3", "ac3", "aac"].contains(codec) || codec.hasPrefix("pcm_")
         default: return false
         }
     }
@@ -103,6 +118,7 @@ enum KeepFormat {
         case "aac", "alac", "ac3", "eac3", "flac": codec
         case "mp3": "libmp3lame"
         case "opus": "libopus"
+        case "vorbis": "vorbis"
         default: codec.hasPrefix("pcm_") ? codec : nil
         }
     }

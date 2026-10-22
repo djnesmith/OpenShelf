@@ -36,10 +36,10 @@ extension MediaTools {
     static func grayscaleWithFFmpeg(_ url: URL, ffmpeg: URL, tools: ExternalTools, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
         let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
         guard let video = probed.video else { throw MediaToolError.noVideo(url) }
-        let destination = OutputNaming.destination(for: url, suffix: "Grayscale", pathExtension: videoContainer(for: url).pathExtension)
+        let destination = OutputNaming.destination(for: url, suffix: "Grayscale", pathExtension: KeepFormat.container(for: url))
         try SaveError.checkWritable(destination)
         var arguments: [String] = ["-i", url.path, "-map", "0:V:0", "-map", "0:a?", "-vf", "hue=s=0"]
-        arguments += FFmpegEdits.videoEncoding(for: video, container: videoContainer(for: url).pathExtension) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: videoContainer(for: url).pathExtension)
+        arguments += FFmpegEdits.videoEncoding(for: video, container: KeepFormat.container(for: url)) + FFmpegEdits.audioCopyOrAAC(probed.audio, container: KeepFormat.container(for: url))
         try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }

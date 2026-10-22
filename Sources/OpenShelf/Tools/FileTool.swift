@@ -137,12 +137,18 @@ enum FileTool: CaseIterable, Hashable {
         "mp4", "mov", "m4v", "3gp", "m4a", "mp3", "wav", "aif", "aiff", "caf", "aac", "flac", "ogg", "opus",
     ]
 
+    /// Whether the media tools can edit `url`: what Apple's media framework
+    /// edits, and with ffmpeg also MKV, WebM and AVI (see `KeepFormat`).
+    static func isEditable(_ url: URL, tools: ExternalTools = .current) -> Bool {
+        editableMediaExtensions.contains(url.resolvingSymlinksInPath().pathExtension.lowercased())
+            || (tools.ffmpeg != nil && KeepFormat.isFFmpegContainer(url))
+    }
+
     /// Whether every file is audio or video the media tools can't open.
-    static func needsConversionForTools(_ urls: [URL]) -> Bool {
+    static func needsConversionForTools(_ urls: [URL], tools: ExternalTools = .current) -> Bool {
         !urls.isEmpty && urls.allSatisfy { url in
             let kind = FileKind(url: url)
-            return (kind == .video || kind == .audio)
-                && !editableMediaExtensions.contains(url.resolvingSymlinksInPath().pathExtension.lowercased())
+            return (kind == .video || kind == .audio) && !isEditable(url, tools: tools)
         }
     }
 
@@ -186,8 +192,7 @@ enum FileTool: CaseIterable, Hashable {
             let singlePage: [FileTool] = urls.count == 1 ? [.organizePages, .splitPDF, .pdfImages] : []
             return combine + singlePage + [.compressPDF, .pdfMetadata, .ocr]
         }
-        if kinds.isSubset(of: [.video, .audio]),
-           !urls.allSatisfy({ editableMediaExtensions.contains($0.resolvingSymlinksInPath().pathExtension.lowercased()) }) {
+        if kinds.isSubset(of: [.video, .audio]), !urls.allSatisfy({ isEditable($0, tools: tools) }) {
             return []
         }
         let merge: [FileTool] = urls.count > 1 ? [.mergeMedia] : []

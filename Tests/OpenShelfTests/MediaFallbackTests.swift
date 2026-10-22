@@ -356,8 +356,8 @@ struct ProbedMediaTests {
         #expect(FileKind(url: script) != .video)
         #expect(ConversionCatalog.formats(for: [script], tools: ExternalTools(ffmpeg: URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg"), cwebp: nil)).contains(.mp4) == false)
         // MPEG-TS converts with ffmpeg, but isn't edited directly.
-        #expect(FileTool.available(for: [stream]).isEmpty)
-        #expect(FileTool.needsConversionForTools([stream]))
+        #expect(FileTool.available(for: [stream], tools: ExternalTools()).isEmpty)
+        #expect(FileTool.needsConversionForTools([stream], tools: ExternalTools()))
     }
 }
 
