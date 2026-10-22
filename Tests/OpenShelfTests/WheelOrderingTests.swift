@@ -16,7 +16,7 @@ struct WheelOrderingTests {
     }
 
     private func tools(_ urls: [URL]) -> [FileTool] {
-        WheelOrdering.tools(FileTool.available(for: urls))
+        WheelOrdering.tools(FileTool.available(for: urls, tools: ExternalTools()))
     }
 
     private func formats(_ urls: [URL], _ tools: ExternalTools) -> [OutputFormat] {

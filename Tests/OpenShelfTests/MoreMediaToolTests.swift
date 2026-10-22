@@ -69,4 +69,48 @@ struct MoreMediaToolTests {
         let jpeg = try await MediaTools.stillFrame(clip, at: 1.5, as: .jpeg, tools: tools)
         #expect(jpeg.lastPathComponent == "clip Frame 1.5s.jpeg")
     }
+
+    // MARK: Reverse
+
+    @Test func reverseArguments() {
+        let probed = ProbedMedia(
+            duration: 3,
+            video: ProbedMedia.Video(width: 320, height: 240, codec: "h264"),
+            audio: [ProbedMedia.Audio(codec: "aac", channels: 2)]
+        )
+        let arguments = FFmpegEdits.reverse(probed)
+        #expect(arguments.starts(with: ["-filter_complex", "[0:V:0]reverse[v];[0:a:0]areverse[a0]", "-map", "[v]"]))
+        #expect(arguments.contains("[a0]"))
+    }
+
+    @Test func reverseRefusesWhatWouldNotFitInMemory() throws {
+        // 1080p at 30 fps holds about 93 MB a second, so 2 GB is about 21 seconds.
+        let video = ProbedMedia.Video(width: 1920, height: 1080, frameRate: "30/1", codec: "h264")
+        #expect(throws: Never.self) { try ReverseLimit.check(ProbedMedia(duration: 20, video: video, audio: [])) }
+        #expect(throws: MediaToolError.self) { try ReverseLimit.check(ProbedMedia(duration: 60, video: video, audio: [])) }
+        // An hour of stereo sound is about 1.4 GB: fine.
+        #expect(throws: Never.self) {
+            try ReverseLimit.check(ProbedMedia(duration: 3600, video: nil, audio: [ProbedMedia.Audio(codec: "aac", channels: 2, sampleRate: 48_000)]))
+        }
+    }
+
+    @Test func ffmpegOnlyToolsNeedFFmpeg() {
+        let clip = [URL(fileURLWithPath: "/tmp/a.mov")]
+        #expect(!FileTool.available(for: clip, tools: ExternalTools()).contains(.reverse))
+        #expect(FileTool.available(for: clip, tools: tools).contains(.reverse))
+        #expect(FileTool.available(for: [URL(fileURLWithPath: "/tmp/a.m4a")], tools: tools).contains(.reverse))
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func reversesPictureAndSound() async throws {
+        let folder = try workspace()
+        let output = try await MediaTools.reverse(folder.appendingPathComponent("clip.mp4"), tools: tools) { _ in }
+        #expect(output.lastPathComponent == "clip Reversed.mp4")
+        let probed = try await probe(output)
+        #expect(probed.video?.width == 320)
+        #expect(probed.audio.count == 1)
+        #expect(abs(probed.duration - 3) < 0.2)
+
+        let sound = try await MediaTools.reverse(folder.appendingPathComponent("tone.m4a"), tools: tools) { _ in }
+        #expect(sound.lastPathComponent == "tone Reversed.m4a")
+    }
 }

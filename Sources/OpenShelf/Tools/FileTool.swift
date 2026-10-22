@@ -29,6 +29,7 @@ enum FileTool: CaseIterable, Hashable {
     case splitMedia
     case rotateVideo
     case stillFrame
+    case reverse
 
     var title: String {
         switch self {
@@ -56,6 +57,7 @@ enum FileTool: CaseIterable, Hashable {
         case .splitMedia: "Split"
         case .rotateVideo: "Rotate"
         case .stillFrame: "Still"
+        case .reverse: "Reverse"
         }
     }
 
@@ -81,6 +83,7 @@ enum FileTool: CaseIterable, Hashable {
         case .splitMedia: "scissors"
         case .rotateVideo: "rotate.right"
         case .stillFrame: "photo"
+        case .reverse: "backward"
         }
     }
 
@@ -124,7 +127,7 @@ enum FileTool: CaseIterable, Hashable {
     }
 
     /// Tools that apply to every file in `urls`; `WheelOrdering` orders long lists for the wheel.
-    static func available(for urls: [URL]) -> [FileTool] {
+    static func available(for urls: [URL], tools: ExternalTools = .current) -> [FileTool] {
         guard !urls.isEmpty else { return [] }
         let kinds = Set(urls.map { FileKind(url: $0) })
         let combine: [FileTool] = urls.count > 1 && kinds.isSubset(of: [.image, .pdf]) ? [.combinePDF] : []
@@ -141,11 +144,14 @@ enum FileTool: CaseIterable, Hashable {
             return []
         }
         let merge: [FileTool] = urls.count > 1 ? [.mergeMedia] : []
+        // Tools only ffmpeg does.
+        let hasFFmpeg = tools.ffmpeg != nil
         if kinds == [.video] {
             return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame]
+                + (hasFFmpeg ? [.reverse] : [])
         }
         if kinds == [.audio] {
-            return merge + [.trim, .speed, .splitMedia]
+            return merge + [.trim, .speed, .splitMedia] + (hasFFmpeg ? [.reverse] : [])
         }
         return combine
     }
