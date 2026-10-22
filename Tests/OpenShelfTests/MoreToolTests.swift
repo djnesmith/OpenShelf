@@ -104,4 +104,29 @@ struct MoreToolTests {
     @Test func tellsWhyNothingWasSent() {
         #expect(TranscriptionError.notOnDevice("English").localizedDescription.contains("nothing was sent"))
     }
+
+    // MARK: PDF pages as images
+
+    @Test func selectsPages() {
+        #expect(PDFTools.selectedPages("", pageCount: 3) == .success([0, 1, 2]))
+        #expect(PDFTools.selectedPages("3, 1-2, 2", pageCount: 5) == .success([0, 1, 2]))
+        #expect(PDFTools.selectedPages("4-", pageCount: 5) == .success([3, 4]))
+        guard case .failure = PDFTools.selectedPages("9", pageCount: 5) else { Issue.record("page 9 of 5 accepted"); return }
+    }
+
+    @Test func savesChosenPagesAtTheResolution() async throws {
+        let folder = try workspace()
+        // Three A4-ish pages (595×842 pt) from three pictures.
+        let document = PDFDocument()
+        for number in 1...3 {
+            let page = try #require(PDFPage(image: NSImage(cgImage: try Self.picture(of: "Page \(number)"), size: NSSize(width: 595, height: 842))))
+            document.insert(page, at: document.pageCount)
+        }
+        let pdf = folder.appendingPathComponent("Doc.pdf")
+        #expect(document.write(to: pdf))
+        let outputs = try await PDFTools.exportImages(of: pdf, pages: [0, 2], as: .png, dpi: 144)
+        #expect(outputs.map(\.lastPathComponent) == ["Doc Page 1.png", "Doc Page 3.png"])
+        let image = try EditableImage.load(outputs[0]).cgImage
+        #expect(image.width == 1190 && image.height == 1684)
+    }
 }

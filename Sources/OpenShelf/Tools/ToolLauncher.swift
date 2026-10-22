@@ -71,6 +71,9 @@ enum ToolLauncher {
                 try await Transcription.transcribe(sources[0], progress: progress)
             }
 
+        case .pdfImages:
+            EditorWindowController.present(size: PDFImagesEditor.windowSize, near: location) { PDFImagesEditor(url: first, actions: $0) }
+
         case .organizePages:
             EditorWindowController.present(size: PDFPagesEditor.windowSize, near: location) { PDFPagesEditor(url: first, actions: $0) }
         case .splitPDF:

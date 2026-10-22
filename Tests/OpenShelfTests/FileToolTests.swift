@@ -19,7 +19,7 @@ struct FileToolTests {
     }
 
     @Test func singlePDFGetsPageTools() {
-        #expect(FileTool.available(for: urls("a.pdf"), tools: ExternalTools()) == [.organizePages, .splitPDF, .compressPDF, .pdfMetadata, .ocr])
+        #expect(FileTool.available(for: urls("a.pdf"), tools: ExternalTools()) == [.organizePages, .splitPDF, .pdfImages, .compressPDF, .pdfMetadata, .ocr])
     }
 
     @Test func severalPDFsGetCombineButNotPageTools() {

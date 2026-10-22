@@ -131,7 +131,7 @@ enum PDFConversion {
         return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 
-    private static func renderPage(_ page: PDFPage, dpi: Double) -> CGImage? {
+    static func renderPage(_ page: PDFPage, dpi: Double) -> CGImage? {
         let size = displaySize(of: page)
         let pixels = CGSize(width: size.width * dpi / 72, height: size.height * dpi / 72)
         var rect = CGRect(origin: .zero, size: pixels)

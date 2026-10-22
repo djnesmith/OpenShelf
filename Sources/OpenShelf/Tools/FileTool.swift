@@ -39,6 +39,7 @@ enum FileTool: CaseIterable, Hashable {
     case transcribe
     case fitSize
     case compressAudio
+    case pdfImages
 
     var title: String {
         switch self {
@@ -76,6 +77,7 @@ enum FileTool: CaseIterable, Hashable {
         case .transcribe: "Transcribe"
         case .fitSize: "Fit Size"
         case .compressAudio: "Compress"
+        case .pdfImages: "Images"
         }
     }
 
@@ -107,6 +109,7 @@ enum FileTool: CaseIterable, Hashable {
         case .grayscale: "circle.lefthalf.filled"
         case .volume: "speaker.wave.3"
         case .ocr: "text.viewfinder"
+        case .pdfImages: "photo.on.rectangle.angled"
         case .transcribe: "captions.bubble"
         case .fitSize: "externaldrive.badge.checkmark"
         }
@@ -161,7 +164,7 @@ enum FileTool: CaseIterable, Hashable {
             return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr] + combine
         }
         if kinds == [.pdf] {
-            let singlePage: [FileTool] = urls.count == 1 ? [.organizePages, .splitPDF] : []
+            let singlePage: [FileTool] = urls.count == 1 ? [.organizePages, .splitPDF, .pdfImages] : []
             return combine + singlePage + [.compressPDF, .pdfMetadata, .ocr]
         }
         if kinds.isSubset(of: [.video, .audio]),
