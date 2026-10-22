@@ -464,4 +464,14 @@ struct MoreMediaToolTests {
         #expect(mka.lastPathComponent == "tone MKA.mka")
         #expect(try await probe(mka).audio.first?.codec == "aac")
     }
+
+    /// A frame ffmpeg decodes is read into memory before its temporary PNG is
+    /// deleted, so it can still be saved afterwards.
+    @Test(.enabled(if: hasFFmpeg)) func ffmpegFramesOutliveTheirTemporaryFile() async throws {
+        let folder = try workspace()
+        let image = try await MediaLoading.frame(of: folder.appendingPathComponent("clip.mp4"), at: 1, maximumSize: 400, ffmpeg: Self.ffmpeg)
+        let saved = folder.appendingPathComponent("frame.png")
+        try EditableImage.write(image, to: saved, type: .png)
+        #expect(try EditableImage.load(saved).cgImage.width == 320)
+    }
 }
