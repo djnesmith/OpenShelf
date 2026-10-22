@@ -32,6 +32,7 @@ enum FileTool: CaseIterable, Hashable {
     case reverse
     case mediaMetadata
     case mono
+    case normalize
 
     var title: String {
         switch self {
@@ -62,6 +63,7 @@ enum FileTool: CaseIterable, Hashable {
         case .reverse: "Reverse"
         case .mediaMetadata: "Metadata"
         case .mono: "Mono"
+        case .normalize: "Loudness"
         }
     }
 
@@ -89,6 +91,7 @@ enum FileTool: CaseIterable, Hashable {
         case .stillFrame: "photo"
         case .reverse: "backward"
         case .mono: "speaker.wave.1"
+        case .normalize: "waveform"
         }
     }
 
@@ -153,10 +156,10 @@ enum FileTool: CaseIterable, Hashable {
         let hasFFmpeg = tools.ffmpeg != nil
         if kinds == [.video] {
             return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame]
-                + (hasFFmpeg ? [.reverse, .mediaMetadata] : [])
+                + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize] : [])
         }
         if kinds == [.audio] {
-            return merge + [.trim, .speed, .splitMedia] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono] : [])
+            return merge + [.trim, .speed, .splitMedia] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize] : [])
         }
         return combine
     }

@@ -50,6 +50,22 @@ extension MediaTools {
         return destination
     }
 
+    // MARK: Normalize loudness
+
+    /// Every sound track brought to -16 LUFS (EBU R128), the level podcasts
+    /// and streaming use. A video's picture is copied as it is.
+    static func normalizeLoudness(_ url: URL, tools: ExternalTools = .current, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
+        let ffmpeg = try requireFFmpeg(tools)
+        let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
+        guard !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
+        let container = probed.video != nil ? videoContainer(for: url).pathExtension : FFmpegEdits.filteredAudioContainer(for: url)
+        let destination = OutputNaming.destination(for: url, suffix: "Normalized", pathExtension: container)
+        try SaveError.checkWritable(destination)
+        let arguments: [String] = ["-i", url.path] + FFmpegEdits.normalizeLoudness(probed, container: container)
+        try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
+        return destination
+    }
+
     static func requireFFmpeg(_ tools: ExternalTools) throws -> URL {
         guard let ffmpeg = tools.ffmpeg else { throw MissingToolError(name: "ffmpeg") }
         return ffmpeg
@@ -111,6 +127,25 @@ extension FFmpegEdits {
     }
 
     // MARK: Sound filters
+
+    /// Target loudness for `normalizeLoudness`, in LUFS.
+    static let loudnessTarget = -16
+
+    /// Every sound track through ffmpeg's one-pass `loudnorm`, resampled back
+    /// to its own rate (loudnorm works at 192 kHz). A picture is copied.
+    static func normalizeLoudness(_ probed: ProbedMedia, container: String) -> [String] {
+        var graph: [String] = []
+        var arguments: [String] = []
+        if let video = probed.video {
+            arguments += ["-map", "0:V:0"] + videoCopy(for: video)
+        }
+        for (index, track) in probed.audio.enumerated() {
+            let rate = Int((track.sampleRate ?? 48_000).rounded())
+            graph.append("[0:a:\(index)]loudnorm=I=\(loudnessTarget):TP=-1.5:LRA=11,aresample=\(rate)[a\(index)]")
+            arguments += ["-map", "[a\(index)]"] + filteredAudio(container, track: track, index: index)
+        }
+        return ["-filter_complex", graph.joined(separator: ";")] + arguments
+    }
 
     /// Where filtered sound goes: WAV, AIFF and FLAC stay as they are; the
     /// rest (MP3, Ogg, CAF…) become M4A.

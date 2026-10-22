@@ -168,4 +168,47 @@ struct MoreMediaToolTests {
         #expect(output.lastPathComponent == "tone Mono.m4a")
         #expect(try await probe(output).audio.first?.channels == 1)
     }
+
+    // MARK: Loudness
+
+    /// Integrated loudness in LUFS, as ffmpeg's EBU R128 meter reports it.
+    func loudness(_ url: URL) throws -> Double {
+        let process = Process()
+        process.executableURL = Self.ffmpeg
+        process.arguments = ["-nostats", "-i", url.path, "-map", "0:a:0", "-af", "ebur128", "-f", "null", "-"]
+        let pipe = Pipe()
+        process.standardError = pipe
+        try process.run()
+        let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        // The summary's "I:  -16.0 LUFS" line comes last.
+        let line = try #require(text.components(separatedBy: "\n").last { $0.contains("I:") && $0.contains("LUFS") })
+        let number = line.components(separatedBy: "I:")[1].trimmingCharacters(in: .whitespaces).components(separatedBy: " ")[0]
+        return try #require(Double(number))
+    }
+
+    @Test func loudnessKeepsThePictureAndSampleRate() {
+        let probed = ProbedMedia(
+            duration: 3,
+            video: ProbedMedia.Video(width: 320, height: 240, codec: "h264"),
+            audio: [ProbedMedia.Audio(codec: "aac", channels: 2, sampleRate: 44_100)]
+        )
+        let arguments = FFmpegEdits.normalizeLoudness(probed, container: "mp4")
+        #expect(arguments.contains("[0:a:0]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100[a0]"))
+        #expect(arguments.starts(with: ["-filter_complex"]) && arguments.contains("copy"))
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func bringsSoundToTheTarget() async throws {
+        let folder = try workspace()
+        let tone = folder.appendingPathComponent("tone.m4a")
+        #expect(abs(try loudness(tone) - -16) > 2)
+        let output = try await MediaTools.normalizeLoudness(tone, tools: tools) { _ in }
+        #expect(output.lastPathComponent == "tone Normalized.m4a")
+        #expect(abs(try loudness(output) - -16) < 1.5)
+        #expect(try await probe(output).audio.first?.sampleRate == 44_100)
+
+        let clip = try await MediaTools.normalizeLoudness(folder.appendingPathComponent("clip.mp4"), tools: tools) { _ in }
+        #expect(clip.lastPathComponent == "clip Normalized.mp4")
+        #expect(try await probe(clip).video?.codec == "h264")
+    }
 }
