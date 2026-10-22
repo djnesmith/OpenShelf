@@ -1,7 +1,7 @@
 import Observation
 import SwiftUI
 
-/// Saves videos in another file type and codec.
+/// Saves videos in another file type and codec, or sound in another format.
 struct MediaExportEditor: View {
     static let windowSize = CGSize(width: 440, height: 280)
 
@@ -26,19 +26,32 @@ struct MediaExportEditor: View {
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                EditorRow(label: "File type") {
-                    Picker("File type", selection: $model.container) {
-                        ForEach(VideoContainer.allCases) { Text($0.title).tag($0) }
+                if model.isAudio {
+                    EditorRow(label: "Format") {
+                        Picker("Format", selection: $model.audioFormat) {
+                            ForEach(model.audioFormats) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
-                    .labelsHidden()
-                    .onChange(of: model.container) { _, _ in model.pickUsableCodec() }
-                }
-                EditorRow(label: "Video") {
-                    Picker("Video codec", selection: $model.codec) {
-                        ForEach(model.codecs) { Text($0.title).tag($0) }
+                    Text(model.audioFormat.detail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    EditorRow(label: "File type") {
+                        Picker("File type", selection: $model.container) {
+                            ForEach(VideoContainer.allCases) { Text($0.title).tag($0) }
+                        }
+                        .labelsHidden()
+                        .onChange(of: model.container) { _, _ in model.pickUsableCodec() }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    EditorRow(label: "Video") {
+                        Picker("Video codec", selection: $model.codec) {
+                            ForEach(model.codecs) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
                 }
                 if let progress = model.progress {
                     MediaExportProgress(progress: progress, detail: model.detail)
@@ -56,6 +69,10 @@ final class MediaExportModel {
     let urls: [URL]
     var container = VideoContainer.mp4
     var codec = VideoCodec.h264
+    var audioFormat = AudioExportFormat.aac
+    /// Every file is sound only.
+    let isAudio: Bool
+    private let hasFFmpeg: Bool
     private(set) var progress: Double?
     private(set) var detail: String?
     /// Encoders this ffmpeg has.
@@ -64,6 +81,8 @@ final class MediaExportModel {
 
     init(urls: [URL], tools: ExternalTools = .current) {
         self.urls = urls
+        isAudio = urls.allSatisfy { FileKind(url: $0) == .audio }
+        hasFFmpeg = tools.ffmpeg != nil
         encoders = tools.ffmpeg.map(FFmpegEncoders.available(in:)) ?? []
     }
 
@@ -75,7 +94,12 @@ final class MediaExportModel {
         container.codecs.filter { encoders.contains($0.encoder) }
     }
 
-    var isValid: Bool { codecs.contains(codec) }
+    /// Vorbis needs ffmpeg; the rest are macOS's own.
+    var audioFormats: [AudioExportFormat] {
+        AudioExportFormat.allCases.filter { $0 != .vorbis || hasFFmpeg }
+    }
+
+    var isValid: Bool { isAudio || codecs.contains(codec) }
 
     func pickUsableCodec() {
         if !codecs.contains(codec), let first = codecs.first { codec = first }
@@ -90,14 +114,19 @@ final class MediaExportModel {
         let urls = urls
         let container = container
         let codec = codec
+        let audioFormat = audioFormat
+        let isAudio = isAudio
         task = Task { [weak self] in
             var outputs: [URL] = []
             do {
                 for (index, url) in urls.enumerated() {
                     self?.detail = urls.count > 1 ? "Exporting \(index + 1) of \(urls.count)…" : nil
-                    outputs.append(try await MediaTools.exportVideo(url, as: container, codec: codec) { fraction in
+                    let report: @Sendable (Double) -> Void = { fraction in
                         Task { @MainActor in self?.progress = (Double(index) + fraction) / Double(urls.count) }
-                    })
+                    }
+                    outputs.append(isAudio
+                        ? try await MediaTools.exportAudio(url, as: audioFormat, progress: report)
+                        : try await MediaTools.exportVideo(url, as: container, codec: codec, progress: report))
                 }
                 actions.saved(outputs)
             } catch is CancellationError {

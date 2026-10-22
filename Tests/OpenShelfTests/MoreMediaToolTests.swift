@@ -429,4 +429,23 @@ struct MoreMediaToolTests {
             try await MediaTools.exportVideo(clip, as: .webm, codec: .h264, tools: tools) { _ in }
         }
     }
+
+    @Test(.enabled(if: hasFFmpeg)) func exportsSoundInEachFormat() async throws {
+        let folder = try workspace()
+        let tone = folder.appendingPathComponent("tone.m4a")
+        let expected: [(AudioExportFormat, String, String)] = [
+            (.aac, "tone AAC.m4a", "aac"), (.alac, "tone ALAC.m4a", "alac"), (.caf, "tone CAF.caf", "alac"),
+            (.pcm, "tone PCM.wav", "pcm_s24le"), (.vorbis, "tone Vorbis.ogg", "vorbis"),
+        ]
+        for (format, name, codec) in expected {
+            let output = try await MediaTools.exportAudio(tone, as: format, tools: tools) { _ in }
+            #expect(output.lastPathComponent == name)
+            #expect(try await probe(output).audio.first?.codec == codec, "\(name)")
+        }
+        // A file Apple doesn't read goes through ffmpeg.
+        let ogg = folder.appendingPathComponent("tone.ogg")
+        try Self.run(Self.ffmpeg, ["-i", tone.path, "-c:a", "libopus", ogg.path])
+        let alac = try await MediaTools.exportAudio(ogg, as: .alac, tools: tools) { _ in }
+        #expect(try await probe(alac).audio.first?.codec == "alac")
+    }
 }

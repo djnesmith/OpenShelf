@@ -66,6 +66,67 @@ enum VideoContainer: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// What the Export tool can turn sound into.
+enum AudioExportFormat: String, CaseIterable, Identifiable, Sendable {
+    case aac, alac, caf, pcm, vorbis
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .aac: "AAC"
+        case .alac: "ALAC"
+        case .caf: "CAF"
+        case .pcm: "PCM"
+        case .vorbis: "Vorbis"
+        }
+    }
+
+    /// What it is, under the picker.
+    var detail: String {
+        switch self {
+        case .aac: "AAC at 192 kbps in M4A: small, plays everywhere."
+        case .alac: "Apple Lossless in M4A: exact, about half the size of WAV."
+        case .caf: "Apple Lossless in a Core Audio file, for Logic and GarageBand."
+        case .pcm: "Uncompressed 24-bit WAV."
+        case .vorbis: "Ogg Vorbis, for games and open-source players. Needs ffmpeg."
+        }
+    }
+
+    var pathExtension: String {
+        switch self {
+        case .aac, .alac: "m4a"
+        case .caf: "caf"
+        case .pcm: "wav"
+        case .vorbis: "ogg"
+        }
+    }
+
+    /// macOS's afconvert writes all but Vorbis, for files Apple reads.
+    var afconvertArguments: [String]? {
+        switch self {
+        case .aac: ["-f", "m4af", "-d", "aac", "-b", "192000"]
+        case .alac: ["-f", "m4af", "-d", "alac"]
+        case .caf: ["-f", "caff", "-d", "alac"]
+        case .pcm: ["-f", "WAVE", "-d", "LEI24"]
+        case .vorbis: nil
+        }
+    }
+
+    /// The same through ffmpeg, for everything else. `encoders` picks Vorbis's encoder.
+    func ffmpegArguments(encoders: Set<String>) -> [String] {
+        switch self {
+        case .aac: ["-c:a", "aac", "-b:a", "192k"]
+        case .alac: ["-c:a", "alac"]
+        case .caf: ["-c:a", "alac", "-f", "caf"]
+        case .pcm: ["-c:a", "pcm_s24le"]
+        // Really Vorbis, unlike the Convert wheel's OGG, which falls back to Opus:
+        // ffmpeg's own encoder when libvorbis is missing (stereo only).
+        case .vorbis: encoders.contains("libvorbis") ? ["-c:a", "libvorbis", "-q:a", "5"] : ["-c:a", "vorbis", "-strict", "experimental", "-ac", "2"]
+        }
+    }
+}
+
 extension MediaTools {
     // MARK: Export
 
@@ -87,6 +148,32 @@ extension MediaTools {
         let destination = OutputNaming.destination(for: url, suffix: codec.title, pathExtension: container.pathExtension)
         try SaveError.checkWritable(destination)
         try await FFmpegJob.export(ffmpeg, ["-i", url.path] + FFmpegEdits.export(container: container, codec: codec), to: destination, duration: probed.duration, progress: progress)
+        return destination
+    }
+}
+
+extension MediaTools {
+    /// The first sound track as `format`, saved as "<name> ALAC.m4a".
+    static func exportAudio(
+        _ url: URL,
+        as format: AudioExportFormat,
+        tools: ExternalTools = .current,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> URL {
+        let destination = OutputNaming.destination(for: url, suffix: format.title, pathExtension: format.pathExtension)
+        try SaveError.checkWritable(destination)
+        if MediaFormats.isAVFoundationReadable(url), let arguments = format.afconvertArguments {
+            try await PartialFile.write(destination) { partial in
+                try await ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/afconvert"), arguments + [url.path, partial.path])
+            }
+            progress(1)
+            return destination
+        }
+        let ffmpeg = try requireFFmpeg(tools)
+        let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
+        guard !probed.audio.isEmpty else { throw MediaToolError.noTracks(url) }
+        let arguments = ["-i", url.path, "-map", "0:a:0", "-vn"] + format.ffmpegArguments(encoders: FFmpegEncoders.available(in: ffmpeg))
+        try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
         return destination
     }
 }

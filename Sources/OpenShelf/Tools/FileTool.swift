@@ -192,7 +192,7 @@ enum FileTool: CaseIterable, Hashable {
                 + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume, .fitSize, .frameRate, .export] : [])
         }
         if kinds == [.audio] {
-            return merge + [.trim, .speed, .splitMedia, .compressAudio, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : [])
+            return merge + [.trim, .speed, .splitMedia, .compressAudio, .export, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : [])
         }
         return combine
     }
