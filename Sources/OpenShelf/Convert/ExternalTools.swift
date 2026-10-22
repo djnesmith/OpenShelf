@@ -71,7 +71,7 @@ struct ExternalTools: Equatable, Sendable {
 
     /// Tools whose Homebrew, MacPorts and /Applications copies are ignored, to
     /// try OpenShelf as someone without them sees it, and to try installing
-    /// them from Settings: `defaults write app.openshelf.OpenShelf
+    /// them from Settings: `defaults write com.djnesmith.OpenShelf
     /// IgnoredExternalTools -array ffmpeg cwebp libreoffice` ("ffmpeg" covers
     /// ffprobe too). `defaults delete` the key to undo.
     static var ignoredTools: Set<String> {

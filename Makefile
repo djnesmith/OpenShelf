@@ -14,46 +14,32 @@ VERSION    := $(shell /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionStri
 RELEASE_ZIP := $(BUILD_DIR)/$(APP_NAME)-$(VERSION).zip
 RELEASE_DMG := $(BUILD_DIR)/$(APP_NAME)-$(VERSION).dmg
 
-# Sparkle (in-app updates), downloaded at a pinned version and verified.
-SPARKLE_VERSION   := 2.10.0
-SPARKLE_SHA256    := c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c
-SPARKLE_DIR       := .build/sparkle
-SPARKLE_FRAMEWORK := $(SPARKLE_DIR)/Sparkle.framework
-SPARKLE_FLAGS     := -F $(SPARKLE_DIR) -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks
+# Signing identity; pass SIGN_IDENTITY=- for an ad-hoc build.
+SIGN_IDENTITY ?= Apple Development: David Nesmith (JFGJA89Z8H)
+ENTITLEMENTS  := Support/OpenShelf.entitlements
 
-SWIFTC = swiftc -sdk "$(SDK)" -swift-version 6 -parse-as-library -O $(SPARKLE_FLAGS)
+SWIFTC = swiftc -sdk "$(SDK)" -swift-version 6 -parse-as-library -O
 
-# Assembles $(APP_BUNDLE) around $(BUILD_DIR)/$(APP_NAME) and ad-hoc signs it.
+# Assembles $(APP_BUNDLE) around $(BUILD_DIR)/$(APP_NAME) and signs it with the hardened runtime.
 define bundle_app
 	rm -rf "$(APP_BUNDLE)"
-	mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources" "$(APP_BUNDLE)/Contents/Frameworks"
+	mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources"
 	cp "$(BUILD_DIR)/$(APP_NAME)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	cp Support/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
 	cp Support/AppIcon.icns "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
-	ditto "$(SPARKLE_FRAMEWORK)" "$(APP_BUNDLE)/Contents/Frameworks/Sparkle.framework"
-	codesign --force --deep --sign - "$(APP_BUNDLE)"
+	codesign --force --options runtime --timestamp=none --entitlements "$(ENTITLEMENTS)" --sign "$(SIGN_IDENTITY)" "$(APP_BUNDLE)"
 endef
 
-.PHONY: build app run test clean release dmg sparkle
+.PHONY: build app run test clean release dmg
 
 # Builds with swiftc directly so it works even where SwiftPM manifests cannot.
 build: $(BUILD_DIR)/$(APP_NAME)
 
-$(BUILD_DIR)/$(APP_NAME): $(SOURCES) $(SPARKLE_FRAMEWORK)
+$(BUILD_DIR)/$(APP_NAME): $(SOURCES)
 	mkdir -p $(BUILD_DIR)
 	$(SWIFTC) -target $(ARCH)-apple-macosx14.0 $(SOURCES) -o $@
 
-sparkle: $(SPARKLE_FRAMEWORK)
-
-$(SPARKLE_FRAMEWORK):
-	mkdir -p $(SPARKLE_DIR)
-	curl -sSL -o "$(SPARKLE_DIR)/Sparkle-$(SPARKLE_VERSION).tar.xz" \
-		"https://github.com/sparkle-project/Sparkle/releases/download/$(SPARKLE_VERSION)/Sparkle-$(SPARKLE_VERSION).tar.xz"
-	echo "$(SPARKLE_SHA256)  $(SPARKLE_DIR)/Sparkle-$(SPARKLE_VERSION).tar.xz" | shasum -a 256 -c -
-	tar -xf "$(SPARKLE_DIR)/Sparkle-$(SPARKLE_VERSION).tar.xz" -C $(SPARKLE_DIR)
-	touch $(SPARKLE_FRAMEWORK)
-
-# Wraps the binary in an ad-hoc signed .app bundle with Sparkle embedded.
+# Wraps the binary in a signed .app bundle.
 app: build
 	$(bundle_app)
 
@@ -61,7 +47,7 @@ run: app
 	open "$(APP_BUNDLE)"
 
 # Universal (Apple silicon + Intel) app, zipped for a GitHub release.
-release: $(SPARKLE_FRAMEWORK)
+release:
 	mkdir -p $(BUILD_DIR)/arm64 $(BUILD_DIR)/x86_64
 	for arch in arm64 x86_64; do \
 		$(SWIFTC) -target $$arch-apple-macosx14.0 $(SOURCES) -o $(BUILD_DIR)/$$arch/$(APP_NAME) || exit 1; \
