@@ -83,6 +83,8 @@ enum ToolLauncher {
         case .trim:
             showOneFileNote(tool, urls: urls)
             EditorWindowController.present(size: MediaTrimEditor.windowSize, near: location) { MediaTrimEditor(url: first, actions: $0) }
+        case .compressAudio:
+            EditorWindowController.present(size: AudioCompressEditor.windowSize, near: location) { AudioCompressEditor(urls: urls, actions: $0) }
         case .fitSize:
             EditorWindowController.present(size: FitSizeEditor.windowSize, near: location) { FitSizeEditor(urls: urls, actions: $0) }
         case .volume:

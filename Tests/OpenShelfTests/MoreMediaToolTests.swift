@@ -350,4 +350,29 @@ struct MoreMediaToolTests {
         let tone = folder.appendingPathComponent("tone.m4a")
         await #expect(throws: MediaToolError.self) { try await MediaTools.fitSize(tone, bytes: 50_000_000, tools: tools) { _ in } }
     }
+
+    // MARK: Compress audio
+
+    @Test func afconvertWritesAACAtTheRate() {
+        let arguments = MediaTools.afconvertArguments(URL(fileURLWithPath: "/tmp/a.wav"), kilobits: 96, to: URL(fileURLWithPath: "/tmp/b.m4a"))
+        #expect(arguments == ["-f", "m4af", "-d", "aac", "-b", "96000", "/tmp/a.wav", "/tmp/b.m4a"])
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func compressesAudioToTheChosenBitrate() async throws {
+        let folder = try workspace()
+        let wav = folder.appendingPathComponent("tone.wav")
+        try Self.run(Self.ffmpeg, ["-i", folder.appendingPathComponent("tone.m4a").path, "-c:a", "pcm_s16le", wav.path])
+        let output = try await MediaTools.compressAudio(wav, kilobits: 64, tools: tools) { _ in }
+        #expect(output.lastPathComponent == "tone 64k.m4a")
+        let audio = try #require(try await probe(output).audio.first)
+        #expect(audio.codec == "aac")
+        // Apple's encoder averages the rate, so simple sound comes in under it.
+        #expect((audio.bitRate ?? .max) <= 70_000)
+
+        // Ogg isn't Apple's; ffmpeg does it.
+        let ogg = folder.appendingPathComponent("tone.ogg")
+        try Self.run(Self.ffmpeg, ["-i", wav.path, "-c:a", "libopus", ogg.path])
+        let fromOgg = try await MediaTools.compressAudio(ogg, kilobits: 96, tools: tools) { _ in }
+        #expect(try await probe(fromOgg).audio.first?.codec == "aac")
+    }
 }

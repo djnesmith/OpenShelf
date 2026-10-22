@@ -38,6 +38,7 @@ enum FileTool: CaseIterable, Hashable {
     case ocr
     case transcribe
     case fitSize
+    case compressAudio
 
     var title: String {
         switch self {
@@ -74,12 +75,13 @@ enum FileTool: CaseIterable, Hashable {
         case .ocr: "OCR"
         case .transcribe: "Transcribe"
         case .fitSize: "Fit Size"
+        case .compressAudio: "Compress"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .compress, .compressPDF, .compressVideo: "arrow.down.right.and.arrow.up.left"
+        case .compress, .compressPDF, .compressVideo, .compressAudio: "arrow.down.right.and.arrow.up.left"
         case .metadata, .pdfMetadata, .mediaMetadata: "tag"
         case .edit: "slider.horizontal.3"
         case .annotate: "pencil.tip.crop.circle"
@@ -174,7 +176,7 @@ enum FileTool: CaseIterable, Hashable {
                 + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume, .fitSize] : [])
         }
         if kinds == [.audio] {
-            return merge + [.trim, .speed, .splitMedia, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : [])
+            return merge + [.trim, .speed, .splitMedia, .compressAudio, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : [])
         }
         return combine
     }
