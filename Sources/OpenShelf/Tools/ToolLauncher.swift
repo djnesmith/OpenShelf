@@ -74,6 +74,9 @@ enum ToolLauncher {
         case .pdfImages:
             EditorWindowController.present(size: PDFImagesEditor.windowSize, near: location) { PDFImagesEditor(url: first, actions: $0) }
 
+        case .gifLoop:
+            EditorWindowController.present(size: GIFLoopEditor.windowSize, near: location) { GIFLoopEditor(urls: urls, actions: $0) }
+
         case .organizePages:
             EditorWindowController.present(size: PDFPagesEditor.windowSize, near: location) { PDFPagesEditor(url: first, actions: $0) }
         case .splitPDF:

@@ -2,6 +2,7 @@ import AppKit
 import CoreGraphics
 import CoreText
 import Foundation
+import ImageIO
 import PDFKit
 import Testing
 @testable import OpenShelf
@@ -159,5 +160,42 @@ struct MoreToolTests {
         let picture = try #require(context.makeImage())
         let subject = try #require(try SmartCrop.subject(in: picture))
         #expect(subject.midX > 400)
+    }
+
+    // MARK: GIF loop
+
+    @Test func gifsGetALoopTool() {
+        #expect(FileTool.available(for: [URL(fileURLWithPath: "/tmp/a.gif")], tools: ExternalTools()).contains(.gifLoop))
+        #expect(!FileTool.available(for: [URL(fileURLWithPath: "/tmp/a.png")], tools: ExternalTools()).contains(.gifLoop))
+    }
+
+    @Test func setsHowManyTimesAGIFPlays() throws {
+        let folder = try workspace()
+        let gif = folder.appendingPathComponent("Anim.gif")
+        let destination = try #require(CGImageDestinationCreateWithURL(gif as CFURL, "com.compuserve.gif" as CFString, 3, nil))
+        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        for text in ["1", "2", "3"] {
+            CGImageDestinationAddImage(destination, try Self.picture(of: text, size: CGSize(width: 200, height: 200)),
+                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.25]] as CFDictionary)
+        }
+        #expect(CGImageDestinationFinalize(destination))
+        #expect(GIFLoop.loopCount(of: gif) == 0)
+
+        let thrice = try GIFLoop.save(gif, plays: .threeTimes)
+        #expect(thrice.lastPathComponent == "Anim Plays 3×.gif")
+        #expect(GIFLoop.loopCount(of: thrice) == 3)
+        // In the file, the GIF's own repeat count: two more after the first play.
+        let data = try Data(contentsOf: thrice)
+        let netscape = try #require(data.range(of: Data("NETSCAPE2.0".utf8)))
+        #expect(Array(data[netscape.upperBound..<netscape.upperBound + 4]) == [3, 1, 2, 0])
+        let source = try #require(CGImageSourceCreateWithURL(thrice as CFURL, nil))
+        #expect(CGImageSourceGetCount(source) == 3)
+        let frame = CGImageSourceCopyPropertiesAtIndex(source, 1, nil) as? [CFString: Any]
+        let delay = (frame?[kCGImagePropertyGIFDictionary] as? [CFString: Any])?[kCGImagePropertyGIFDelayTime] as? Double
+        #expect(delay == 0.25)
+
+        let once = try GIFLoop.save(gif, plays: .once)
+        #expect(GIFLoop.loopCount(of: once) == 1)
+        #expect(try Data(contentsOf: once).range(of: Data("NETSCAPE2.0".utf8)) == nil)
     }
 }

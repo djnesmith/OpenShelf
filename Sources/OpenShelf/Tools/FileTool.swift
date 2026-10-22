@@ -41,6 +41,7 @@ enum FileTool: CaseIterable, Hashable {
     case compressAudio
     case pdfImages
     case frameRate
+    case gifLoop
 
     var title: String {
         switch self {
@@ -80,6 +81,7 @@ enum FileTool: CaseIterable, Hashable {
         case .compressAudio: "Compress"
         case .pdfImages: "Images"
         case .frameRate: "Frame Rate"
+        case .gifLoop: "Loop"
         }
     }
 
@@ -113,6 +115,7 @@ enum FileTool: CaseIterable, Hashable {
         case .ocr: "text.viewfinder"
         case .pdfImages: "photo.on.rectangle.angled"
         case .frameRate: "film.stack"
+        case .gifLoop: "repeat"
         case .transcribe: "captions.bubble"
         case .fitSize: "externaldrive.badge.checkmark"
         }
@@ -164,7 +167,8 @@ enum FileTool: CaseIterable, Hashable {
         let combine: [FileTool] = urls.count > 1 && kinds.isSubset(of: [.image, .pdf]) ? [.combinePDF] : []
 
         if kinds == [.image] {
-            return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr] + combine
+            let gifs: [FileTool] = urls.allSatisfy { $0.pathExtension.lowercased() == "gif" } ? [.gifLoop] : []
+            return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr] + gifs + combine
         }
         if kinds == [.pdf] {
             let singlePage: [FileTool] = urls.count == 1 ? [.organizePages, .splitPDF, .pdfImages] : []
