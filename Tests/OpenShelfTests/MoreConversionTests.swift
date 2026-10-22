@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import Testing
 @testable import OpenShelf
 
@@ -49,6 +50,29 @@ struct MoreConversionTests {
         #expect(EbookConversion.fraction(fromProgressLine: "100% Creating MOBI Output") == 1)
         #expect(EbookConversion.fraction(fromProgressLine: "Converting input to HTML...") == nil)
         #expect(EbookConversion.fraction(fromProgressLine: "3 images") == nil)
+    }
+
+    @Test func calibreRunsWithoutTheGPU() {
+        #expect(EbookConversion.environment(["HOME": "/Users/x"]) == ["HOME": "/Users/x", "QTWEBENGINE_CHROMIUM_FLAGS": "--disable-gpu"])
+        #expect(EbookConversion.environment(["QTWEBENGINE_CHROMIUM_FLAGS": "--no-sandbox"])["QTWEBENGINE_CHROMIUM_FLAGS"] == "--no-sandbox --disable-gpu")
+    }
+
+    /// The conversion that crashed calibre's renderer when OpenShelf started it.
+    @Test(.enabled(if: hasCalibre)) func convertsABookToPDF() async throws {
+        let folder = try workspace()
+        let markdown = folder.appendingPathComponent("Story.md")
+        try "# One\n\nOnce upon a time.\n\n# Two\n\nThe end.\n".write(to: markdown, atomically: true, encoding: .utf8)
+        let epub = try await DocumentConversion.convert(markdown, to: .epub)
+        let pdf = try await EbookConversion.convert(epub, to: .pdf, tools: calibre) { _ in }
+        #expect(pdf.lastPathComponent == "Story.pdf")
+        let document = try #require(PDFDocument(url: pdf))
+        #expect(document.string?.contains("Once upon a time") == true)
+        // And back: a PDF into a book.
+        try FileManager.default.removeItem(at: epub)
+        let book = try await EbookConversion.convert(pdf, to: .epub, tools: calibre) { _ in }
+        #expect(book.lastPathComponent == "Story.epub")
+        let azw3 = try await EbookConversion.convert(book, to: .azw3, tools: calibre) { _ in }
+        #expect(azw3.lastPathComponent == "Story.azw3")
     }
 
     @Test(.enabled(if: hasCalibre)) func convertsBooksBothWays() async throws {

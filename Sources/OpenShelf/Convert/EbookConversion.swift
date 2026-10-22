@@ -19,11 +19,22 @@ enum EbookConversion {
         let destination = OutputNaming.destination(for: source, pathExtension: pathExtension)
         // calibre picks the output format from the file's extension, which the partial file keeps.
         try await PartialFile.write(destination) { partial in
-            try await ProcessRunner.run(ebookConvert, [source.path, partial.path]) { line in
+            try await ProcessRunner.run(ebookConvert, [source.path, partial.path], environment: environment()) { line in
                 if let fraction = fraction(fromProgressLine: line) { progress(fraction) }
             }
         }
         return destination
+    }
+
+    /// calibre draws PDFs with Qt WebEngine (Chromium). Started from OpenShelf it
+    /// crashed in Chromium's Metal GPU thread (calibre 9.16, Qt 6.10.1), and a
+    /// PDF needs no GPU, so Chromium is told not to use one, as calibre itself
+    /// does in some setups. Any flags already set are kept.
+    static func environment(_ base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var environment = base
+        let flags = [base["QTWEBENGINE_CHROMIUM_FLAGS"], "--disable-gpu"].compactMap { $0 }.filter { !$0.isEmpty }
+        environment["QTWEBENGINE_CHROMIUM_FLAGS"] = flags.joined(separator: " ")
+        return environment
     }
 
     /// ebook-convert prints "34% Running transforms on e-book" as it goes.

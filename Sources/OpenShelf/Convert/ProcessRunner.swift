@@ -36,6 +36,7 @@ enum ProcessRunner {
         _ executable: URL,
         _ arguments: [String],
         currentDirectory: URL? = nil,
+        environment: [String: String]? = nil,
         standardInputFile: URL? = nil,
         standardOutputFile: URL? = nil,
         onOutputLine: (@Sendable (String) -> Void)? = nil
@@ -52,6 +53,9 @@ enum ProcessRunner {
         process.arguments = arguments
         if let currentDirectory {
             process.currentDirectoryURL = currentDirectory
+        }
+        if let environment {
+            process.environment = environment
         }
         if let standardInputFile {
             process.standardInput = try FileHandle(forReadingFrom: standardInputFile)
