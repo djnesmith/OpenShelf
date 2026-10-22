@@ -155,6 +155,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .copyPath:
             FileActions.copyPaths(urls)
             toasts.show(Toast(systemImage: "link", title: urls.count == 1 ? "Copied path" : "Copied \(urls.count) paths", subtitle: urls.count == 1 ? urls[0].path : nil))
+        case .copyName:
+            FileActions.copyNames(urls)
+            toasts.show(Toast(systemImage: "textformat", title: urls.count == 1 ? "Copied name" : "Copied \(urls.count) names", subtitle: urls.count == 1 ? urls[0].lastPathComponent : nil))
         case .terminal:
             FileActions.openInTerminal(urls)
         }

@@ -255,4 +255,30 @@ struct MoreToolTests {
         #expect(TerminalApp.choose { _ in nil } == nil)
         #expect(FileAction.terminal.title == TerminalApp.name)
     }
+
+    // MARK: Copy Name
+
+    /// On a private pasteboard, so the test never touches the real clipboard.
+    @MainActor
+    @Test func copiesNamesInCopyPathsOrder() {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("openshelf-test-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        FileActions.copyNames([URL(fileURLWithPath: "/Users/x/Documents/Report.pdf")], to: pasteboard)
+        #expect(pasteboard.string(forType: .string) == "Report.pdf")
+
+        let several = ["/a/Zebra.txt", "/b/apple.tar.gz", "/c/Folder"].map { URL(fileURLWithPath: $0) }
+        FileActions.copyNames(several, to: pasteboard)
+        let names = pasteboard.string(forType: .string)
+        #expect(names == "Zebra.txt\napple.tar.gz\nFolder")
+        FileActions.copyPaths(several, to: pasteboard)
+        let paths = pasteboard.string(forType: .string)?.split(separator: "\n").map { URL(fileURLWithPath: String($0)).lastPathComponent }
+        #expect(paths?.joined(separator: "\n") == names)
+    }
+
+    @Test func copyNameSitsNextToCopyPath() throws {
+        let actions = FileAction.allCases
+        let path = try #require(actions.firstIndex(of: .copyPath))
+        #expect(actions[path + 1] == .copyName)
+        #expect(NSImage(systemSymbolName: FileAction.copyName.systemImage, accessibilityDescription: nil) != nil)
+    }
 }

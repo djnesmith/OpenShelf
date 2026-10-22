@@ -21,6 +21,7 @@ enum FileAction: CaseIterable {
     case copy
     case move
     case copyPath
+    case copyName
     case terminal
 
     var title: String {
@@ -31,6 +32,7 @@ enum FileAction: CaseIterable {
         case .copy: "Copy"
         case .move: "Move"
         case .copyPath: "Copy Path"
+        case .copyName: "Copy Name"
         case .terminal: TerminalApp.name
         }
     }
@@ -43,6 +45,7 @@ enum FileAction: CaseIterable {
         case .copy: "doc.on.doc"
         case .move: "folder"
         case .copyPath: "link"
+        case .copyName: "textformat"
         case .terminal: "terminal"
         }
     }

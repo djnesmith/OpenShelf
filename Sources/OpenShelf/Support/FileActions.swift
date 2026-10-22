@@ -20,12 +20,17 @@ enum FileActions {
         pasteboard.writeObjects(urls.map { $0 as NSURL })
     }
 
-    static func copyPaths(_ urls: [URL]) {
-        copyText(urls.map(\.path).joined(separator: "\n"))
+    static func copyPaths(_ urls: [URL], to pasteboard: NSPasteboard = .general) {
+        copyText(urls.map(\.path).joined(separator: "\n"), to: pasteboard)
     }
 
-    static func copyText(_ text: String) {
-        let pasteboard = NSPasteboard.general
+    /// The file names with their extensions ("Report.pdf"), one a line, in
+    /// the order Copy Path uses.
+    static func copyNames(_ urls: [URL], to pasteboard: NSPasteboard = .general) {
+        copyText(urls.map(\.lastPathComponent).joined(separator: "\n"), to: pasteboard)
+    }
+
+    static func copyText(_ text: String, to pasteboard: NSPasteboard = .general) {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
     }
