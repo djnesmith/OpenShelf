@@ -211,4 +211,47 @@ struct MoreMediaToolTests {
         #expect(clip.lastPathComponent == "clip Normalized.mp4")
         #expect(try await probe(clip).video?.codec == "h264")
     }
+
+    // MARK: Flip and grayscale
+
+    @Test func flipsVertically() {
+        #expect(FFmpegEdits.rotationFilter(.flipVertical) == "vflip")
+        #expect(!VideoRotation.flipVertical.isLossless && VideoRotation.flipVertical.degrees == 0)
+        let size = CGSize(width: 320, height: 240)
+        let rect = CGRect(origin: .zero, size: size).applying(VideoRotation.flipVertical.applied(to: .identity, naturalSize: size))
+        #expect(abs(rect.minX) < 0.001 && abs(rect.minY) < 0.001 && rect.size == size)
+    }
+
+    /// The colour of the pixel at the centre of `image`, as RGB 0–255.
+    func centreColour(_ image: CGImage) throws -> (Int, Int, Int) {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try #require(CGContext(
+            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        let crop = try #require(image.cropping(to: CGRect(x: image.width / 4, y: image.height / 2, width: 1, height: 1)))
+        context.draw(crop, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return (Int(pixel[0]), Int(pixel[1]), Int(pixel[2]))
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func flipAndGrayscaleChangeThePicture() async throws {
+        let folder = try workspace()
+        let clip = folder.appendingPathComponent("clip.mp4")
+        let flipped = try await MediaTools.rotate(clip, by: .flipVertical, tools: tools) { _ in }
+        #expect(flipped.lastPathComponent == "clip Rotated.mp4")
+        #expect(try await probe(flipped).video.map { ($0.width, $0.height) } ?? (0, 0) == (320, 240))
+
+        let gray = try await MediaTools.grayscale(clip, tools: tools) { _ in }
+        #expect(gray.lastPathComponent == "clip Grayscale.mp4")
+        #expect(try await probe(gray).audio.count == 1)
+        // testsrc's colour bars: a coloured pixel before, an equal-channel one after.
+        let (r0, g0, b0) = try centreColour(try await MediaTools.frame(of: clip, at: 1, maximumSize: nil, tools: tools))
+        #expect(max(abs(r0 - g0), abs(g0 - b0), abs(r0 - b0)) > 30)
+        let (r, g, b) = try centreColour(try await MediaTools.frame(of: gray, at: 1, maximumSize: nil, tools: tools))
+        #expect(max(abs(r - g), abs(g - b), abs(r - b)) < 8)
+
+        let viaFFmpeg = try await MediaTools.grayscaleWithFFmpeg(clip, ffmpeg: Self.ffmpeg, tools: tools) { _ in }
+        let (fr, fg, fb) = try centreColour(try await MediaTools.frame(of: viaFFmpeg, at: 1, maximumSize: nil, tools: tools))
+        #expect(max(abs(fr - fg), abs(fg - fb), abs(fr - fb)) < 8)
+    }
 }

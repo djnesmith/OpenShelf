@@ -263,6 +263,7 @@ enum FFmpegEdits {
         case .left: "transpose=cclock"
         case .upsideDown: "hflip,vflip"
         case .flipHorizontal: "hflip"
+        case .flipVertical: "vflip"
         }
     }
 

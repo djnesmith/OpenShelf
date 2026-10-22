@@ -58,6 +58,11 @@ enum ToolLauncher {
                 [try await MediaTools.normalizeLoudness(sources[0], progress: progress)]
             }
 
+        case .grayscale:
+            runner.run(title: "Making grayscale", jobs: urls.map { [$0] }, near: location) { sources, progress in
+                [try await MediaTools.grayscale(sources[0], progress: progress)]
+            }
+
         case .organizePages:
             EditorWindowController.present(size: PDFPagesEditor.windowSize, near: location) { PDFPagesEditor(url: first, actions: $0) }
         case .splitPDF:

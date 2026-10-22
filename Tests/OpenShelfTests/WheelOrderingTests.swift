@@ -45,11 +45,11 @@ struct WheelOrderingTests {
     }
 
     @Test func severalVideosPutMergeFirst() {
-        #expect(tools(urls("a.mov", "b.mp4")) == [.mergeMedia, .trim, .compressVideo, .cropVideo, .rotateVideo, .splitMedia, .speed, .mute, .stillFrame])
+        #expect(tools(urls("a.mov", "b.mp4")) == [.mergeMedia, .trim, .compressVideo, .cropVideo, .rotateVideo, .splitMedia, .speed, .mute, .stillFrame, .grayscale])
     }
 
     @Test func oneVideoPagesInWheelOrder() {
-        #expect(tools(urls("a.mov")) == [.trim, .compressVideo, .cropVideo, .rotateVideo, .splitMedia, .speed, .mute, .stillFrame])
+        #expect(tools(urls("a.mov")) == [.trim, .compressVideo, .cropVideo, .rotateVideo, .splitMedia, .speed, .mute, .stillFrame, .grayscale])
     }
 
     @Test func toolWheelsThatFitOnOnePageKeepTheirOrder() {

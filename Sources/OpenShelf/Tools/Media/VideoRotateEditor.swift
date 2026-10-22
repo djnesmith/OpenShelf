@@ -2,7 +2,7 @@
 import Observation
 import SwiftUI
 
-/// Turns a video a quarter or half turn, or mirrors it, with a preview.
+/// Turns a video a quarter or half turn, or mirrors it either way, with a preview.
 struct VideoRotateEditor: View {
     static let windowSize = CGSize(width: 460, height: 520)
 
@@ -59,7 +59,7 @@ struct VideoRotateEditor: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(rotation == .flipHorizontal ? "Flip horizontally" : "Rotate \(rotation.title)")
+                        .accessibilityLabel(rotation.accessibilityLabel)
                         .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
                 }
@@ -90,7 +90,7 @@ struct VideoRotateEditor: View {
             .resizable()
             .interpolation(.high)
             .frame(width: size.width * scale, height: size.height * scale)
-            .scaleEffect(x: model.rotation == .flipHorizontal ? -1 : 1, y: 1)
+            .scaleEffect(x: model.rotation == .flipHorizontal ? -1 : 1, y: model.rotation == .flipVertical ? -1 : 1)
             .rotationEffect(.degrees(model.rotation.degrees))
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: model.rotation)
             .frame(width: available.width, height: available.height)
@@ -140,6 +140,16 @@ final class RotateModel {
                 self?.exportProgress = nil
                 actions.failed(error)
             }
+        }
+    }
+}
+
+private extension VideoRotation {
+    var accessibilityLabel: String {
+        switch self {
+        case .flipHorizontal: "Flip horizontally"
+        case .flipVertical: "Flip vertically"
+        default: "Rotate \(title)"
         }
     }
 }

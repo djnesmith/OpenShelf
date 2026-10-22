@@ -106,6 +106,7 @@ enum VideoRotation: Hashable, CaseIterable, Identifiable {
     case right
     case upsideDown
     case flipHorizontal
+    case flipVertical
 
     var id: Self { self }
 
@@ -114,7 +115,8 @@ enum VideoRotation: Hashable, CaseIterable, Identifiable {
         case .left: "Left"
         case .right: "Right"
         case .upsideDown: "180°"
-        case .flipHorizontal: "Flip"
+        case .flipHorizontal: "Flip H"
+        case .flipVertical: "Flip V"
         }
     }
 
@@ -124,6 +126,7 @@ enum VideoRotation: Hashable, CaseIterable, Identifiable {
         case .right: "rotate.right"
         case .upsideDown: "arrow.clockwise"
         case .flipHorizontal: "arrow.left.and.right"
+        case .flipVertical: "arrow.up.and.down"
         }
     }
 
@@ -133,19 +136,22 @@ enum VideoRotation: Hashable, CaseIterable, Identifiable {
         case .left: -90
         case .right: 90
         case .upsideDown: 180
-        case .flipHorizontal: 0
+        case .flipHorizontal, .flipVertical: 0
         }
     }
 
     /// Turns only change how players orient the frames, so they need no
     /// re-encoding; a mirror rewrites every frame.
-    var isLossless: Bool { self != .flipHorizontal }
+    var isLossless: Bool { !isMirror }
+
+    var isMirror: Bool { self == .flipHorizontal || self == .flipVertical }
 
     /// `transform` (a track's preferred transform) followed by this change,
     /// moved back so the frame starts at the origin.
     func applied(to transform: CGAffineTransform, naturalSize: CGSize) -> CGAffineTransform {
         let extra: CGAffineTransform = switch self {
         case .flipHorizontal: CGAffineTransform(scaleX: -1, y: 1)
+        case .flipVertical: CGAffineTransform(scaleX: 1, y: -1)
         default: CGAffineTransform(rotationAngle: degrees * .pi / 180)
         }
         let combined = transform.concatenating(extra)
