@@ -428,4 +428,66 @@ struct MoreConversionTests {
         }
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["Tagged.edn"])
     }
+
+    // MARK: Excel's row limit
+
+    @Test func countsRecordsNotLines() throws {
+        let folder = try workspace()
+        let csv = folder.appendingPathComponent("Quoted.csv")
+        // Header, a record whose quoted field holds a line break, and a last record with no closing newline.
+        try "a,b\n1,\"two\nlines\"\n2,z".write(to: csv, atomically: true, encoding: .utf8)
+        #expect(try DelimitedText.recordCount(csv) == 3)
+        try "a,b\n1,x\n".write(to: csv, atomically: true, encoding: .utf8)
+        #expect(try DelimitedText.recordCount(csv) == 2)
+    }
+
+    @Test func excelLimitMessage() {
+        #expect(throws: Never.self) { try ExcelLimit.check(rows: 1_048_576) }
+        do {
+            try ExcelLimit.check(rows: 1_048_577)
+            Issue.record("one row too many was accepted")
+        } catch {
+            #expect(error.localizedDescription == "Excel holds up to 1,048,576 rows; this has 1,048,577. Save as CSV or Parquet instead.")
+        }
+    }
+
+    func expectRefusal(_ folder: URL, _ body: () async throws -> Void) async {
+        let before = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        do {
+            try await body()
+            Issue.record("a table over the limit was written")
+        } catch {
+            #expect(error.localizedDescription.hasPrefix("Excel holds up to"), "\(error.localizedDescription)")
+        }
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []) == before, "something was saved")
+    }
+
+    @Test func csvOverTheLimitIsRefused() async throws {
+        let folder = try workspace()
+        let csv = folder.appendingPathComponent("Rows.csv")
+        try "name\nAda\nGrace\nKatherine\n".write(to: csv, atomically: true, encoding: .utf8)
+        // Four rows with the header: fine at four, refused at three.
+        let fits = try await SpreadsheetConversion.convert(csv, to: .xlsx, tools: none, rowLimit: 4)
+        #expect(fits.map(\.lastPathComponent) == ["Rows.xlsx"])
+        try FileManager.default.removeItem(at: fits[0])
+        await expectRefusal(folder) { _ = try await SpreadsheetConversion.convert(csv, to: .xlsx, tools: none, rowLimit: 3) }
+    }
+
+    @Test(.enabled(if: hasDuckDB)) func parquetAndSQLiteOverTheLimitAreRefused() async throws {
+        let folder = try workspace()
+        let duck = ExternalTools(duckdb: Self.duckdb)
+        let csv = folder.appendingPathComponent("People.csv")
+        try "id,name\n1,Ada\n2,Grace\n".write(to: csv, atomically: true, encoding: .utf8)
+        let parquet = try await Converter.convert(csv, to: .parquet, tools: duck) { _ in }[0]
+        let database = try await Converter.convert(csv, to: .sqlite, tools: none) { _ in }[0]
+        try FileManager.default.removeItem(at: csv)
+        #expect(try await DatabaseConversion.parquetRowCount(parquet, tools: duck) == 2)
+        #expect(try await DatabaseConversion.rowCount(of: "People", in: database) == 2)
+
+        // Two rows and the header: three.
+        await expectRefusal(folder) { _ = try await DatabaseConversion.convert(parquet, to: .xlsx, tools: duck, rowLimit: 2) }
+        await expectRefusal(folder) { _ = try await DatabaseConversion.export(tables: ["People"], from: database, as: .xlsx, rowLimit: 2) }
+        #expect(try await DatabaseConversion.convert(parquet, to: .xlsx, tools: duck, rowLimit: 3).count == 1)
+        #expect(try await DatabaseConversion.export(tables: ["People"], from: database, as: .xlsx, rowLimit: 3).count == 1)
+    }
 }

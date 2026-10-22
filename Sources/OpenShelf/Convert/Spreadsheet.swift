@@ -7,6 +7,24 @@ typealias Table = [[String]]
 
 /// Comma- and tab-separated text (RFC 4180 quoting).
 enum DelimitedText {
+    /// The number of records in a CSV or TSV file, read in chunks without
+    /// building the table: line breaks inside quoted fields don't count.
+    static func recordCount(_ url: URL) throws -> Int {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var count = 0
+        var inQuotes = false
+        var last: UInt8 = 0x0A
+        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+            for byte in chunk {
+                if byte == 0x22 { inQuotes.toggle() } else if byte == 0x0A, !inQuotes { count += 1 }
+                last = byte
+            }
+        }
+        // A last record without a closing line break.
+        return last == 0x0A ? count : count + 1
+    }
+
     static func parse(_ text: String, delimiter: Character) -> Table {
         var rows: Table = []
         var row: [String] = []
@@ -72,8 +90,22 @@ enum DelimitedText {
 }
 
 /// Writes a minimal Excel workbook with inline strings and numbers.
+/// Excel opens at most 1,048,576 rows a sheet, the header row included, so
+/// larger tables are refused before the (slow, memory-hungry) conversion.
+enum ExcelLimit {
+    static let rows = 1_048_576
+
+    static func check(rows count: Int, limit: Int = rows) throws {
+        guard count > limit else { return }
+        throw ConversionError.failed("Excel holds up to \(limit.formatted()) rows; this has \(count.formatted()). Save as CSV or Parquet instead.")
+    }
+}
+
 enum XlsxWriter {
-    static func write(sheets: [(name: String, table: Table)], to url: URL) throws {
+    static func write(sheets: [(name: String, table: Table)], to url: URL, rowLimit: Int = ExcelLimit.rows) throws {
+        for sheet in sheets {
+            try ExcelLimit.check(rows: sheet.table.count, limit: rowLimit)
+        }
         let root = try PackageZip.makeWorkspace("xlsx")
         defer { try? FileManager.default.removeItem(at: root) }
         let header = #"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"# + "\n"
@@ -387,8 +419,11 @@ enum TablePDF {
 
 /// CSV, TSV and Excel files. ODS and XLS need LibreOffice (see OfficeConversion).
 enum SpreadsheetConversion {
-    static func convert(_ source: URL, to format: OutputFormat, tools: ExternalTools) async throws -> [URL] {
+    static func convert(_ source: URL, to format: OutputFormat, tools: ExternalTools, rowLimit: Int = ExcelLimit.rows) async throws -> [URL] {
         let ext = source.pathExtension.lowercased()
+        if format == .xlsx, ["csv", "tsv"].contains(ext) {
+            try ExcelLimit.check(rows: try DelimitedText.recordCount(source), limit: rowLimit)
+        }
         // Formats only LibreOffice reads or writes.
         if format == .ods || !["csv", "tsv", "xlsx"].contains(ext) {
             return try await OfficeConversion.convert(source, to: format, tools: tools)
@@ -402,7 +437,7 @@ enum SpreadsheetConversion {
         case .tsv:
             try DelimitedText.write(table, delimiter: "\t").write(to: destination, atomically: true, encoding: .utf8)
         case .xlsx:
-            try XlsxWriter.write(sheets: [(name: source.deletingPathExtension().lastPathComponent, table: table)], to: destination)
+            try XlsxWriter.write(sheets: [(name: source.deletingPathExtension().lastPathComponent, table: table)], to: destination, rowLimit: rowLimit)
         case .pdf:
             try TablePDF.write(table, to: destination)
         default:

@@ -29,7 +29,7 @@ enum DatabaseConversion {
         source.pathExtension.lowercased() == "parquet" || format == .parquet || format == .sqlite
     }
 
-    static func convert(_ source: URL, to format: OutputFormat, tools: ExternalTools) async throws -> [URL] {
+    static func convert(_ source: URL, to format: OutputFormat, tools: ExternalTools, rowLimit: Int = ExcelLimit.rows) async throws -> [URL] {
         let input = source.pathExtension.lowercased()
         guard formats(forExtension: input, tools: tools).contains(format), let pathExtension = format.fileExtension else {
             if tools.duckdb == nil, format == .parquet || input == "parquet" { throw MissingToolError(name: "DuckDB") }
@@ -40,11 +40,13 @@ enum DatabaseConversion {
         case ("csv", .sqlite):
             try await csvToSQLite(source, to: destination)
         case ("parquet", .xlsx):
+            // The rows plus the header row, counted before anything is converted.
+            try ExcelLimit.check(rows: try await parquetRowCount(source, tools: tools) + 1, limit: rowLimit)
             // DuckDB's own Excel writer is an extension it would download, so through CSV.
             let csv = temporaryFile("csv")
             defer { try? FileManager.default.removeItem(at: csv) }
             try await duckDB(tools, copy: source, as: .csv, to: csv)
-            try writeXLSX(csv: csv, sheet: source.deletingPathExtension().lastPathComponent, to: destination)
+            try writeXLSX(csv: csv, sheet: source.deletingPathExtension().lastPathComponent, to: destination, rowLimit: rowLimit)
         default:
             try await PartialFile.write(destination) { partial in
                 try await duckDB(tools, copy: source, as: format, to: partial)
@@ -110,6 +112,24 @@ enum DatabaseConversion {
 
     static let listTablesSQL = "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name;"
 
+    /// A table's row count, from sqlite3 (read-only, safe mode).
+    static func rowCount(of table: String, in database: URL) async throws -> Int {
+        let output = temporaryFile("txt")
+        defer { try? FileManager.default.removeItem(at: output) }
+        try await ProcessRunner.run(sqlite3, sqliteReadArguments(database, mode: ["-list"], sql: "SELECT count(*) FROM \(identifier(table));"), standardOutputFile: output)
+        return Int(try String(contentsOf: output, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+
+    /// A Parquet file's row count, from its metadata through DuckDB.
+    static func parquetRowCount(_ url: URL, tools: ExternalTools) async throws -> Int {
+        guard let duckdb = tools.duckdb else { throw MissingToolError(name: "DuckDB") }
+        let output = temporaryFile("csv")
+        defer { try? FileManager.default.removeItem(at: output) }
+        let sql = "COPY (SELECT count(*) FROM read_parquet(\(literal(url.path)))) TO \(literal(output.path)) (FORMAT csv, HEADER false);"
+        try await ProcessRunner.run(duckdb, duckDBArguments(sql))
+        return Int(try String(contentsOf: output, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+
     /// The tables in a SQLite file, in name order.
     static func tables(in database: URL) async throws -> [String] {
         let output = temporaryFile("txt")
@@ -119,7 +139,13 @@ enum DatabaseConversion {
     }
 
     /// Each of `tables` as "<database> <table>.csv" (or JSON, or XLSX).
-    static func export(tables: [String], from database: URL, as format: OutputFormat) async throws -> [URL] {
+    static func export(tables: [String], from database: URL, as format: OutputFormat, rowLimit: Int = ExcelLimit.rows) async throws -> [URL] {
+        if format == .xlsx {
+            // Every table checked before any is written, header row included.
+            for table in tables {
+                try ExcelLimit.check(rows: try await rowCount(of: table, in: database) + 1, limit: rowLimit)
+            }
+        }
         var saved: [URL] = []
         for table in tables {
             try Task.checkCancellation()
@@ -135,7 +161,7 @@ enum DatabaseConversion {
                 let csv = temporaryFile("csv")
                 defer { try? FileManager.default.removeItem(at: csv) }
                 try await ProcessRunner.run(sqlite3, sqliteReadArguments(database, mode: ["-csv", "-header"], sql: sql), standardOutputFile: csv)
-                try writeXLSX(csv: csv, sheet: table, to: destination)
+                try writeXLSX(csv: csv, sheet: table, to: destination, rowLimit: rowLimit)
                 saved.append(destination)
             default:
                 try await PartialFile.write(destination) { partial in
@@ -167,10 +193,10 @@ enum DatabaseConversion {
     }
 
     /// One sheet, named as Excel allows: 31 characters without []:*?/\.
-    private static func writeXLSX(csv: URL, sheet: String, to destination: URL) throws {
+    private static func writeXLSX(csv: URL, sheet: String, to destination: URL, rowLimit: Int) throws {
         try SaveError.checkWritable(destination)
         let name = String(sheet.map { "[]:*?/\\".contains($0) ? "_" : $0 }.prefix(31))
-        try XlsxWriter.write(sheets: [(name: name.isEmpty ? "Sheet1" : name, table: try SpreadsheetConversion.read(csv))], to: destination)
+        try XlsxWriter.write(sheets: [(name: name.isEmpty ? "Sheet1" : name, table: try SpreadsheetConversion.read(csv))], to: destination, rowLimit: rowLimit)
     }
 
     private static func temporaryFile(_ pathExtension: String) -> URL {
