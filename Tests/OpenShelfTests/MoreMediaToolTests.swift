@@ -148,4 +148,24 @@ struct MoreMediaToolTests {
         #expect(sound.lastPathComponent == "tone Clean.m4a")
         #expect(!(try tags(sound).contains("Someone")))
     }
+
+    // MARK: Mono
+
+    @Test func filteredSoundKeepsLosslessContainers() {
+        #expect(FFmpegEdits.filteredAudioContainer(for: URL(fileURLWithPath: "/tmp/a.WAV")) == "wav")
+        #expect(FFmpegEdits.filteredAudioContainer(for: URL(fileURLWithPath: "/tmp/a.flac")) == "flac")
+        #expect(FFmpegEdits.filteredAudioContainer(for: URL(fileURLWithPath: "/tmp/a.mp3")) == "m4a")
+        let track = ProbedMedia.Audio(codec: "pcm_s16le", channels: 1)
+        #expect(FFmpegEdits.filteredAudio("wav", track: track, index: 0) == ["-c:a:0", "pcm_s16le"])
+        #expect(FFmpegEdits.filteredAudio("m4a", track: track, index: 0).contains("aac"))
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func mixesDownToOneChannel() async throws {
+        let folder = try workspace()
+        let tone = folder.appendingPathComponent("tone.m4a")
+        #expect(try await probe(tone).audio.first?.channels == 2)
+        let output = try await MediaTools.mono(tone, tools: tools) { _ in }
+        #expect(output.lastPathComponent == "tone Mono.m4a")
+        #expect(try await probe(output).audio.first?.channels == 1)
+    }
 }

@@ -34,6 +34,22 @@ extension MediaTools {
         return destination
     }
 
+    // MARK: Mono
+
+    /// The first sound track mixed down to one channel.
+    static func mono(_ url: URL, tools: ExternalTools = .current, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
+        let ffmpeg = try requireFFmpeg(tools)
+        let probed = try await ProbedMedia.load(url, ffprobe: tools.ffprobe)
+        guard var track = probed.audio.first else { throw MediaToolError.noTracks(url) }
+        track.channels = 1
+        let container = FFmpegEdits.filteredAudioContainer(for: url)
+        let destination = OutputNaming.destination(for: url, suffix: "Mono", pathExtension: container)
+        try SaveError.checkWritable(destination)
+        let arguments: [String] = ["-i", url.path, "-map", "0:a:0", "-vn", "-ac", "1"] + FFmpegEdits.filteredAudio(container, track: track, index: 0)
+        try await FFmpegJob.export(ffmpeg, arguments, to: destination, duration: probed.duration, progress: progress)
+        return destination
+    }
+
     static func requireFFmpeg(_ tools: ExternalTools) throws -> URL {
         guard let ffmpeg = tools.ffmpeg else { throw MissingToolError(name: "ffmpeg") }
         return ffmpeg
@@ -92,5 +108,27 @@ extension FFmpegEdits {
             arguments += ["-map", "[a\(index)]"] + aac(track, index: index)
         }
         return ["-filter_complex", graph.joined(separator: ";")] + arguments
+    }
+
+    // MARK: Sound filters
+
+    /// Where filtered sound goes: WAV, AIFF and FLAC stay as they are; the
+    /// rest (MP3, Ogg, CAF…) become M4A.
+    static func filteredAudioContainer(for url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "wav", "wave": "wav"
+        case "aif", "aiff", "flac": url.pathExtension.lowercased()
+        default: "m4a"
+        }
+    }
+
+    /// The codec for filtered sound in `container`: lossless containers stay lossless.
+    static func filteredAudio(_ container: String, track: ProbedMedia.Audio, index: Int) -> [String] {
+        switch container {
+        case "wav": ["-c:a:\(index)", "pcm_s16le"]
+        case "aif", "aiff": ["-c:a:\(index)", "pcm_s16be"]
+        case "flac": ["-c:a:\(index)", "flac"]
+        default: aac(track, index: index)
+        }
     }
 }
