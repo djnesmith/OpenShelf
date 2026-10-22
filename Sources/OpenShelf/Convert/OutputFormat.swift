@@ -26,6 +26,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     case json, yaml, xml, plist
     // Animated PNG, written as .png
     case apng
+    case jxl
 
     var title: String {
         switch self {
@@ -35,6 +36,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         case .tzst: "TAR.ZST"
         case .tex: "LATEX"
         case .apng: "APNG"
+        case .jxl: "JXL"
         case .typ: "TYPST"
         default: rawValue.uppercased()
         }
@@ -141,6 +143,7 @@ enum ConversionCatalog {
         case .image:
             formats = [.png, .jpg, .heic, .tiff, .avif, .bmp, .pdf, .docx]
             if tools.canEncodeWebP { formats.insert(.webp, at: 2) }
+            if tools.cjxl != nil { formats.append(.jxl) }
             if ext == "gif" { formats.append(.apng) }
         case .pdf:
             formats = [.docx, .jpg, .png, .txt, .md, .epub, .pptx, .xlsx]

@@ -245,4 +245,34 @@ struct MoreConversionTests {
         let text = try await Converter.convert(ass[0], to: .txt, tools: withFFmpeg) { _ in }
         #expect(try String(contentsOf: text[0], encoding: .utf8).contains("Goodbye"))
     }
+
+    // MARK: JPEG XL
+
+    static let cjxl = URL(fileURLWithPath: "/opt/homebrew/bin/cjxl")
+    static var hasCJXL: Bool { FileManager.default.isExecutableFile(atPath: cjxl.path) }
+
+    @Test func jpegXLOnlyWithCJXL() {
+        #expect(!ConversionCatalog.formats(for: url("a.png"), tools: none).contains(.jxl))
+        #expect(ConversionCatalog.formats(for: url("a.png"), tools: ExternalTools(cjxl: Self.cjxl)).contains(.jxl))
+        #expect(FileKind(url: url("a.jxl")) == .image)
+    }
+
+    @Test(.enabled(if: hasCJXL)) func writesAndReadsJPEGXL() async throws {
+        let folder = try workspace()
+        let tools = ExternalTools(cjxl: Self.cjxl)
+        let png = folder.appendingPathComponent("Shot.png")
+        try EditableImage.write(try MoreToolTests.picture(of: "JXL"), to: png, type: .png)
+        let jxl = try await Converter.convert(png, to: .jxl, tools: tools) { _ in }
+        #expect(jxl.map(\.lastPathComponent) == ["Shot.jxl"])
+        // ImageIO reads it back, so JPEG XL files convert to everything else with nothing installed.
+        let image = try EditableImage.load(jxl[0])
+        #expect(image.cgImage.width == 1200 && image.cgImage.height == 300)
+        let back = try await Converter.convert(jxl[0], to: .jpg, tools: none) { _ in }
+        #expect(back.map(\.lastPathComponent) == ["Shot.jpg"])
+
+        // A JPEG is repacked losslessly: smaller than the JPEG.
+        let fromJPEG = try await Converter.convert(back[0], to: .jxl, tools: tools) { _ in }
+        let sizes = try [back[0], fromJPEG[0]].map { try #require(try $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) }
+        #expect(sizes[1] < sizes[0])
+    }
 }

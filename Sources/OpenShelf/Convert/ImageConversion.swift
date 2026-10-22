@@ -19,6 +19,8 @@ enum ImageConversion {
             try await writeWebP(image, to: destination, tools: tools)
         case .apng:
             try AnimatedPNG.write(gif: source, to: destination)
+        case .jxl:
+            try await writeJPEGXL(source: source, image: image, to: destination, tools: tools)
         default:
             guard let type = format.imageIOType else {
                 throw ConversionError.unsupported("image to \(format.title)")
@@ -40,6 +42,22 @@ enum ImageConversion {
         context.draw(image.cgImage, in: mediaBox)
         context.endPDFPage()
         context.closePDF()
+    }
+
+    /// ImageIO reads JPEG XL but can't write it, so cjxl does. A JPEG is
+    /// repacked losslessly (about 20% smaller, and it can be turned back into
+    /// the same JPEG); anything else goes through a PNG at visually lossless
+    /// quality (distance 1).
+    private static func writeJPEGXL(source: URL, image: EditableImage, to url: URL, tools: ExternalTools) async throws {
+        guard let cjxl = tools.cjxl else { throw MissingToolError(name: "cjxl") }
+        if image.type == .jpeg {
+            try await ProcessRunner.run(cjxl, ["--quiet", "--lossless_jpeg=1", source.path, url.path])
+            return
+        }
+        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        try EditableImage.write(image.cgImage, to: temporary, type: .png)
+        try await ProcessRunner.run(cjxl, ["--quiet", "--distance=1", temporary.path, url.path])
     }
 
     /// ImageIO can't encode WebP, so go through a temporary PNG and cwebp or ffmpeg.

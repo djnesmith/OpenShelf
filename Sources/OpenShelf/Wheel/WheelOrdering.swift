@@ -19,7 +19,7 @@ enum WheelOrdering {
 
     /// Conversions by the kind of file being converted. ZIP stays last.
     static let formatsBySource: [FileKind: [OutputFormat]] = [
-        .image: [.png, .jpg, .heic, .webp, .pdf, .avif, .tiff, .bmp, .docx, .apng, .zip],
+        .image: [.png, .jpg, .heic, .webp, .pdf, .avif, .tiff, .bmp, .docx, .jxl, .apng, .zip],
         .pdf: [.docx, .jpg, .png, .txt, .pptx, .xlsx, .md, .epub, .mobi, .azw3, .fb2, .zip],
         .ebook: EbookConversion.formats + [.zip],
         .spreadsheet: [.xlsx, .csv, .tsv, .pdf, .ods, .json, .yaml, .xml, .zip],
