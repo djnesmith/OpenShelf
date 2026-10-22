@@ -82,6 +82,9 @@ enum ToolLauncher {
         case .gifLoop:
             EditorWindowController.present(size: GIFLoopEditor.windowSize, near: location) { GIFLoopEditor(urls: urls, actions: $0) }
 
+        case .sqliteTables:
+            EditorWindowController.present(size: SQLiteTablesEditor.windowSize, near: location) { SQLiteTablesEditor(url: first, actions: $0) }
+
         case .organizePages:
             EditorWindowController.present(size: PDFPagesEditor.windowSize, near: location) { PDFPagesEditor(url: first, actions: $0) }
         case .splitPDF:

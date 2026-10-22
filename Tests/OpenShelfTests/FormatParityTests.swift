@@ -143,8 +143,8 @@ struct FormatCatalogTests {
         #expect(ConversionCatalog.formats(for: [url("a.pptx")], tools: all) == [.pdf, .jpg, .png, .zip])
         #expect(ConversionCatalog.formats(for: [url("a.key")], tools: all) == [.zip])
         #expect(ConversionCatalog.formats(for: [url("a.xls")], tools: none) == [.zip])
-        #expect(ConversionCatalog.formats(for: [url("a.csv")], tools: none) == [.xlsx, .tsv, .pdf, .zip])
-        #expect(ConversionCatalog.formats(for: [url("a.csv")], tools: all) == [.xlsx, .tsv, .pdf, .ods, .zip])
+        #expect(ConversionCatalog.formats(for: [url("a.csv")], tools: none) == [.xlsx, .tsv, .pdf, .sqlite, .zip])
+        #expect(ConversionCatalog.formats(for: [url("a.csv")], tools: all) == [.xlsx, .tsv, .pdf, .ods, .sqlite, .zip])
     }
 
     @Test func documentsAndPDFsOfferNewFormats() {

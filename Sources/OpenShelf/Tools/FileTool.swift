@@ -44,6 +44,7 @@ enum FileTool: CaseIterable, Hashable {
     case gifLoop
     case icon
     case export
+    case sqliteTables
 
     var title: String {
         switch self {
@@ -86,6 +87,7 @@ enum FileTool: CaseIterable, Hashable {
         case .gifLoop: "Loop"
         case .icon: "Icon"
         case .export: "Export"
+        case .sqliteTables: "Tables"
         }
     }
 
@@ -122,6 +124,7 @@ enum FileTool: CaseIterable, Hashable {
         case .gifLoop: "repeat"
         case .icon: "app.dashed"
         case .export: "square.and.arrow.up.on.square"
+        case .sqliteTables: "tablecells"
         case .transcribe: "captions.bubble"
         case .fitSize: "externaldrive.badge.checkmark"
         }
@@ -175,6 +178,9 @@ enum FileTool: CaseIterable, Hashable {
         if kinds == [.image] {
             let gifs: [FileTool] = urls.allSatisfy { $0.pathExtension.lowercased() == "gif" } ? [.gifLoop] : []
             return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr, .icon] + gifs + combine
+        }
+        if urls.count == 1, kinds == [.data], DatabaseConversion.isSQLite(urls[0]) {
+            return [.sqliteTables]
         }
         if kinds == [.pdf] {
             let singlePage: [FileTool] = urls.count == 1 ? [.organizePages, .splitPDF, .pdfImages] : []

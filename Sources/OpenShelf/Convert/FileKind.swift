@@ -31,6 +31,11 @@ enum FileKind: Hashable {
             self = kind
             return
         }
+        // ".db" is often SQLite, but only the header says.
+        if extensionName == "db", FileSniffer.isSQLite(url) {
+            self = .data
+            return
+        }
         // A zstd tarball; a lone .zst file is something bsdtar can't unpack.
         if extensionName == "zst", url.deletingPathExtension().pathExtension.lowercased() == "tar" {
             self = .archive
@@ -62,7 +67,7 @@ enum FileKind: Hashable {
         var kinds: [String: FileKind] = ["srt": .subtitle, "vtt": .subtitle, "ass": .subtitle, "ssa": .subtitle, "rtfd": .document]
         for ext in ["epub", "mobi", "azw", "azw3", "fb2"] { kinds[ext] = .ebook }
         for ext in ["tzst", "7z", "txz"] { kinds[ext] = .archive }
-        for ext in ["json", "yaml", "yml", "xml", "plist"] { kinds[ext] = .data }
+        for ext in ["json", "yaml", "yml", "xml", "plist", "parquet", "sqlite", "sqlite3"] { kinds[ext] = .data }
         for ext in PandocConversion.markupExtensions { kinds[ext] = .document }
         for ext in ["csv", "tsv", "xlsx", "xls", "ods"] { kinds[ext] = .spreadsheet }
         for ext in ["ppt", "pptx", "odp", "key"] { kinds[ext] = .presentation }
@@ -96,6 +101,12 @@ enum FileKind: Hashable {
 /// Recognises common formats from their first bytes, for files whose name
 /// doesn't say what they are.
 enum FileSniffer {
+    static func isSQLite(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        return (try? handle.read(upToCount: 16)) == Data("SQLite format 3\0".utf8)
+    }
+
     static func type(of url: URL) -> UTType? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }

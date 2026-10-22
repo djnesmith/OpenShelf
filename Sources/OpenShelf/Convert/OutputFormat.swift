@@ -23,7 +23,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     // Markup (pandoc)
     case tex, adoc, rst, org, typ
     // Data files
-    case json, yaml, xml, plist
+    case json, yaml, xml, plist, parquet, sqlite
     // Animated PNG, written as .png
     case apng
     case jxl
@@ -188,7 +188,7 @@ enum ConversionCatalog {
         case .subtitle:
             formats = SubtitleConversion.formats(for: url, tools: tools)
         case .data:
-            formats = DataConversion.formats(forExtension: ext, tools: tools)
+            formats = DataConversion.formats(forExtension: ext, tools: tools) + DatabaseConversion.formats(forExtension: ext, tools: tools)
         case .ebook:
             // Without calibre a book is just a file, as before.
             guard tools.ebookConvert != nil else { return archiveFormats }
@@ -208,6 +208,7 @@ enum ConversionCatalog {
         case "csv", "tsv", "xlsx":
             // Built in: CSV ⇄ TSV ⇄ XLSX and a table PDF; ODS needs LibreOffice.
             return [.xlsx, .csv, .tsv, .pdf] + (hasOffice ? [.ods] : []) + DataConversion.formats(forExtension: ext, tools: tools)
+                + DatabaseConversion.formats(forExtension: ext, tools: tools)
         default:
             // XLS and ODS can only be opened by LibreOffice.
             return hasOffice ? [.xlsx, .csv, .pdf, .ods] : []

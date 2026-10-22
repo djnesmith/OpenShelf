@@ -44,8 +44,8 @@ struct MissingToolCatalogTests {
         #expect(formats("a.pptx", all) == [.pdf, .jpg, .png, .zip])
         #expect(formats("a.xls", none) == [.zip])
         #expect(formats("a.xls", all) == [.xlsx, .csv, .pdf, .ods, .zip])
-        #expect(formats("a.csv", none) == [.xlsx, .tsv, .pdf, .zip])
-        #expect(formats("a.csv", all) == [.xlsx, .tsv, .pdf, .ods, .zip])
+        #expect(formats("a.csv", none) == [.xlsx, .tsv, .pdf, .sqlite, .zip])
+        #expect(formats("a.csv", all) == [.xlsx, .tsv, .pdf, .ods, .sqlite, .zip])
     }
 
     @Test func foldersAreTheSameEitherWay() throws {

@@ -126,7 +126,7 @@ struct MoreConversionTests {
         #expect(ConversionCatalog.formats(for: url("a.plist"), tools: none) == [.json, .zip])
         #expect(ConversionCatalog.formats(for: url("a.yml"), tools: none) == [.zip])
         #expect(ConversionCatalog.formats(for: url("a.yml"), tools: yq) == [.json, .xml, .plist, .csv, .zip])
-        #expect(ConversionCatalog.formats(for: url("a.csv"), tools: yq).suffix(4) == [.json, .yaml, .xml, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.csv"), tools: yq).suffix(5) == [.json, .yaml, .xml, .sqlite, .zip])
     }
 
     @Test func xmlGetsOneRoot() {
@@ -274,5 +274,75 @@ struct MoreConversionTests {
         let fromJPEG = try await Converter.convert(back[0], to: .jxl, tools: tools) { _ in }
         let sizes = try [back[0], fromJPEG[0]].map { try #require(try $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) }
         #expect(sizes[1] < sizes[0])
+    }
+
+    // MARK: Parquet and SQLite
+
+    static let duckdb = URL(fileURLWithPath: "/opt/homebrew/bin/duckdb")
+    static var hasDuckDB: Bool { FileManager.default.isExecutableFile(atPath: duckdb.path) }
+
+    @Test func quotesNamesAndPaths() {
+        #expect(DatabaseConversion.identifier(#"a "b"; DROP TABLE x"#) == #""a ""b""; DROP TABLE x""#)
+        #expect(DatabaseConversion.literal("it's") == "'it''s'")
+        let sql = DatabaseConversion.duckDBCopy(url("o'neil.parquet"), as: .csv, to: url("out.csv"))
+        #expect(sql == "COPY (SELECT * FROM read_parquet('/tmp/o''neil.parquet')) TO '/tmp/out.csv' (FORMAT csv, HEADER true);")
+        let arguments = DatabaseConversion.duckDBArguments("SELECT 1;")
+        #expect(arguments.prefix(4) == ["-init", "/dev/null", "-batch", "-c"])
+        #expect(arguments[4].hasPrefix("SET autoinstall_known_extensions = false;") && arguments[4].contains("lock_configuration = true"))
+        let read = DatabaseConversion.sqliteReadArguments(url("a.db"), mode: ["-csv"], sql: "SELECT 1;")
+        #expect(read == ["-readonly", "-safe", "-bail", "-init", "/dev/null", "-csv", "/tmp/a.db", "SELECT 1;"])
+        #expect(DatabaseConversion.tableName(for: url("My Sales 2026.csv")) == "My_Sales_2026")
+        #expect(DatabaseConversion.tableName(for: url("2026.csv")) == "t_2026")
+    }
+
+    @Test func databaseFormats() {
+        let duck = ExternalTools(duckdb: Self.duckdb)
+        #expect(FileKind(url: url("a.parquet")) == .data && FileKind(url: url("a.sqlite")) == .data)
+        #expect(ConversionCatalog.formats(for: url("a.parquet"), tools: duck) == [.csv, .json, .xlsx, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.parquet"), tools: none) == [.zip])
+        #expect(ConversionCatalog.formats(for: url("a.csv"), tools: duck).suffix(3) == [.parquet, .sqlite, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.csv"), tools: none).suffix(2) == [.sqlite, .zip])
+        #expect(FileTool.available(for: [url("a.sqlite")], tools: none) == [.sqliteTables])
+    }
+
+    @Test(.enabled(if: hasDuckDB)) func parquetAndSQLiteRoundTrip() async throws {
+        let folder = try workspace()
+        let duck = ExternalTools(duckdb: Self.duckdb)
+        let csv = folder.appendingPathComponent("People.csv")
+        try "id,name\n1,Ada\n2,Grace\n".write(to: csv, atomically: true, encoding: .utf8)
+
+        let parquet = try await Converter.convert(csv, to: .parquet, tools: duck) { _ in }
+        #expect(parquet.map(\.lastPathComponent) == ["People.parquet"])
+        #expect(try Data(contentsOf: parquet[0]).prefix(4) == Data("PAR1".utf8))
+        try FileManager.default.removeItem(at: csv)
+        let json = try await Converter.convert(parquet[0], to: .json, tools: duck) { _ in }
+        #expect(try String(contentsOf: json[0], encoding: .utf8).contains(#""name":"Grace""#))
+        let xlsx = try await Converter.convert(parquet[0], to: .xlsx, tools: duck) { _ in }
+        #expect(try XlsxReader.firstSheet(of: xlsx[0]) == [["id", "name"], ["1", "Ada"], ["2", "Grace"]])
+        let back = try await Converter.convert(parquet[0], to: .csv, tools: duck) { _ in }
+
+        let database = try await Converter.convert(back[0], to: .sqlite, tools: none) { _ in }
+        #expect(database.map(\.lastPathComponent) == ["People.sqlite"])
+        #expect(FileSniffer.isSQLite(database[0]))
+        #expect(try await DatabaseConversion.tables(in: database[0]) == ["People"])
+        let exported = try await DatabaseConversion.export(tables: ["People"], from: database[0], as: .json)
+        #expect(exported.map(\.lastPathComponent) == ["People People.json"])
+        #expect(try String(contentsOf: exported[0], encoding: .utf8).contains(#""name":"Ada""#))
+    }
+
+    @Test func refusesToRunSQLFromTheFile() async throws {
+        // A table named to break out of the query only ever reads that table.
+        let folder = try workspace()
+        let database = folder.appendingPathComponent("Trap.sqlite")
+        let make = Process()
+        make.executableURL = DatabaseConversion.sqlite3
+        make.arguments = ["-init", "/dev/null", database.path, #"CREATE TABLE "x""; DROP TABLE keep; --" (a); CREATE TABLE keep (b); INSERT INTO keep VALUES (1);"#]
+        try make.run()
+        make.waitUntilExit()
+        let tables = try await DatabaseConversion.tables(in: database)
+        #expect(tables.contains("keep") && tables.count == 2)
+        let saved = try await DatabaseConversion.export(tables: tables, from: database, as: .csv)
+        #expect(saved.count == 2)
+        #expect(try await DatabaseConversion.tables(in: database).contains("keep"))
     }
 }
