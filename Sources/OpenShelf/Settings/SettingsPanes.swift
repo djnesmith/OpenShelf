@@ -113,39 +113,6 @@ struct ShelvesSettingsPane: View {
     }
 }
 
-/// Settings → Updates: Sparkle's automatic checks and installs.
-struct UpdatesSettingsPane: View {
-    @State private var checksForUpdates = Updater.shared.updater.automaticallyChecksForUpdates
-    @State private var installsUpdates = Updater.shared.updater.automaticallyDownloadsUpdates
-
-    private var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Toggle("Check for updates automatically", isOn: $checksForUpdates)
-                    .onChange(of: checksForUpdates) { _, enabled in
-                        Updater.shared.updater.automaticallyChecksForUpdates = enabled
-                    }
-                Toggle("Download and install updates automatically", isOn: $installsUpdates)
-                    .disabled(!checksForUpdates)
-                    .onChange(of: installsUpdates) { _, enabled in
-                        Updater.shared.updater.automaticallyDownloadsUpdates = enabled
-                    }
-            }
-            Section {
-                LabeledContent("Version \(version)") {
-                    Button("Check Now") { Updater.shared.checkForUpdates() }
-                }
-            }
-        }
-        .settingsPane()
-    }
-}
-
-
 /// Toggle buttons for each modifier key. At least one key always stays selected.
 private struct TriggerPicker: View {
     @Binding var flags: NSEvent.ModifierFlags

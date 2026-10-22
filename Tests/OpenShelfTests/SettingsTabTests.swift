@@ -7,13 +7,12 @@ struct SettingsTabTests {
     @Test func opensOnTheTabChosenLast() {
         #expect(SettingsTab.restored(from: nil) == .general)
         #expect(SettingsTab.restored(from: "extraFormats") == .extraFormats)
-        #expect(SettingsTab.restored(from: "updates") == .updates)
         // A tab from a later version, or a damaged value.
         #expect(SettingsTab.restored(from: "advanced") == .general)
     }
 
     @Test func tabsInToolbarOrder() {
-        #expect(SettingsTab.allCases.map(\.title) == ["General", "Wheels", "Shelves", "Extra Formats", "Updates"])
+        #expect(SettingsTab.allCases.map(\.title) == ["General", "Wheels", "Shelves", "Extra Formats"])
     }
 
     @Test func everyTabHasASymbol() {
@@ -32,7 +31,7 @@ struct SettingsTabTests {
         #expect(labels < SettingsTab.width - 60)
     }
 
-    /// Panes that never touch Sparkle or the login item measure to a
+    /// Panes that never touch the login item measure to a
     /// sensible height for the window to take.
     @MainActor
     @Test func panesHaveAHeightToFit() {

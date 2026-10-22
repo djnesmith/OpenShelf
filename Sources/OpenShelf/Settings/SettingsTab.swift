@@ -6,7 +6,6 @@ enum SettingsTab: String, CaseIterable, Sendable {
     case wheels
     case shelves
     case extraFormats
-    case updates
 
     /// Every pane's width; the window keeps it while its height follows the pane.
     static let width: CGFloat = 460
@@ -20,7 +19,6 @@ enum SettingsTab: String, CaseIterable, Sendable {
         case .wheels: "Wheels"
         case .shelves: "Shelves"
         case .extraFormats: "Extra Formats"
-        case .updates: "Updates"
         }
     }
 
@@ -32,7 +30,6 @@ enum SettingsTab: String, CaseIterable, Sendable {
         case .wheels: "chart.pie"
         case .shelves: "tray.full"
         case .extraFormats: "puzzlepiece.extension"
-        case .updates: "arrow.down.circle"
         }
     }
 
@@ -48,7 +45,6 @@ enum SettingsTab: String, CaseIterable, Sendable {
         case .wheels: WheelsSettingsPane()
         case .shelves: ShelvesSettingsPane()
         case .extraFormats: ExtraFormatsPane(installer: .shared)
-        case .updates: UpdatesSettingsPane()
         }
     }
 
@@ -62,7 +58,7 @@ enum SettingsTab: String, CaseIterable, Sendable {
             Preferences.shared.conflictingWheels.map(\.title).sorted()
         case .extraFormats:
             ExtraTool.allCases.map { ExtraFormatsPane.layout(of: $0, installer: .shared) }
-        case .general, .shelves, .updates:
+        case .general, .shelves:
             []
         }
     }
