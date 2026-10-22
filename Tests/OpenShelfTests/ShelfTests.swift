@@ -77,4 +77,9 @@ struct TriggerMatcherTests {
         #expect(matcher.wheel(for: [.control, .shift]) == nil)
         #expect(matcher.wheel(for: []) == nil)
     }
+
+    @MainActor
+    @Test func newShelvesOpenExpanded() {
+        #expect(Shelf().isExpanded)
+    }
 }

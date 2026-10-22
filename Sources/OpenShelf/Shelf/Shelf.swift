@@ -20,7 +20,8 @@ final class Shelf: Identifiable {
     let id = UUID()
     private(set) var items: [ShelfItem] = []
     var selection: Set<ShelfItem.ID> = []
-    var isExpanded = false
+    /// New shelves open showing every file; restored ones keep what was saved.
+    var isExpanded = true
     var viewMode = ShelfViewMode.grid
     var dockedEdge: ShelfEdge?
     /// An item the expanded view should scroll into view, e.g. after type-select.
