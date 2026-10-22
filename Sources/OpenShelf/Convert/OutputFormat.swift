@@ -20,6 +20,8 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     case mobi, azw3, fb2
     // Markup (pandoc)
     case tex, adoc, rst, org, typ
+    // Data files
+    case json, yaml, xml, plist
 
     var title: String {
         switch self {
@@ -55,6 +57,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         case .tgz: return ext == "tgz"
         case .tex: return ["tex", "latex"].contains(ext)
         case .adoc: return ["adoc", "asciidoc"].contains(ext)
+        case .yaml: return ["yaml", "yml"].contains(ext)
         default: return ext == rawValue
         }
     }
@@ -164,6 +167,8 @@ enum ConversionCatalog {
             }
         case .subtitle:
             formats = [.txt, .srt, .vtt]
+        case .data:
+            formats = DataConversion.formats(forExtension: ext, tools: tools)
         case .ebook:
             // Without calibre a book is just a file, as before.
             guard tools.ebookConvert != nil else { return [.zip, .tar, .tgz] }
@@ -182,7 +187,7 @@ enum ConversionCatalog {
         switch ext {
         case "csv", "tsv", "xlsx":
             // Built in: CSV ⇄ TSV ⇄ XLSX and a table PDF; ODS needs LibreOffice.
-            return [.xlsx, .csv, .tsv, .pdf] + (hasOffice ? [.ods] : [])
+            return [.xlsx, .csv, .tsv, .pdf] + (hasOffice ? [.ods] : []) + DataConversion.formats(forExtension: ext, tools: tools)
         default:
             // XLS and ODS can only be opened by LibreOffice.
             return hasOffice ? [.xlsx, .csv, .pdf, .ods] : []

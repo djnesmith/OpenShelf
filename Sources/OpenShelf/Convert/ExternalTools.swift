@@ -1,7 +1,7 @@
 import Foundation
 
 /// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
-/// calibre's ebook-convert and pandoc.
+/// calibre's ebook-convert, pandoc and yq.
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
     var cwebp: URL?
@@ -9,6 +9,7 @@ struct ExternalTools: Equatable, Sendable {
     var libreOffice: URL? = nil
     var ebookConvert: URL? = nil
     var pandoc: URL? = nil
+    var yq: URL? = nil
 
     /// Never runs ffmpeg: see `WebPEncoder.isOffered`.
     var canEncodeWebP: Bool {
@@ -72,7 +73,8 @@ struct ExternalTools: Equatable, Sendable {
             ebookConvert: (locations.calibreApps.map { $0.appendingPathComponent("Contents/MacOS/ebook-convert") }
                 + locations.commandDirectories.map { $0.appendingPathComponent("ebook-convert") })
                 .first { FileManager.default.isExecutableFile(atPath: $0.path) },
-            pandoc: find("pandoc", ignoredAs: "pandoc")
+            pandoc: find("pandoc", ignoredAs: "pandoc"),
+            yq: find("yq", ignoredAs: "yq")
         )
     }
 

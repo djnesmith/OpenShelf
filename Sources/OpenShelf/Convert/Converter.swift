@@ -60,6 +60,10 @@ enum Converter {
             return [try await PandocConversion.convert(source, to: format, tools: tools)]
         case .document:
             return [try await DocumentConversion.convert(source, to: format)]
+        case .data:
+            return [try await DataConversion.convert(source, to: format, tools: tools)]
+        case .spreadsheet where [.json, .yaml, .xml].contains(format):
+            return [try await DataConversion.convert(source, to: format, tools: tools)]
         case .spreadsheet:
             return try await SpreadsheetConversion.convert(source, to: format, tools: tools)
         case .presentation:

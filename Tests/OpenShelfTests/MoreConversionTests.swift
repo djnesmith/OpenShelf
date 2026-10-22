@@ -9,10 +9,13 @@ struct MoreConversionTests {
     static var hasCalibre: Bool { FileManager.default.isExecutableFile(atPath: ebookConvert.path) }
     static let pandoc = URL(fileURLWithPath: "/opt/homebrew/bin/pandoc")
     static var hasPandoc: Bool { FileManager.default.isExecutableFile(atPath: pandoc.path) }
+    static let yq = URL(fileURLWithPath: "/opt/homebrew/bin/yq")
+    static var hasYQ: Bool { FileManager.default.isExecutableFile(atPath: yq.path) }
 
     let none = ExternalTools()
     let calibre = ExternalTools(ebookConvert: Self.ebookConvert)
     let pandoc = ExternalTools(pandoc: Self.pandoc)
+    let yq = ExternalTools(yq: Self.yq)
 
     func url(_ name: String) -> URL {
         URL(fileURLWithPath: "/tmp/\(name)")
@@ -111,5 +114,68 @@ struct MoreConversionTests {
         #expect(docx.map(\.lastPathComponent) == ["Notes.docx"])
         let back = try await Converter.convert(folder.appendingPathComponent("Notes.tex"), to: .md, tools: pandoc) { _ in }
         #expect(try String(contentsOf: back[0], encoding: .utf8).contains("*emphasis*"))
+    }
+
+    // MARK: Data files
+
+    @Test func dataFormatsDependOnYQ() {
+        for name in ["a.json", "a.yaml", "a.yml", "a.xml", "a.plist"] {
+            #expect(FileKind(url: url(name)) == .data, "\(name)")
+        }
+        #expect(ConversionCatalog.formats(for: url("a.json"), tools: none) == [.plist, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.plist"), tools: none) == [.json, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.yml"), tools: none) == [.zip])
+        #expect(ConversionCatalog.formats(for: url("a.yml"), tools: yq) == [.json, .xml, .plist, .csv, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.csv"), tools: yq).suffix(4) == [.json, .yaml, .xml, .zip])
+    }
+
+    @Test func xmlGetsOneRoot() {
+        let wrapped = DataConversion.yqArguments(from: "json", to: .xml, source: url("a.json"))
+        #expect(wrapped.contains(#"if (tag == "!!map" and length == 1) then . elif tag == "!!seq" then {"root": {"item": .}} else {"root": .} end"#))
+        #expect(DataConversion.yqArguments(from: "yml", to: .json, source: url("a.yml")) == ["--input-format", "yaml", "--output-format", "json", ".", "/tmp/a.yml"])
+    }
+
+    @Test func jsonAndPropertyListsWithFoundation() async throws {
+        let folder = try workspace()
+        let json = folder.appendingPathComponent("Settings.json")
+        try #"{"name": "OpenShelf", "sizes": [1, 2.5], "on": true}"#.write(to: json, atomically: true, encoding: .utf8)
+        let plist = try await Converter.convert(json, to: .plist, tools: none) { _ in }
+        #expect(plist.map(\.lastPathComponent) == ["Settings.plist"])
+        let object = try PropertyListSerialization.propertyList(from: Data(contentsOf: plist[0]), format: nil) as? [String: Any]
+        #expect(object?["name"] as? String == "OpenShelf")
+
+        try FileManager.default.removeItem(at: json)
+        let back = try await Converter.convert(plist[0], to: .json, tools: none) { _ in }
+        #expect(try String(contentsOf: back[0], encoding: .utf8).contains(#""name" : "OpenShelf""#))
+
+        let nulls = folder.appendingPathComponent("Nulls.json")
+        try #"{"a": null}"#.write(to: nulls, atomically: true, encoding: .utf8)
+        await #expect(throws: (any Error).self) { try await Converter.convert(nulls, to: .plist, tools: none) { _ in } }
+        #expect(!FileManager.default.fileExists(atPath: folder.appendingPathComponent("Nulls.plist").path))
+    }
+
+    @Test(.enabled(if: hasYQ)) func yamlXMLAndCSVWithYQ() async throws {
+        let folder = try workspace()
+        let yaml = folder.appendingPathComponent("People.yaml")
+        try "- name: Ada\n  born: 1815\n- name: Grace\n  born: 1906\n".write(to: yaml, atomically: true, encoding: .utf8)
+        let json = try await Converter.convert(yaml, to: .json, tools: yq) { _ in }
+        #expect(try String(contentsOf: json[0], encoding: .utf8).contains(#""name": "Ada""#))
+        let csv = try await Converter.convert(yaml, to: .csv, tools: yq) { _ in }
+        #expect(try String(contentsOf: csv[0], encoding: .utf8).hasPrefix("name,born\nAda,1815"))
+        let xml = try await Converter.convert(yaml, to: .xml, tools: yq) { _ in }
+        let xmlText = try String(contentsOf: xml[0], encoding: .utf8)
+        #expect(xmlText.hasPrefix("<root>\n  <item>") && xmlText.contains("<name>Grace</name>"))
+        _ = try XMLDocument(contentsOf: xml[0])
+        let plist = try await Converter.convert(yaml, to: .plist, tools: yq) { _ in }
+        #expect(try PropertyListSerialization.propertyList(from: Data(contentsOf: plist[0]), format: nil) is [Any])
+
+        // CSV and TSV tables become records.
+        let table = folder.appendingPathComponent("Table.csv")
+        try "a,b\n1,x\n".write(to: table, atomically: true, encoding: .utf8)
+        let records = try await Converter.convert(table, to: .yaml, tools: yq) { _ in }
+        #expect(try String(contentsOf: records[0], encoding: .utf8) == "- a: 1\n  b: x\n")
+        // A property list through JSON to YAML.
+        let fromPlist = try await Converter.convert(plist[0], to: .yaml, tools: yq) { _ in }
+        #expect(try String(contentsOf: fromPlist[0], encoding: .utf8).contains("name: Ada"))
     }
 }

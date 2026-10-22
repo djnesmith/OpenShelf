@@ -22,6 +22,7 @@ enum WheelOrdering {
         .image: [.png, .jpg, .heic, .webp, .pdf, .avif, .tiff, .bmp, .docx, .zip],
         .pdf: [.docx, .jpg, .png, .txt, .pptx, .xlsx, .md, .epub, .mobi, .azw3, .fb2, .zip],
         .ebook: EbookConversion.formats + [.zip],
+        .spreadsheet: [.xlsx, .csv, .tsv, .pdf, .ods, .json, .yaml, .xml, .zip],
         .video: [.mp4, .mov, .gif, .mp3, .m4a, .webm, .mkv, .avi, .wmv, .zip],
         .audio: [.mp3, .m4a, .wav, .flac, .aiff, .ogg, .opus, .wma, .zip],
     ]

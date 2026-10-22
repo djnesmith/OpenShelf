@@ -13,6 +13,8 @@ enum FileKind: Hashable {
     case subtitle
     /// EPUB, Kindle and FictionBook books.
     case ebook
+    /// JSON, YAML, XML and property lists.
+    case data
     case archive
     case folder
     case other
@@ -54,6 +56,7 @@ enum FileKind: Hashable {
     static let kindsByExtension: [String: FileKind] = {
         var kinds: [String: FileKind] = ["srt": .subtitle, "vtt": .subtitle, "rtfd": .document]
         for ext in ["epub", "mobi", "azw", "azw3", "fb2"] { kinds[ext] = .ebook }
+        for ext in ["json", "yaml", "yml", "xml", "plist"] { kinds[ext] = .data }
         for ext in PandocConversion.markupExtensions { kinds[ext] = .document }
         for ext in ["csv", "tsv", "xlsx", "xls", "ods"] { kinds[ext] = .spreadsheet }
         for ext in ["ppt", "pptx", "odp", "key"] { kinds[ext] = .presentation }
