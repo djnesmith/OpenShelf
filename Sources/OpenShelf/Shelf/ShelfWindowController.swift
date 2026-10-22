@@ -30,6 +30,9 @@ final class ShelfWindowController: NSWindowController, NSWindowDelegate {
     /// Set when the user asked to see the shelf; it stays out until the pointer
     /// has been over it, rather than tucking away again before they find it.
     private var holdsOpenUntilVisited = false
+    /// Put out of sight by Hide Shelves: off screen and out of Mission
+    /// Control, edge tab included, with everything else kept as it was.
+    private(set) var isUserHidden = false
 
     private var panel: ShelfPanel? { window as? ShelfPanel }
 
@@ -76,6 +79,7 @@ final class ShelfWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func present() {
+        guard !isUserHidden else { return }
         if isHidden {
             reveal()
         } else {
@@ -92,6 +96,31 @@ final class ShelfWindowController: NSWindowController, NSWindowDelegate {
             panel?.makeKey()
         }
     }
+
+    /// Hides the shelf for Hide Shelves, or brings it back exactly as it was:
+    /// a shelf tucked behind an edge comes back as its tab.
+    func setUserHidden(_ hidden: Bool) {
+        guard hidden != isUserHidden, let panel else { return }
+        isUserHidden = hidden
+        pointerAwaySince = nil
+        if hidden {
+            panel.orderOut(nil)
+            edgeTab.hide()
+            return
+        }
+        if let shown = shownFrame, let edge = shelf.dockedEdge, let visibleFrame = (panel.screen ?? NSScreen.main)?.visibleFrame {
+            edgeTab.show(at: EdgeHiding.tabFrame(for: shown, edge: edge, in: visibleFrame), edge: edge, count: shelf.items.count)
+        } else {
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
+        }
+    }
+
+    /// Whether the shelf's panel is on screen, for tests.
+    var isPanelVisible: Bool { panel?.isVisible ?? false }
+
+    /// The on-screen frame, even while tucked or hidden, for tests.
+    var frameShown: CGRect? { shownFrame ?? panel?.frame }
 
     func dismiss() {
         guard !isClosing else { return }
@@ -250,6 +279,8 @@ final class ShelfWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func checkEdgeHiding() {
+        // Hidden shelves keep their tucked or shown state until they're back.
+        guard !isUserHidden else { return }
         guard let panel, let edge = shelf.dockedEdge, Preferences.shared.hidesDockedShelves else {
             pointerAwaySince = nil
             if isHidden { reveal() }

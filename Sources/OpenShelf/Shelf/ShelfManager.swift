@@ -9,37 +9,78 @@ final class ShelfManager {
     /// Ordered from least to most recently used.
     private var controllers: [ShelfWindowController] = []
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private let storeURL: URL
+
+    /// Whether Hide Shelves has put every shelf out of sight. They stay open,
+    /// with their files and places, until Show Shelves; a relaunch shows them.
+    private(set) var areHidden = false
+
+    init(storeURL: URL = ShelfStore.defaultURL) {
+        self.storeURL = storeURL
+    }
 
     var hasShelves: Bool { !controllers.isEmpty }
 
     /// Open shelves, most recently used first, for the menu-bar menu.
     var openShelves: [Shelf] { controllers.reversed().map(\.shelf) }
 
+    /// Puts every shelf out of sight, edge tabs too, keeping each as it is.
+    func hideAll() {
+        guard hasShelves else { return }
+        areHidden = true
+        for controller in controllers {
+            controller.setUserHidden(true)
+        }
+    }
+
+    /// Brings hidden shelves back as they were: where they were, and those
+    /// tucked behind an edge still tucked there.
+    func unhideAll() {
+        guard areHidden else { return }
+        areHidden = false
+        for controller in controllers {
+            controller.setUserHidden(false)
+        }
+    }
+
+    /// The menu's Hide Shelves / Show Shelves.
+    func toggleHidden() {
+        areHidden ? unhideAll() : hideAll()
+    }
+
     /// Brings every shelf to the front, sliding out any hidden at an edge, and
     /// focuses the most recently used one.
     func showAll() {
+        unhideAll()
         for controller in controllers {
             controller.bringForward(focus: controller === controllers.last)
         }
     }
 
+    /// Showing one shelf, from the menu, brings the others back too.
     func show(_ shelf: Shelf) {
+        unhideAll()
         controllers.first { $0.shelf === shelf }?.bringForward(focus: true)
     }
 
+    /// A new shelf while shelves are hidden brings them all back with it.
     @discardableResult
     func newShelf(with urls: [URL] = [], near location: NSPoint = NSEvent.mouseLocation) -> Shelf {
+        unhideAll()
         let shelf = Shelf()
         shelf.add(urls)
         open(ShelfWindowController(shelf: shelf, near: location))
         return shelf
     }
 
+    /// Adding files while shelves are hidden brings them all back, so the
+    /// files land somewhere they can be seen.
     func addToRecentShelf(_ urls: [URL]) {
         guard let recent = controllers.last else {
             newShelf(with: urls)
             return
         }
+        unhideAll()
         recent.shelf.add(urls)
         recent.present()
     }
@@ -55,7 +96,7 @@ final class ShelfManager {
     /// Reopens the shelves saved at the end of the last session. Files that no
     /// longer exist are skipped, and shelves left with nothing aren't reopened.
     func restoreSavedShelves() {
-        for snapshot in ShelfStore.load() {
+        for snapshot in ShelfStore.load(from: storeURL) {
             let urls = snapshot.items.compactMap { ShelfStore.resolve($0) }
             guard !urls.isEmpty else { continue }
             let shelf = Shelf()
@@ -72,7 +113,7 @@ final class ShelfManager {
     func saveNow() {
         saveTask?.cancel()
         saveTask = nil
-        try? ShelfStore.save(controllers.compactMap(\.snapshot))
+        try? ShelfStore.save(controllers.compactMap(\.snapshot), to: storeURL)
     }
 
     /// Coalesces bursts of changes (resizing, moving, adding files) into one write.
@@ -87,6 +128,8 @@ final class ShelfManager {
 
     private func open(_ controller: ShelfWindowController) {
         controller.onClose = { [weak self] closed in
+            // Closing the last hidden shelf (Close All) leaves nothing hidden.
+            if self?.controllers.count == 1 { self?.areHidden = false }
             self?.controllers.removeAll { $0 === closed }
             self?.scheduleSave()
         }

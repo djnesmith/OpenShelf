@@ -8,7 +8,7 @@ struct OpenShelfApp: App {
         MenuBarExtra {
             Button("New Shelf") { appDelegate.shelves.newShelf() }
                 .keyboardShortcut("n")
-            Button("Show Shelves") { appDelegate.shelves.showAll() }
+            Button(appDelegate.shelves.areHidden ? "Show Shelves" : "Hide Shelves") { appDelegate.shelves.toggleHidden() }
                 .disabled(!appDelegate.shelves.hasShelves)
             Button("Close All Shelves") { appDelegate.shelves.closeAll() }
                 .disabled(!appDelegate.shelves.hasShelves)
