@@ -38,8 +38,10 @@ enum FileActions {
         service.perform(withItems: urls)
     }
 
+    /// Opens the files' folders in iTerm2 when it's installed (a new window at
+    /// each folder), otherwise in Terminal.
     static func openInTerminal(_ urls: [URL]) {
-        guard let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else { return }
+        guard let terminal = TerminalApp.preferred?.url else { return }
         let folders = Set(urls.map { url in
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
             return isDirectory ? url : url.deletingLastPathComponent()
@@ -89,4 +91,21 @@ enum FileActions {
         }
         return total
     }
+}
+
+/// The terminal app folders open in: iTerm2 when it's installed, else Terminal.
+enum TerminalApp {
+    static let iTermIdentifier = "com.googlecode.iterm2"
+    static let terminalIdentifier = "com.apple.Terminal"
+
+    /// Looked up once; installing iTerm2 later shows after a relaunch.
+    static let preferred: (url: URL, name: String)? = choose { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+
+    static func choose(_ lookup: (String) -> URL?) -> (url: URL, name: String)? {
+        if let iTerm = lookup(iTermIdentifier) { return (iTerm, "iTerm") }
+        return lookup(terminalIdentifier).map { ($0, "Terminal") }
+    }
+
+    /// "iTerm" or "Terminal", for labels and messages.
+    static var name: String { preferred?.name ?? "Terminal" }
 }

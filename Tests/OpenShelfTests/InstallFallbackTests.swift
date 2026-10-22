@@ -350,7 +350,7 @@ struct HomebrewTests {
         #expect(Homebrew.failureMessage(for: .ffmpeg, output: ["==> Fetching ffmpeg", "Error: No such file or directory @ rb_sysopen"])
             == "Homebrew couldn’t install ffmpeg: No such file or directory @ rb_sysopen")
         #expect(Homebrew.failureMessage(for: .libreOffice, output: ["==> Installing Cask libreoffice", "sudo: a terminal is required to read the password"])
-            == "Homebrew needs an administrator password for LibreOffice. Run “brew install --cask libreoffice” in Terminal.")
+            == "Homebrew needs an administrator password for LibreOffice. Run “brew install --cask libreoffice” in \(TerminalApp.name).")
         #expect(Homebrew.failureMessage(for: .ffmpeg, output: []) == "Homebrew couldn’t install ffmpeg.")
         #expect(Homebrew.failureMessage(for: .ffmpeg, output: ["curl: (6) Could not resolve host: ghcr.io"])
             == "Homebrew couldn’t install ffmpeg: (6) Could not resolve host: ghcr.io")

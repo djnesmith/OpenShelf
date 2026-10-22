@@ -131,7 +131,7 @@ enum Homebrew {
             return lower.contains("sudo") || lower.contains("password") || lower.contains("administrator")
         }
         if wantsPassword {
-            return "Homebrew needs an administrator password for \(tool.name). Run “\(tool.homebrewCommand)” in Terminal."
+            return "Homebrew needs an administrator password for \(tool.name). Run “\(tool.homebrewCommand)” in \(TerminalApp.name)."
         }
         let error = plainLines.last { $0.hasPrefix("Error:") }.map { String($0.dropFirst("Error:".count)).trimmingCharacters(in: .whitespaces) }
         guard let reason = error ?? plainLines.last else {

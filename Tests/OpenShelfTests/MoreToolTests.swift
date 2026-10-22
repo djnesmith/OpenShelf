@@ -244,4 +244,15 @@ struct MoreToolTests {
         let png = frame?[kCGImagePropertyPNGDictionary] as? [CFString: Any]
         #expect(png?[kCGImagePropertyAPNGDelayTime] as? Double == 0.5)
     }
+
+    // MARK: Terminal app
+
+    @Test func prefersITermThenTerminal() {
+        let iTerm = URL(fileURLWithPath: "/Applications/iTerm.app"), terminal = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
+        let both: [String: URL] = [TerminalApp.iTermIdentifier: iTerm, TerminalApp.terminalIdentifier: terminal]
+        #expect(TerminalApp.choose { both[$0] }.map { [$0.url.path, $0.name] } == [iTerm.path, "iTerm"])
+        #expect(TerminalApp.choose { $0 == TerminalApp.terminalIdentifier ? terminal : nil }.map { [$0.url.path, $0.name] } == [terminal.path, "Terminal"])
+        #expect(TerminalApp.choose { _ in nil } == nil)
+        #expect(FileAction.terminal.title == TerminalApp.name)
+    }
 }
