@@ -94,9 +94,9 @@ final class MediaExportModel {
         container.codecs.filter { encoders.contains($0.encoder) }
     }
 
-    /// Vorbis needs ffmpeg; the rest are macOS's own.
+    /// Vorbis and MKA need ffmpeg; the rest are macOS's own.
     var audioFormats: [AudioExportFormat] {
-        AudioExportFormat.allCases.filter { $0 != .vorbis || hasFFmpeg }
+        AudioExportFormat.allCases.filter { $0.afconvertArguments != nil || hasFFmpeg }
     }
 
     var isValid: Bool { isAudio || codecs.contains(codec) }

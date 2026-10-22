@@ -448,4 +448,24 @@ struct MoreMediaToolTests {
         let alac = try await MediaTools.exportAudio(ogg, as: .alac, tools: tools) { _ in }
         #expect(try await probe(alac).audio.first?.codec == "alac")
     }
+
+    @Test(.enabled(if: hasFFmpeg)) func exportsBroadcastAndDiscContainers() async throws {
+        let folder = try workspace()
+        let clip = folder.appendingPathComponent("clip.mp4")
+        let cases: [(VideoContainer, VideoCodec, String, String, String)] = [
+            (.mpeg, .mpeg2, "clip MPEG-2.mpg", "mpeg2video", "mp2"),
+            (.vob, .mpeg2, "clip MPEG-2.vob", "mpeg2video", "ac3"),
+            (.ts, .h264, "clip H.264.ts", "h264", "aac"),
+            (.m2ts, .hevc, "clip HEVC.m2ts", "hevc", "aac"),
+        ]
+        for (container, codec, name, videoCodec, audioCodec) in cases {
+            let output = try await MediaTools.exportVideo(clip, as: container, codec: codec, tools: tools) { _ in }
+            #expect(output.lastPathComponent == name)
+            let probed = try await probe(output)
+            #expect(probed.video?.codec == videoCodec && probed.audio.first?.codec == audioCodec, "\(name)")
+        }
+        let mka = try await MediaTools.exportAudio(folder.appendingPathComponent("tone.m4a"), as: .mka, tools: tools) { _ in }
+        #expect(mka.lastPathComponent == "tone MKA.mka")
+        #expect(try await probe(mka).audio.first?.codec == "aac")
+    }
 }

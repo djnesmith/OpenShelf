@@ -2,7 +2,7 @@ import Foundation
 
 /// A picture codec the Export tool can write, through ffmpeg.
 enum VideoCodec: String, CaseIterable, Identifiable, Sendable {
-    case h264, hevc, av1, vp9, prores
+    case h264, hevc, av1, vp9, prores, mpeg2
 
     var id: Self { self }
 
@@ -13,6 +13,7 @@ enum VideoCodec: String, CaseIterable, Identifiable, Sendable {
         case .av1: "AV1"
         case .vp9: "VP9"
         case .prores: "ProRes"
+        case .mpeg2: "MPEG-2"
         }
     }
 
@@ -24,6 +25,7 @@ enum VideoCodec: String, CaseIterable, Identifiable, Sendable {
         case .av1: "libsvtav1"
         case .vp9: "libvpx-vp9"
         case .prores: "prores_ks"
+        case .mpeg2: "mpeg2video"
         }
     }
 
@@ -35,17 +37,18 @@ enum VideoCodec: String, CaseIterable, Identifiable, Sendable {
         case .av1: ["-c:v", "libsvtav1", "-preset", "8", "-crf", "35", "-pix_fmt", "yuv420p"]
         case .vp9: ["-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-deadline", "good", "-cpu-used", "4", "-row-mt", "1"]
         case .prores: ["-c:v", "prores_ks", "-profile:v", "3", "-pix_fmt", "yuv422p10le"]
+        case .mpeg2: ["-c:v", "mpeg2video", "-q:v", "3", "-pix_fmt", "yuv420p"]
         }
     }
 }
 
 /// A file type the Export tool can write video into.
 enum VideoContainer: String, CaseIterable, Identifiable, Sendable {
-    case mp4, mov, mkv, webm
+    case mp4, mov, mkv, webm, mpeg, ts, m2ts, vob
 
     var id: Self { self }
     var title: String { rawValue.uppercased() }
-    var pathExtension: String { rawValue }
+    var pathExtension: String { self == .mpeg ? "mpg" : rawValue }
 
     /// The codecs this container holds and players expect in it, first the usual one.
     var codecs: [VideoCodec] {
@@ -54,6 +57,8 @@ enum VideoContainer: String, CaseIterable, Identifiable, Sendable {
         case .mov: [.h264, .hevc, .prores]
         case .mkv: [.h264, .hevc, .av1, .vp9, .prores]
         case .webm: [.vp9, .av1]
+        case .mpeg, .vob: [.mpeg2]
+        case .ts, .m2ts: [.h264, .hevc, .mpeg2]
         }
     }
 
@@ -61,6 +66,9 @@ enum VideoContainer: String, CaseIterable, Identifiable, Sendable {
     var audioArguments: [String] {
         switch self {
         case .webm: ["-c:a", "libopus", "-b:a", "160k"]
+        // What DVD and broadcast players expect.
+        case .mpeg: ["-c:a", "mp2", "-b:a", "224k"]
+        case .vob: ["-c:a", "ac3", "-b:a", "448k"]
         default: ["-c:a", "aac", "-b:a", "192k"]
         }
     }
@@ -68,7 +76,7 @@ enum VideoContainer: String, CaseIterable, Identifiable, Sendable {
 
 /// What the Export tool can turn sound into.
 enum AudioExportFormat: String, CaseIterable, Identifiable, Sendable {
-    case aac, alac, caf, pcm, vorbis
+    case aac, alac, caf, pcm, vorbis, mka
 
     var id: Self { self }
 
@@ -79,6 +87,7 @@ enum AudioExportFormat: String, CaseIterable, Identifiable, Sendable {
         case .caf: "CAF"
         case .pcm: "PCM"
         case .vorbis: "Vorbis"
+        case .mka: "MKA"
         }
     }
 
@@ -90,6 +99,7 @@ enum AudioExportFormat: String, CaseIterable, Identifiable, Sendable {
         case .caf: "Apple Lossless in a Core Audio file, for Logic and GarageBand."
         case .pcm: "Uncompressed 24-bit WAV."
         case .vorbis: "Ogg Vorbis, for games and open-source players. Needs ffmpeg."
+        case .mka: "The sound as it is, unchanged, in a Matroska audio file. Needs ffmpeg."
         }
     }
 
@@ -99,6 +109,7 @@ enum AudioExportFormat: String, CaseIterable, Identifiable, Sendable {
         case .caf: "caf"
         case .pcm: "wav"
         case .vorbis: "ogg"
+        case .mka: "mka"
         }
     }
 
@@ -109,7 +120,7 @@ enum AudioExportFormat: String, CaseIterable, Identifiable, Sendable {
         case .alac: ["-f", "m4af", "-d", "alac"]
         case .caf: ["-f", "caff", "-d", "alac"]
         case .pcm: ["-f", "WAVE", "-d", "LEI24"]
-        case .vorbis: nil
+        case .vorbis, .mka: nil
         }
     }
 
@@ -122,6 +133,7 @@ enum AudioExportFormat: String, CaseIterable, Identifiable, Sendable {
         case .pcm: ["-c:a", "pcm_s24le"]
         // Really Vorbis, unlike the Convert wheel's OGG, which falls back to Opus:
         // ffmpeg's own encoder when libvorbis is missing (stereo only).
+        case .mka: ["-c:a", "copy"]
         case .vorbis: encoders.contains("libvorbis") ? ["-c:a", "libvorbis", "-q:a", "5"] : ["-c:a", "vorbis", "-strict", "experimental", "-ac", "2"]
         }
     }
