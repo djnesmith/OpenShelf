@@ -96,6 +96,8 @@ enum ToolLauncher {
             EditorWindowController.present(size: MediaTrimEditor.windowSize, near: location) { MediaTrimEditor(url: first, actions: $0) }
         case .compressAudio:
             EditorWindowController.present(size: AudioCompressEditor.windowSize, near: location) { AudioCompressEditor(urls: urls, actions: $0) }
+        case .export:
+            EditorWindowController.present(size: MediaExportEditor.windowSize, near: location) { MediaExportEditor(urls: urls, actions: $0) }
         case .frameRate:
             EditorWindowController.present(size: FrameRateEditor.windowSize, near: location) { FrameRateEditor(urls: urls, actions: $0) }
         case .fitSize:

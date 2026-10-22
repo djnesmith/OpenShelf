@@ -43,6 +43,7 @@ enum FileTool: CaseIterable, Hashable {
     case frameRate
     case gifLoop
     case icon
+    case export
 
     var title: String {
         switch self {
@@ -84,6 +85,7 @@ enum FileTool: CaseIterable, Hashable {
         case .frameRate: "Frame Rate"
         case .gifLoop: "Loop"
         case .icon: "Icon"
+        case .export: "Export"
         }
     }
 
@@ -119,6 +121,7 @@ enum FileTool: CaseIterable, Hashable {
         case .frameRate: "film.stack"
         case .gifLoop: "repeat"
         case .icon: "app.dashed"
+        case .export: "square.and.arrow.up.on.square"
         case .transcribe: "captions.bubble"
         case .fitSize: "externaldrive.badge.checkmark"
         }
@@ -186,7 +189,7 @@ enum FileTool: CaseIterable, Hashable {
         let hasFFmpeg = tools.ffmpeg != nil
         if kinds == [.video] {
             return merge + [.trim, .speed, .cropVideo, .rotateVideo, .splitMedia, .compressVideo, .mute, .stillFrame, .grayscale, .transcribe]
-                + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume, .fitSize, .frameRate] : [])
+                + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume, .fitSize, .frameRate, .export] : [])
         }
         if kinds == [.audio] {
             return merge + [.trim, .speed, .splitMedia, .compressAudio, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : [])

@@ -398,4 +398,35 @@ struct MoreMediaToolTests {
         // 3 seconds at 12 fps.
         #expect(CGImageSourceGetCount(source) >= 30)
     }
+
+    // MARK: Export
+
+    @Test func containersHoldTheirCodecs() {
+        #expect(VideoContainer.webm.codecs == [.vp9, .av1])
+        #expect(!VideoContainer.mp4.codecs.contains(.prores))
+        let arguments = FFmpegEdits.export(container: .webm, codec: .vp9)
+        #expect(arguments.contains("libvpx-vp9") && arguments.contains("libopus") && !arguments.contains("+faststart"))
+        #expect(FFmpegEdits.export(container: .mov, codec: .prores).contains("prores_ks"))
+    }
+
+    @Test(.enabled(if: hasFFmpeg)) func exportsInEachCodec() async throws {
+        let folder = try workspace()
+        let clip = folder.appendingPathComponent("clip.mp4")
+        let cases: [(VideoContainer, VideoCodec, String, String)] = [
+            (.mkv, .av1, "clip AV1.mkv", "av1"),
+            (.webm, .vp9, "clip VP9.webm", "vp9"),
+            (.mov, .prores, "clip ProRes.mov", "prores"),
+            (.mp4, .hevc, "clip HEVC.mp4", "hevc"),
+        ]
+        for (container, codec, name, probedCodec) in cases {
+            let output = try await MediaTools.exportVideo(clip, as: container, codec: codec, tools: tools) { _ in }
+            #expect(output.lastPathComponent == name)
+            let probed = try await probe(output)
+            #expect(probed.video?.codec == probedCodec, "\(name)")
+            #expect(probed.audio.count == 1, "\(name)")
+        }
+        await #expect(throws: ConversionError.self) {
+            try await MediaTools.exportVideo(clip, as: .webm, codec: .h264, tools: tools) { _ in }
+        }
+    }
 }
