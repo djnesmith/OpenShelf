@@ -12,7 +12,7 @@ need the built app at `/Applications/OpenShelf.app`.
 ## Security
 
 ### 1. No in-app updates
-Sparkle is gone, so the app never downloads or installs updates by itself.
+Sparkle is gone, so the app never downloads or installs updates by itself. Upstream 1.4.0's update reminder (a blue menu-bar icon and an "Update to Version…" item) needs Sparkle, so the merge leaves it out; `MenuBarIcon.updateAvailableImage` is unused.
 - Commits: 28bb48c, f036332 (the Makefile no longer fetches Sparkle)
 - Files: `Package.swift`, `Makefile`, `Support/Info.plist`, `Sources/OpenShelf/App/AppDelegate.swift`, `App/OpenShelfApp.swift`, `Settings/SettingsPanes.swift`, `Settings/SettingsTab.swift` (`App/Updater.swift` deleted)
 - Check: `grep -ri sparkle Package.swift Makefile Support Sources` finds nothing. With the app running, `lsof -nP -i -a -p $(pgrep -x OpenShelf)` shows no sockets.
@@ -79,12 +79,13 @@ The Resize and Remove Background editors reuse one Core Image context instead of
 An edit saves in the file's own format and codecs: an MP3 stays an MP3 at about its bitrate, and HEVC or ProRes stays HEVC or ProRes. MKV, WebM and AVI are edited with ffmpeg and keep their container. When the format has to change, the toast says why.
 - Commits: 74466c7, f67fca7, 258b3e3
 - Files: `Sources/OpenShelf/Tools/Media/KeepFormat.swift`, `Tools/Media/MediaFilters.swift`, `Tools/Media/MediaToolsFFmpeg.swift`, `Tools/Media/MediaTools.swift`, `Tools/Media/MediaEdits.swift`, `Convert/MediaFallback.swift`, `Convert/ProbedMedia.swift`, `Tools/EditorWindow.swift`, plus each media editor
-- Check: `swift test --filter KeepFormatTests`, `--filter KeepVideoFormatTests` and `--filter ffmpegContainersKeepTheirFormat`.
+- Upstream 1.3.0 lets Trim, Split, Crop and Rotate edit several files at once through `Tools/Media/MediaBatch.swift`; its `sources:` carries the "why the format changed" note there too.
+- Check: `swift test --filter KeepFormatTests` (includes `batchEditsSayWhyTheFormatChanged`), `--filter KeepVideoFormatTests` and `--filter ffmpegContainersKeepTheirFormat`.
 
 ### 12. Still frame
-Saves one frame of a video as a full-size image.
+Saves one frame of a video as a full-size image. It works on one video; with several, a toast says which one opened (`showOneFileNote`, which upstream removed for its own editors).
 - Commits: b97e541
-- Files: `Sources/OpenShelf/Tools/Media/StillFrame.swift`, `Tools/Media/StillFrameEditor.swift`
+- Files: `Sources/OpenShelf/Tools/Media/StillFrame.swift`, `Tools/Media/StillFrameEditor.swift`, `Tools/ToolLauncher.swift`
 - Check: `swift test --filter stillFrameSavesAFullSizeImage`.
 
 ### 13. Reverse
@@ -162,13 +163,13 @@ Recognises text in images and scanned PDFs and makes text files or searchable PD
 - Check: `swift test --filter recognisesTextInAnImageAndAScannedPDF`.
 
 ### 25. PDF pages to images
-Saves chosen pages at a chosen DPI.
+Saves chosen pages at a chosen DPI. Offered for one PDF at a time; upstream's other page tools take several.
 - Commits: f6ab6eb
-- Files: `Sources/OpenShelf/Tools/PDF/PDFImagesEditor.swift`, `Convert/DocumentConversion.swift`
+- Files: `Sources/OpenShelf/Tools/PDF/PDFImagesEditor.swift`, `Convert/DocumentConversion.swift`, `Tools/FileTool.swift`
 - Check: `swift test --filter savesChosenPagesAtTheResolution`.
 
 ### 26. Crop to subject
-The Crop editor can crop around the subject that Vision finds.
+The Crop editor can crop around the subject that Vision finds. With several images (upstream 1.3.0), it crops the one shown, and the others follow while they share one crop.
 - Commits: b9382f1
 - Files: `Sources/OpenShelf/Tools/Editors/CropEditor.swift`
 - Check: `swift test --filter cropsAroundTheSubject`.

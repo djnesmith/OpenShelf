@@ -6,6 +6,58 @@ tags `v<version>` and publishes a GitHub release with that section as notes.
 
 Format: one `## [x.y.z] - YYYY-MM-DD` heading per version, newest first.
 
+## [1.4.0] - 2026-10-23
+
+Choose how conversions come out.
+
+### New
+
+- **Output settings.** The new **Output** tab in Settings sets how converted
+  files are made. Everything starts on **Automatic**, which converts exactly
+  as before. Thanks to [@wada3n](https://github.com/wada3n) for the idea in
+  [#4](https://github.com/Manan-Santoki/OpenShelf/issues/4).
+  - **Video:** codec (H.264 or HEVC), quality (Smaller, Balanced, Best or a
+    bitrate of your choice) and largest size (4K, 1080p, 720p or 480p). MP4
+    and MOV don't need ffmpeg for any of these; MKV, WebM, AVI and WMV follow
+    them through ffmpeg. HDR videos stay HEVC so their colours survive.
+  - **Audio:** a fixed bitrate for MP3, M4A, OGG, Opus, WMA and the sound in
+    videos.
+  - **Images:** quality for JPEG, HEIC, AVIF and WebP, and whether to keep
+    metadata such as the camera and location.
+  - **GIFs from videos:** width and frame rate.
+- **Choose just once with ⌥.** Hold **⌥** as you drop on a Convert wedge (or
+  press **⌥Return** in the keyboard wheel) to pick the settings for that one
+  conversion. Videos show roughly how big the result will be before you
+  convert, and **Use as default** keeps your choice for next time.
+
+## [1.3.0] - 2026-10-22
+
+Every editor now works on several files at once.
+
+### New
+
+- **Edit several files at once.** Drop five photos on **Crop**, set the crop
+  once, and it's applied to all of them. A filmstrip under the editor moves
+  between files, a dot marks the ones with changes, and the button says how
+  many will be saved ("Crop 5 Images"). Files you don't change are left alone.
+  Thanks to [@nealjane](https://github.com/nealjane) for the idea in
+  [#3](https://github.com/Manan-Santoki/OpenShelf/issues/3).
+  - **Same for all** applies one edit to every file. Crops follow each file's
+    size, so "the top half" stays the top half on images of any size. Turn it
+    off to give each file its own edit. It's on for Crop, Edit, Add BG, video
+    Crop, Rotate and PDF Split, and off to start with for Trim and Split.
+  - **Annotate, Redact, Remove BG and PDF Pages** keep separate edits for each
+    file, each with its own undo.
+  - **Trim and Split** for video and audio can cut or split every file at the
+    same times, and **Pages** and **Split** now take several PDFs.
+- **Updates wait quietly.** When a new version is out, the menu-bar wheel
+  turns blue and the menu offers **Update to Version…**, instead of a window
+  popping up while you work.
+
+### Improved
+
+- The website moved to [openshelf.space](https://openshelf.space).
+
 ## [1.2.0] - 2026-10-21
 
 Extra formats in one click, tidier wheels, and Settings that fits on screen.

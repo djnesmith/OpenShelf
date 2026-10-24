@@ -13,6 +13,7 @@ final class Preferences {
         static let hidesDockedShelves = "hidesDockedShelves"
         static let openWheelShortcut = "openWheelShortcut"
         static let showsCommandLineTools = "showsCommandLineTools"
+        static let output = "outputSettings"
 
         static func trigger(_ kind: WheelKind) -> String {
             switch kind {
@@ -53,6 +54,11 @@ final class Preferences {
         didSet { defaults.set(Self.encode(openWheelShortcut), forKey: Key.openWheelShortcut) }
     }
 
+    /// How the Convert wheel encodes what it writes (Settings → Output).
+    var output: OutputSettings {
+        didSet { defaults.set(output.stored, forKey: Key.output) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         var triggers: [WheelKind: NSEvent.ModifierFlags] = [:]
@@ -67,6 +73,7 @@ final class Preferences {
         hidesDockedShelves = defaults.object(forKey: Key.hidesDockedShelves) as? Bool ?? true
         showsCommandLineTools = defaults.bool(forKey: Key.showsCommandLineTools)
         openWheelShortcut = Self.decode(defaults.string(forKey: Key.openWheelShortcut))
+        output = OutputSettings.decode(defaults.string(forKey: Key.output))
     }
 
     /// Stored as JSON, or "off" when the shortcut is turned off.

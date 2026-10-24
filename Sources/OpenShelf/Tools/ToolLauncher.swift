@@ -91,17 +91,16 @@ enum ToolLauncher {
             EditorWindowController.present(size: SQLiteTablesEditor.windowSize, near: location) { SQLiteTablesEditor(url: first, actions: $0) }
 
         case .organizePages:
-            EditorWindowController.present(size: PDFPagesEditor.windowSize, near: location) { PDFPagesEditor(url: first, actions: $0) }
+            EditorWindowController.present(size: PDFPagesEditor.windowSize(for: urls.count), near: location) { PDFPagesEditor(urls: urls, actions: $0) }
         case .splitPDF:
-            EditorWindowController.present(size: PDFSplitEditor.windowSize, near: location) { PDFSplitEditor(url: first, actions: $0) }
+            EditorWindowController.present(size: PDFSplitEditor.windowSize(for: urls.count), near: location) { PDFSplitEditor(urls: urls, actions: $0) }
         case .compressPDF:
             EditorWindowController.present(size: PDFCompressEditor.windowSize, near: location) { PDFCompressEditor(urls: urls, actions: $0) }
         case .pdfMetadata:
             EditorWindowController.present(size: PDFMetadataEditor.windowSize, near: location) { PDFMetadataEditor(urls: urls, actions: $0) }
 
         case .trim:
-            showOneFileNote(tool, urls: urls)
-            EditorWindowController.present(size: MediaTrimEditor.windowSize, near: location) { MediaTrimEditor(url: first, actions: $0) }
+            EditorWindowController.present(size: MediaTrimEditor.windowSize(for: urls.count), near: location) { MediaTrimEditor(urls: urls, actions: $0) }
         case .compressAudio:
             EditorWindowController.present(size: AudioCompressEditor.windowSize, near: location) { AudioCompressEditor(urls: urls, actions: $0) }
         case .export:
@@ -115,18 +114,15 @@ enum ToolLauncher {
         case .speed:
             EditorWindowController.present(size: MediaSpeedEditor.windowSize, near: location) { MediaSpeedEditor(urls: urls, actions: $0) }
         case .cropVideo:
-            showOneFileNote(tool, urls: urls)
-            EditorWindowController.present(size: VideoCropEditor.windowSize, near: location) { VideoCropEditor(url: first, actions: $0) }
+            EditorWindowController.present(size: VideoCropEditor.windowSize(for: urls.count), near: location) { VideoCropEditor(urls: urls, actions: $0) }
         case .compressVideo:
             EditorWindowController.present(size: VideoCompressEditor.windowSize, near: location) { VideoCompressEditor(urls: urls, actions: $0) }
         case .mergeMedia:
             EditorWindowController.present(size: MediaMergeEditor.windowSize, near: location) { MediaMergeEditor(urls: urls, actions: $0) }
         case .splitMedia:
-            showOneFileNote(tool, urls: urls)
-            EditorWindowController.present(size: MediaSplitEditor.windowSize, near: location) { MediaSplitEditor(url: first, actions: $0) }
+            EditorWindowController.present(size: MediaSplitEditor.windowSize(for: urls.count), near: location) { MediaSplitEditor(urls: urls, actions: $0) }
         case .rotateVideo:
-            showOneFileNote(tool, urls: urls)
-            EditorWindowController.present(size: VideoRotateEditor.windowSize, near: location) { VideoRotateEditor(url: first, actions: $0) }
+            EditorWindowController.present(size: VideoRotateEditor.windowSize(for: urls.count), near: location) { VideoRotateEditor(urls: urls, actions: $0) }
         case .stillFrame:
             showOneFileNote(tool, urls: urls)
             EditorWindowController.present(size: StillFrameEditor.windowSize, near: location) { StillFrameEditor(url: first, actions: $0) }
@@ -141,22 +137,19 @@ enum ToolLauncher {
             ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Couldn’t open image", subtitle: error.localizedDescription))
             return
         }
-        guard let first = images.first else { return }
-        if tool != .compress && tool != .metadata && tool != .resize {
-            showOneFileNote(tool, urls: urls)
-        }
+        guard !images.isEmpty else { return }
 
         switch tool {
         case .crop:
-            EditorWindowController.present(size: CropEditor.windowSize, near: location) { CropEditor(image: first, actions: $0) }
+            EditorWindowController.present(size: CropEditor.windowSize(for: images.count), near: location) { CropEditor(images: images, actions: $0) }
         case .addBackground:
-            EditorWindowController.present(size: AddBackgroundEditor.windowSize, near: location) { AddBackgroundEditor(image: first, actions: $0) }
+            EditorWindowController.present(size: AddBackgroundEditor.windowSize(for: images.count), near: location) { AddBackgroundEditor(images: images, actions: $0) }
         case .annotate:
-            EditorWindowController.present(size: AnnotateEditor.windowSize, near: location) { AnnotateEditor(image: first, actions: $0) }
+            EditorWindowController.present(size: AnnotateEditor.windowSize(for: images.count), near: location) { AnnotateEditor(images: images, actions: $0) }
         case .redact:
-            EditorWindowController.present(size: RedactEditor.windowSize, near: location) { RedactEditor(image: first, actions: $0) }
+            EditorWindowController.present(size: RedactEditor.windowSize(for: images.count), near: location) { RedactEditor(images: images, actions: $0) }
         case .edit:
-            EditorWindowController.present(size: AdjustEditor.windowSize, near: location) { AdjustEditor(image: first, actions: $0) }
+            EditorWindowController.present(size: AdjustEditor.windowSize(for: images.count), near: location) { AdjustEditor(images: images, actions: $0) }
         case .compress:
             EditorWindowController.present(size: CompressEditor.windowSize, near: location) { CompressEditor(images: images, actions: $0) }
         case .metadata:
@@ -164,13 +157,13 @@ enum ToolLauncher {
         case .resize:
             EditorWindowController.present(size: ResizeEditor.windowSize, near: location) { ResizeEditor(images: images, actions: $0) }
         case .removeBackground:
-            EditorWindowController.present(size: RemoveBackgroundEditor.windowSize, near: location) { RemoveBackgroundEditor(image: first, actions: $0) }
+            EditorWindowController.present(size: RemoveBackgroundEditor.windowSize(for: images.count), near: location) { RemoveBackgroundEditor(images: images, actions: $0) }
         default:
             break
         }
     }
 
-    /// Editors that work on a single file open the first one and say so.
+    /// Still Frame works on one video; the other editors take several.
     private static func showOneFileNote(_ tool: FileTool, urls: [URL]) {
         guard urls.count > 1 else { return }
         ToastController.shared.show(Toast(systemImage: "info.circle", title: "\(tool.title) works on one file", subtitle: "Opened \(urls[0].lastPathComponent)"))

@@ -196,8 +196,9 @@ enum FileTool: CaseIterable, Hashable {
             return [.sqliteTables]
         }
         if kinds == [.pdf] {
-            let singlePage: [FileTool] = urls.count == 1 ? [.organizePages, .splitPDF, .pdfImages] : []
-            return combine + singlePage + [.compressPDF, .pdfMetadata, .ocr]
+            // PDF Images works on one file; the other page tools take several.
+            let images: [FileTool] = urls.count == 1 ? [.pdfImages] : []
+            return combine + [.organizePages, .splitPDF] + images + [.compressPDF, .pdfMetadata, .ocr]
         }
         if kinds.isSubset(of: [.video, .audio]), !urls.allSatisfy({ isEditable($0, tools: tools) }) {
             return []

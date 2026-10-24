@@ -17,14 +17,16 @@ enum ConversionError: LocalizedError {
 /// Converts one file into another format, saving the result next to it.
 enum Converter {
     /// Returns the files written (several when, e.g., a multi-page PDF becomes images).
+    /// - Parameter settings: How audio, video and images are encoded.
     static func convert(
         _ source: URL,
         to format: OutputFormat,
         tools: ExternalTools,
+        settings: OutputSettings = .automatic,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> [URL] {
         do {
-            return try await run(source, to: format, tools: tools, progress: progress)
+            return try await run(source, to: format, tools: tools, settings: settings, progress: progress)
         } catch {
             throw FailureMessage.describe(error, source: source)
         }
@@ -34,6 +36,7 @@ enum Converter {
         _ source: URL,
         to format: OutputFormat,
         tools: ExternalTools,
+        settings: OutputSettings,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> [URL] {
         switch format {
@@ -49,11 +52,11 @@ enum Converter {
 
         switch FileKind(url: source) {
         case .image:
-            return [try await ImageConversion.convert(source, to: format, tools: tools)]
+            return [try await ImageConversion.convert(source, to: format, tools: tools, settings: settings.image)]
         case .pdf where EbookConversion.calibreOnly.contains(format):
             return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .pdf:
-            return try PDFConversion.convert(source, to: format)
+            return try PDFConversion.convert(source, to: format, imageQuality: settings.image.quality)
         case .document where tools.pandoc != nil && PandocConversion.handles(source, to: format):
             return [try await PandocConversion.convert(source, to: format, tools: tools)]
         case .document:
@@ -73,7 +76,7 @@ enum Converter {
         case .presentation:
             return try await OfficeConversion.convert(source, to: format, tools: tools)
         case .audio, .video:
-            return [try await MediaConversion.convert(source, to: format, tools: tools, progress: progress)]
+            return [try await MediaConversion.convert(source, to: format, tools: tools, settings: settings, progress: progress)]
         case .subtitle:
             return [try await SubtitleConversion.convert(source, to: format, tools: tools)]
         case .ebook:

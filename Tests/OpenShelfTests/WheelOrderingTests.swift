@@ -57,6 +57,7 @@ struct WheelOrderingTests {
 
     @Test func toolWheelsThatFitOnOnePageKeepTheirOrder() {
         #expect(tools(urls("a.pdf")) == [.organizePages, .splitPDF, .pdfImages, .compressPDF, .pdfMetadata, .ocr])
+        #expect(tools(urls("a.pdf", "b.pdf")) == [.combinePDF, .organizePages, .splitPDF, .compressPDF, .pdfMetadata, .ocr])
         #expect(tools(urls("a.mp3", "b.m4a")) == [.mergeMedia, .trim, .speed, .splitMedia, .compressAudio, .export, .transcribe])
     }
 

@@ -7,12 +7,13 @@ struct SettingsTabTests {
     @Test func opensOnTheTabChosenLast() {
         #expect(SettingsTab.restored(from: nil) == .general)
         #expect(SettingsTab.restored(from: "extraFormats") == .extraFormats)
+        #expect(SettingsTab.restored(from: "output") == .output)
         // A tab from a later version, or a damaged value.
         #expect(SettingsTab.restored(from: "advanced") == .general)
     }
 
     @Test func tabsInToolbarOrder() {
-        #expect(SettingsTab.allCases.map(\.title) == ["General", "Wheels", "Shelves", "Extra Formats"])
+        #expect(SettingsTab.allCases.map(\.title) == ["General", "Wheels", "Shelves", "Output", "Extra Formats"])
     }
 
     @Test func everyTabHasASymbol() {
@@ -35,7 +36,7 @@ struct SettingsTabTests {
     /// sensible height for the window to take.
     @MainActor
     @Test func panesHaveAHeightToFit() {
-        for tab in [SettingsTab.wheels, .shelves, .extraFormats] {
+        for tab in [SettingsTab.wheels, .shelves, .output, .extraFormats] {
             let height = NSHostingView(rootView: tab.pane().fixedSize(horizontal: false, vertical: true)).fittingSize.height
             #expect(height > 80 && height < 700, "\(tab): \(height)")
         }
@@ -85,7 +86,7 @@ struct SettingsRenderTests {
     func rendersThePanes() throws {
         let folder = URL(fileURLWithPath: try #require(Self.folder))
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        for tab in [SettingsTab.general, .wheels, .shelves, .extraFormats] {
+        for tab in [SettingsTab.general, .wheels, .shelves, .output, .extraFormats] {
             try render(tab.pane(), to: folder.appendingPathComponent(tab.rawValue))
         }
 

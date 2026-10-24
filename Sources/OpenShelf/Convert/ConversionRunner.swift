@@ -11,8 +11,11 @@ final class ConversionRunner {
 
     private var current: Task<Void, Never>?
 
-    func convert(_ urls: [URL], to format: OutputFormat, near location: NSPoint = NSEvent.mouseLocation) {
+    /// - Parameter settings: How to encode; nil for Settings → Output's,
+    ///   read now so a change mid-batch doesn't mix two kinds of output.
+    func convert(_ urls: [URL], to format: OutputFormat, settings: OutputSettings? = nil, near location: NSPoint = NSEvent.mouseLocation) {
         let tools = ExternalTools.current
+        let settings = settings ?? Preferences.shared.output
         let isArchive = ConversionCatalog.archiveFormats.contains(format)
         let title = switch format {
         case _ where isArchive: "Compressing to \(format.title)"
@@ -27,7 +30,7 @@ final class ConversionRunner {
             case _ where isArchive: return [try await ArchiveConversion.archive(sources, as: format)]
             default: break
             }
-            return try await Converter.convert(sources[0], to: format, tools: tools, progress: progress)
+            return try await Converter.convert(sources[0], to: format, tools: tools, settings: settings, progress: progress)
         }
     }
 

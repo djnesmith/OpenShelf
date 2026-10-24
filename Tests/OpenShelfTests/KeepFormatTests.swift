@@ -106,4 +106,14 @@ struct KeepFormatTests {
         #expect(trimmed.pathExtension == "m4a")
         #expect(KeepFormat.note(source: mp3, output: trimmed, tools: ExternalTools())?.contains("needs ffmpeg") == true)
     }
+
+    /// Editing several files at once says why a format changed, as one file does.
+    @Test func batchEditsSayWhyTheFormatChanged() async throws {
+        let sources = [URL(fileURLWithPath: "/tmp/a.wav"), URL(fileURLWithPath: "/tmp/b.xyz")]
+        let outcome = try await MediaBatch.run(2, sources: sources, into: SaveOutcome(saved: []), progress: { _, _ in }) { index, _ in
+            [URL(fileURLWithPath: index == 0 ? "/tmp/a 2.wav" : "/tmp/b.m4a")]
+        }
+        #expect(outcome.saved.count == 2)
+        #expect(outcome.detail?.hasPrefix("Saved as M4A") == true, "\(outcome.detail ?? "nil")")
+    }
 }

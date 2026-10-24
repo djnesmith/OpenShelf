@@ -165,7 +165,7 @@ struct WheelBadgeTests {
         let all = items(8)
         controller.itemsProvider = { kind, _ in kind == .convert ? all : [] }
         var ran: [WheelItem] = []
-        controller.onDrop = { item, _ in ran.append(item) }
+        controller.onDrop = { item, _, _ in ran.append(item) }
         #expect(controller.presentForKeyboard(urls: [URL(fileURLWithPath: "/tmp/a.png")], at: NSPoint(x: 400, y: 400)))
         defer { controller.endKeyboardMode(hidingWheel: true) }
 
