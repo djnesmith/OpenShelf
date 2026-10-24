@@ -295,6 +295,12 @@ Settings → Extra Formats has a collapsed "Command-Line Tools · N of M install
 - Files: `Sources/OpenShelf/Convert/CommandLineTool.swift`, `Convert/ExtraFormats.swift` (`MissingTool`, `MissingToolAdvice`), `Settings/ExtraFormatsPane.swift`, `Settings/SettingsTab.swift`, `App/Preferences.swift` (`showsCommandLineTools`), `App/AppDelegate.swift`
 - Check: `swift test --filter CommandLineToolTests` (fails when `ExternalTools` resolves a tool with no Settings row), `--filter MissingToolAdviceTests` and `--filter panesHaveAHeightToFit` (collapsed pane under 700 pt).
 
+### 46. Add Background fits its window
+The Background swatches sit 1 pt apart instead of 3, so nine colours and the colour well fit the 460 pt window; at 3 pt the editor needed 471 pt and the window clipped both sides.
+- Commits: this one
+- Files: `Sources/OpenShelf/Tools/Editors/AddBackgroundEditor.swift` (an upstream file), `Tests/OpenShelfTests/AddBackgroundLayoutTests.swift`
+- Check: `swift test --filter AddBackgroundLayoutTests` (one image and several).
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.
