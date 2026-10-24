@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Saves videos in another file type and codec, or sound in another format.
 struct MediaExportEditor: View {
-    static let windowSize = CGSize(width: 440, height: 280)
+    /// Wide enough for every audio format, and every container's codecs, as segments.
+    static let windowSize = CGSize(width: 520, height: 280)
 
     let actions: EditorActions
     @State private var model: MediaExportModel
@@ -28,11 +29,9 @@ struct MediaExportEditor: View {
                     .truncationMode(.middle)
                 if model.isAudio {
                     EditorRow(label: "Format") {
-                        Picker("Format", selection: $model.audioFormat) {
-                            ForEach(model.audioFormats) { Text($0.title).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
+                        FittingPicker(
+                            title: "Format", selection: $model.audioFormat, options: model.audioFormats, label: \.title
+                        )
                     }
                     Text(model.audioFormat.detail)
                         .font(.system(size: 11))
@@ -46,11 +45,9 @@ struct MediaExportEditor: View {
                         .onChange(of: model.container) { _, _ in model.pickUsableCodec() }
                     }
                     EditorRow(label: "Video") {
-                        Picker("Video codec", selection: $model.codec) {
-                            ForEach(model.codecs) { Text($0.title).tag($0) }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
+                        FittingPicker(
+                            title: "Video codec", selection: $model.codec, options: model.codecs, label: \.title
+                        )
                     }
                 }
                 if let progress = model.progress {
@@ -58,6 +55,7 @@ struct MediaExportEditor: View {
                 }
                 Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onDisappear(perform: model.cancel)
     }

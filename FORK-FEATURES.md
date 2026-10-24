@@ -144,8 +144,8 @@ Re-encodes audio at a chosen bitrate.
 ### 22. Export in a chosen codec or container
 Video as H.264, HEVC, AV1, VP9 or ProRes, or in MPEG, TS, M2TS or VOB. Audio as AAC, ALAC, CAF, PCM, Vorbis or MKA.
 - Commits: d5dc473, 37100fe, ec3644a
-- Files: `Sources/OpenShelf/Tools/Media/MediaExport.swift`, `Tools/Media/MediaExportEditor.swift`
-- Check: `swift test --filter exportsInEachCodec`, `--filter exportsSoundInEachFormat` and `--filter exportsBroadcastAndDiscContainers`.
+- Files: `Sources/OpenShelf/Tools/Media/MediaExport.swift`, `Tools/Media/MediaExportEditor.swift`, `Tools/EditorWindow.swift` (`FittingPicker`, in an upstream file), `Tests/OpenShelfTests/MediaExportLayoutTests.swift`
+- Check: `swift test --filter exportsInEachCodec`, `--filter exportsSoundInEachFormat` and `--filter exportsBroadcastAndDiscContainers`. Layout: `swift test --filter MediaExportLayoutTests`. The window is 520 pt so every audio format and every container's codecs fit as segments; `FittingPicker` turns them into a menu if they ever don't.
 
 ### 23. Transcribe
 Turns speech into TXT and SRT, on this Mac, with Apple's speech recognition.

@@ -109,6 +109,30 @@ struct EditorRow<Content: View>: View {
     }
 }
 
+/// A segmented picker, or a pop-up menu when the segments are wider than
+/// the editor: a segmented control never shrinks, so it would push the whole
+/// editor wider than its window and clip both edges.
+struct FittingPicker<Option: Hashable & Identifiable>: View {
+    let title: String
+    @Binding var selection: Option
+    let options: [Option]
+    let label: (Option) -> String
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            picker.pickerStyle(.segmented)
+            picker.pickerStyle(.menu)
+        }
+    }
+
+    private var picker: some View {
+        Picker(title, selection: $selection) {
+            ForEach(options) { Text(label($0)).tag($0) }
+        }
+        .labelsHidden()
+    }
+}
+
 /// A slider with a label and a live value readout, e.g. "Padding ——o—— 160 px".
 struct EditorSlider: View {
     let label: String
