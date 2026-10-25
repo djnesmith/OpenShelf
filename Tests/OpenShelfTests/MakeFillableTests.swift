@@ -170,15 +170,24 @@ struct MakeFillableTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let source = try formPDF(named: "form.pdf", in: folder)
         #expect(try await MakeFillable.make(source, tools: try stub(in: folder, findsFields: false).tools) == nil)
-        // Fields the PDF already had don't count as found.
-        try addField(to: source)
-        #expect(try await MakeFillable.make(source, tools: try stub(in: folder, findsFields: false).tools) == nil)
         #expect(try !FileManager.default.contentsOfDirectory(atPath: folder.path).contains { $0.contains(".fillable") })
         let outcome = SaveOutcome(saved: [], unchanged: 1, unchangedLabel: "no fields found")
         #expect(outcome.subtitle == "No fields found")
     }
 
-    /// The window warns, but doesn't block, when the PDF already has fields.
+    /// commonforms would stack a duplicate on each old field, so it never runs.
+    @Test func refusesAPDFThatIsAlreadyFillable() async throws {
+        let folder = try workspace()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = try formPDF(named: "form.pdf", in: folder)
+        try addField(to: source)
+        let (tools, arguments) = try stub(in: folder)
+        await #expect(throws: ConversionError.self) { try await MakeFillable.make(source, tools: tools) }
+        #expect(!FileManager.default.fileExists(atPath: arguments.path))
+        #expect(try !FileManager.default.contentsOfDirectory(atPath: folder.path).contains { $0.contains(".fillable") })
+    }
+
+    /// Links aren't fields, so a PDF with only links isn't refused.
     @Test func countsExistingFields() throws {
         let folder = try workspace()
         defer { try? FileManager.default.removeItem(at: folder) }

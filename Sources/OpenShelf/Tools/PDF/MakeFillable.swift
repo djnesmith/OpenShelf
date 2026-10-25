@@ -16,8 +16,9 @@ enum MakeFillable {
     static let model = "FFDNet-S"
     static let modelDownloadNote = "Downloading the form model, 18 MB, first time only"
     static let scannedNote = "Scanned pages may miss most fields"
-    /// commonforms finds the old fields' blanks again and adds a same-named field on each.
-    static let existingFieldsNote = "This PDF already has form fields; the copy will repeat them"
+    /// Refused: commonforms finds the old fields' blanks again and stacks a
+    /// same-named field on each one.
+    static let alreadyFillableNote = "This PDF is already fillable"
 
     /// - Parameter keepingExisting: The PDF has annotations. commonforms
     ///   otherwise deletes every one, links and comments included.
@@ -77,6 +78,7 @@ enum MakeFillable {
         guard let executable = tools.commonforms else { throw MissingToolError(name: "commonforms") }
         guard let document = PDFDocument(url: source) else { throw PDFToolError.unreadable(source) }
         if document.isLocked { throw PDFToolError.locked(source) }
+        if fieldCount(document) > 0 { throw ConversionError.failed("“\(source.lastPathComponent)” is already fillable.") }
         let base = source.deletingPathExtension().lastPathComponent + ".fillable"
         // Before the run, which can take minutes with the first-run download.
         try SaveError.checkWritable(OutputNaming.uniqueURL(in: source.deletingLastPathComponent(), baseName: base, pathExtension: "pdf"))
@@ -100,7 +102,7 @@ enum MakeFillable {
         }
 
         try Task.checkCancellation()
-        guard let result = PDFDocument(url: output), fieldCount(result) > fieldCount(document) else { return nil }
+        guard let result = PDFDocument(url: output), fieldCount(result) > 0 else { return nil }
         let destination = OutputNaming.uniqueURL(in: source.deletingLastPathComponent(), baseName: base, pathExtension: "pdf")
         try await PartialFile.write(destination) { try FileManager.default.copyItem(at: output, to: $0) }
         return destination

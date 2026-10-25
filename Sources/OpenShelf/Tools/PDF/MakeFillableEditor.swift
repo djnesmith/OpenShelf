@@ -21,7 +21,7 @@ struct MakeFillableEditor: View {
         EditorChrome(
             title: "Make Fillable",
             primaryTitle: isWorking ? "Working…" : "Make Fillable",
-            isPrimaryEnabled: !isWorking,
+            isPrimaryEnabled: !isWorking && !hasFields,
             actions: actions,
             onPrimary: makeFillable
         ) {
@@ -39,7 +39,7 @@ struct MakeFillableEditor: View {
                         .foregroundStyle(.orange)
                 }
                 if hasFields {
-                    Label(MakeFillable.existingFieldsNote, systemImage: "exclamationmark.triangle")
+                    Label(MakeFillable.alreadyFillableNote, systemImage: "exclamationmark.triangle")
                         .font(.system(size: 12))
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
