@@ -2,7 +2,7 @@ import Foundation
 
 /// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
 /// calibre's ebook-convert, pandoc, yq, cjxl (JPEG XL), DuckDB, jet (EDN),
-/// and the source-code formatters Pretty Print uses.
+/// commonforms (Make Fillable), and the source-code formatters Pretty Print uses.
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
     var cwebp: URL?
@@ -14,6 +14,7 @@ struct ExternalTools: Equatable, Sendable {
     var cjxl: URL? = nil
     var duckdb: URL? = nil
     var jet: URL? = nil
+    var commonforms: URL? = nil
     var formatters = Formatters()
 
     /// Pretty Print's formatters (xmllint ships with macOS).
@@ -96,6 +97,8 @@ struct ExternalTools: Equatable, Sendable {
             cjxl: find("cjxl", ignoredAs: "cjxl"),
             duckdb: find("duckdb", ignoredAs: "duckdb"),
             jet: find("jet", ignoredAs: "jet"),
+            commonforms: find("commonforms", ignoredAs: "commonforms")
+                ?? locations.commonforms.first { FileManager.default.isExecutableFile(atPath: $0.path) },
             formatters: Formatters(
                 deno: find("deno", ignoredAs: "deno"),
                 cljfmt: find("cljfmt", ignoredAs: "cljfmt"),
@@ -132,6 +135,9 @@ struct ToolLocations: Sendable {
     var calibreApps: [URL] = []
     /// Xcode's swift-format, which isn't on any PATH.
     var swiftFormat: [URL] = []
+    /// Where `uv tool install` and pipx put commonforms (their bin link, then
+    /// their venv), none of it on a GUI app's PATH.
+    var commonforms: [URL] = []
 
     /// Homebrew, MacPorts and the PATH come first: tools people installed
     /// themselves and keep up to date. OpenShelf's own copies (`ManagedTools`)
@@ -153,7 +159,10 @@ struct ToolLocations: Sendable {
                 URL(fileURLWithPath: "/Applications/calibre.app"),
                 FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/calibre.app"),
             ],
-            swiftFormat: [URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-format")]
+            swiftFormat: [URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-format")],
+            commonforms: [".local/bin", ".local/share/uv/tools/commonforms/bin", ".local/pipx/venvs/commonforms/bin"].map {
+                FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("\($0)/commonforms")
+            }
         )
     }
 }

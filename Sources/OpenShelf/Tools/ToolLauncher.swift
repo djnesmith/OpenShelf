@@ -98,6 +98,8 @@ enum ToolLauncher {
             EditorWindowController.present(size: PDFCompressEditor.windowSize, near: location) { PDFCompressEditor(urls: urls, actions: $0) }
         case .pdfMetadata:
             EditorWindowController.present(size: PDFMetadataEditor.windowSize, near: location) { PDFMetadataEditor(urls: urls, actions: $0) }
+        case .makeFillable:
+            EditorWindowController.present(size: MakeFillableEditor.windowSize, near: location) { MakeFillableEditor(url: first, actions: $0) }
 
         case .trim:
             EditorWindowController.present(size: MediaTrimEditor.windowSize(for: urls.count), near: location) { MediaTrimEditor(urls: urls, actions: $0) }

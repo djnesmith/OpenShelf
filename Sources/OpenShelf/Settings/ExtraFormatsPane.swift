@@ -29,7 +29,7 @@ struct ExtraFormatsPane: View {
                     Text(CommandLineTool.title(tools: installer.tools))
                 }
             } footer: {
-                Text("Found where Homebrew installs them. Install one in Terminal, then come back here.")
+                Text("Found where Homebrew, or uv for commonforms, installs them. Install one in Terminal, then come back here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -50,7 +50,7 @@ struct ExtraFormatsPane: View {
 }
 
 /// A tool OpenShelf finds but doesn't install: where it is, or the
-/// Homebrew command to get it.
+/// command to get it.
 private struct CommandLineToolRow: View {
     let tool: CommandLineTool
     let path: URL?
@@ -67,11 +67,11 @@ private struct CommandLineToolRow: View {
                 }
                 .help(path.path)
             } else {
-                CopyCommandButton(command: tool.homebrewCommand)
+                CopyCommandButton(command: tool.installCommand)
             }
         } label: {
             Text(tool.name)
-            Text(tool.isThirdPartyTap ? "\(tool.adds) · \(tool.homebrewCommand), a third-party tap, not homebrew-core" : tool.adds)
+            Text(tool.installNote.map { "\(tool.adds) · \(tool.installCommand), \($0)" } ?? tool.adds)
         }
     }
 }
@@ -206,13 +206,13 @@ private struct FailureControls: View {
     }
 }
 
-/// "Copy Homebrew Command", which says "Copied" for a moment.
+/// "Copy Homebrew Command" (or "Copy Install Command"), which says "Copied" for a moment.
 private struct CopyCommandButton: View {
     let command: String
     @State private var hasCopied = false
 
     var body: some View {
-        Button(hasCopied ? "Copied" : "Copy Homebrew Command") { copy() }
+        Button(hasCopied ? "Copied" : command.hasPrefix("brew ") ? "Copy Homebrew Command" : "Copy Install Command") { copy() }
             .buttonStyle(.link)
             .font(.caption)
             .help(command)

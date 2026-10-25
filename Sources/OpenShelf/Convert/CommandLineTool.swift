@@ -2,7 +2,7 @@ import Foundation
 
 /// The optional tools Settings → Extra Formats lists below ffmpeg and
 /// LibreOffice. OpenShelf doesn't install these; it finds them where Homebrew
-/// puts them. ffprobe comes with ffmpeg. `CommandLineToolTests` fails when
+/// (or uv, for commonforms) puts them. ffprobe comes with ffmpeg. `CommandLineToolTests` fails when
 /// `ExternalTools` gains a tool that isn't here.
 enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
     case cwebp
@@ -21,10 +21,11 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
     case clangFormat
     case gofmt
     case rustfmt
+    case commonforms
 
     var id: String { rawValue }
 
-    /// The collapsed Settings row: "Command-Line Tools · 15 of 16 installed".
+    /// The collapsed Settings row: "Command-Line Tools · 15 of 17 installed".
     static func title(tools: ExternalTools) -> String {
         let installed = allCases.filter { $0.isInstalled(in: tools) }.count
         return "Command-Line Tools · \(installed) of \(allCases.count) installed"
@@ -48,6 +49,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .clangFormat: "clang-format"
         case .gofmt: "gofmt"
         case .rustfmt: "rustfmt"
+        case .commonforms: "commonforms"
         }
     }
 
@@ -70,10 +72,11 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .clangFormat: "Pretty Print: C, C++ and Objective-C"
         case .gofmt: "Pretty Print: Go"
         case .rustfmt: "Pretty Print: Rust"
+        case .commonforms: "Make Fillable: turn plain PDFs into forms"
         }
     }
 
-    var homebrewCommand: String {
+    var installCommand: String {
         switch self {
         case .cwebp: "brew install webp"
         case .calibre: "brew install --cask calibre"
@@ -91,11 +94,18 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .clangFormat: "brew install clang-format"
         case .gofmt: "brew install go"
         case .rustfmt: "brew install rust"
+        case .commonforms: "uv tool install commonforms"
         }
     }
 
-    /// Whether `homebrewCommand` comes from a third-party tap, not homebrew-core.
-    var isThirdPartyTap: Bool { self == .jet }
+    /// Said next to `installCommand` when it isn't plain homebrew-core.
+    var installNote: String? {
+        switch self {
+        case .jet: "a third-party tap, not homebrew-core"
+        case .commonforms: "a Python tool from PyPI, about 1.6 GB plus an 18 MB model"
+        default: nil
+        }
+    }
 
     func isInstalled(in tools: ExternalTools) -> Bool {
         path(in: tools) != nil
@@ -123,6 +133,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .clangFormat: tools.formatters.clangFormat = placeholder
         case .gofmt: tools.formatters.gofmt = placeholder
         case .rustfmt: tools.formatters.rustfmt = placeholder
+        case .commonforms: tools.commonforms = placeholder
         }
         return tools
     }
@@ -145,6 +156,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .clangFormat: tools.formatters.clangFormat
         case .gofmt: tools.formatters.gofmt
         case .rustfmt: tools.formatters.rustfmt
+        case .commonforms: tools.commonforms
         }
     }
 }

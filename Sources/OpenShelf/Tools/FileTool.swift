@@ -19,6 +19,7 @@ enum FileTool: CaseIterable, Hashable {
     case splitPDF
     case compressPDF
     case pdfMetadata
+    case makeFillable
     // Video and audio.
     case trim
     case speed
@@ -65,6 +66,7 @@ enum FileTool: CaseIterable, Hashable {
         case .splitPDF: "Split"
         case .compressPDF: "Compress"
         case .pdfMetadata: "Metadata"
+        case .makeFillable: "Make Fillable"
         case .trim: "Trim"
         case .speed: "Speed"
         case .cropVideo: "Crop"
@@ -109,6 +111,7 @@ enum FileTool: CaseIterable, Hashable {
         case .combinePDF: "doc.on.doc"
         case .organizePages: "square.grid.2x2"
         case .splitPDF: "scissors"
+        case .makeFillable: "rectangle.and.pencil.and.ellipsis"
         case .trim: "timeline.selection"
         case .speed: "gauge.with.dots.needle.67percent"
         case .mute: "speaker.slash"
@@ -196,9 +199,10 @@ enum FileTool: CaseIterable, Hashable {
             return [.sqliteTables]
         }
         if kinds == [.pdf] {
-            // PDF Images works on one file; the other page tools take several.
+            // PDF Images and Make Fillable work on one file; the other page tools take several.
             let images: [FileTool] = urls.count == 1 ? [.pdfImages] : []
-            return combine + [.organizePages, .splitPDF] + images + [.compressPDF, .pdfMetadata, .ocr]
+            let fillable: [FileTool] = urls.count == 1 && tools.commonforms != nil ? [.makeFillable] : []
+            return combine + [.organizePages, .splitPDF] + images + [.compressPDF, .pdfMetadata, .ocr] + fillable
         }
         if kinds.isSubset(of: [.video, .audio]), !urls.allSatisfy({ isEditable($0, tools: tools) }) {
             return []

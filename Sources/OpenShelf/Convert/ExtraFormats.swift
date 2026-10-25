@@ -86,7 +86,7 @@ enum MissingTool: Equatable, Sendable {
     var installHint: String {
         switch self {
         case .extra: MissingToolAdvice.installHint
-        case .commandLine(let tool): tool.homebrewCommand
+        case .commandLine(let tool): tool.installCommand
         }
     }
 

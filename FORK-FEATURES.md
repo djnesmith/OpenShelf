@@ -290,7 +290,7 @@ A Tools-wheel wedge that saves a re-formatted copy as `name.formatted.ext` next 
 - Check: `swift test --filter PrettyPrintTests`. `configsNearTheFileAreIgnored` plants configs next to the file and in the folder above it, and fails if any formatter follows one.
 
 ### 45. Settings lists every tool, and missing-tool hints name it
-Settings → Extra Formats has a collapsed "Command-Line Tools · N of M installed" row under ffmpeg and LibreOffice. It opens to every other tool OpenShelf finds: cwebp, calibre, pandoc, yq, cjxl, DuckDB, jet and the ten Pretty Print formatters. Each row shows Installed · Homebrew (path on hover) or Copy Homebrew Command; jet's row says its tap is third-party, not homebrew-core. Whether the list is open is remembered. The "X needs Y" toast uses the same list: an EPUB without calibre says "EPUB needs calibre / brew install --cask calibre", and an empty Tools wheel names the missing formatter ("PY needs ruff"). Wheels offering only ZIP, tar and 7z count as having nothing.
+Settings → Extra Formats has a collapsed "Command-Line Tools · N of M installed" row under ffmpeg and LibreOffice. It opens to every other tool OpenShelf finds: cwebp, calibre, pandoc, yq, cjxl, DuckDB, jet, the ten Pretty Print formatters and commonforms (#47). Each row shows Installed · Homebrew (path on hover) or Copy Homebrew Command; jet's row says its tap is third-party, not homebrew-core. Whether the list is open is remembered. The "X needs Y" toast uses the same list: an EPUB without calibre says "EPUB needs calibre / brew install --cask calibre", and an empty Tools wheel names the missing formatter ("PY needs ruff"). Wheels offering only ZIP, tar and 7z count as having nothing.
 - Commits: this one
 - Files: `Sources/OpenShelf/Convert/CommandLineTool.swift`, `Convert/ExtraFormats.swift` (`MissingTool`, `MissingToolAdvice`), `Settings/ExtraFormatsPane.swift`, `Settings/SettingsTab.swift`, `App/Preferences.swift` (`showsCommandLineTools`), `App/AppDelegate.swift`
 - Check: `swift test --filter CommandLineToolTests` (fails when `ExternalTools` resolves a tool with no Settings row), `--filter MissingToolAdviceTests` and `--filter panesHaveAHeightToFit` (collapsed pane under 700 pt).
@@ -300,6 +300,16 @@ The Background swatches sit 1 pt apart instead of 3, so nine colours and the col
 - Commits: this one
 - Files: `Sources/OpenShelf/Tools/Editors/AddBackgroundEditor.swift` (an upstream file), `Tests/OpenShelfTests/AddBackgroundLayoutTests.swift`
 - Check: `swift test --filter AddBackgroundLayoutTests` (one image and several).
+
+## PDF
+
+### 47. Make Fillable
+A PDF Tools-wheel wedge, for one PDF at a time, that saves `name.fillable.pdf` next to the original with form fields where the blanks, boxes and signature lines are. It uses commonforms (`uv tool install commonforms`, about 1.6 GB, not bundled), found on the PATH folders, in `~/.local/bin`, or in uv's or pipx's commonforms venv. The wedge shows only when commonforms is installed. Settings → Extra Formats lists it with "Copy Install Command". A run that finds no new fields saves nothing and says "No fields found". The window warns "Scanned pages may miss most fields" when a page has no text, "This PDF already has form fields; new ones will be added alongside" when it has some (warn only), and "Downloading the form model, 18 MB, first time only" until the FFDNet-S model is in `~/.cache/huggingface`.
+- Command: `commonforms input.pdf output.pdf --model FFDNet-S --use-signature-fields`, plus `--keep-existing-fields` when the PDF has any annotations, since commonforms otherwise deletes all of them (links and comments too). It runs on a copy named `input.pdf` in an empty temp folder. Closing the window stops it and saves nothing.
+- Lockdown: the child-process env allowlist; HOME, TMPDIR, XDG_CONFIG_HOME and YOLO_CONFIG_DIR are the temp folder. `YOLO_OFFLINE=true` stops ultralytics' Google Analytics event on every run and its online checks ("true", since ultralytics 8.3 ignores "1"); `YOLO_AUTOINSTALL=0` stops its pip installs. `HF_HUB_OFFLINE=1` once the model is cached, `HF_HUB_DISABLE_TELEMETRY=1`, and `HF_HUB_DISABLE_IMPLICIT_TOKEN=1` so a saved Hugging Face token is never sent.
+- Commits: this one
+- Files: `Sources/OpenShelf/Tools/PDF/MakeFillable.swift`, `Tools/PDF/MakeFillableEditor.swift`, `Tools/FileTool.swift`, `Tools/ToolLauncher.swift`, `Convert/ExternalTools.swift`, `Convert/CommandLineTool.swift` (`installCommand`, `installNote`), `Convert/ExtraFormats.swift`, `Settings/ExtraFormatsPane.swift`
+- Check: `swift test --filter MakeFillableTests` (flags and env, through a stub commonforms; no fields found; existing fields; scanned and locked pages; model cache; cancelling; wheel) and `--filter CommandLineToolTests`. With commonforms installed and its model cached, `keepsALinkAndSavesNextToTheOriginal` also runs the real tool. In the app: drag a PDF form with a link to the Tools wheel, pick Make Fillable, and check the copy has fields and the link still works.
 
 ## Outside the repo
 
