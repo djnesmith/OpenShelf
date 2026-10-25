@@ -80,21 +80,6 @@ struct HideShelvesTests {
 
     // MARK: The wheel shortcut on shelf items
 
-    @Test func shortcutPicksTheSelectionInFront() {
-        let a = [URL(fileURLWithPath: "/tmp/a.txt")], b = [URL(fileURLWithPath: "/tmp/b.txt")]
-        let cases: [([URL]?, [URL], Bool, WheelSelectionSource)] = [
-            (a, b, false, .shelf(a)),   // a focused shelf with a selection wins, Finder in front or not
-            (a, b, true, .shelf(a)),
-            ([], b, false, .finder),    // a focused shelf with nothing selected: Finder's
-            (nil, b, false, .finder),   // no shelf focused, Finder in front
-            (nil, b, true, .shelf(b)),  // OpenShelf in front (an editor): the last-used shelf's
-            (nil, [], true, .finder),
-        ]
-        for (key, recent, frontmost, expected) in cases {
-            #expect(WheelSelectionSource.choose(keyShelfSelection: key, recentShelfSelection: recent, isOpenShelfFrontmost: frontmost) == expected)
-        }
-    }
-
     @Test func aMoveFromTheWheelMovesTheShelfItemsToo() throws {
         let manager = ShelfManager(storeURL: store)
         defer { manager.closeAll() }

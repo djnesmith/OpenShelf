@@ -1,16 +1,13 @@
 import AppKit
 import CoreGraphics
-import CoreImage
-import CoreImage.CIFilterBuiltins
 import CoreText
-import Darwin
 import Foundation
 import ImageIO
 import PDFKit
 import Testing
 @testable import OpenShelf
 
-/// OCR, transcription helpers and the other non-media tools.
+/// Transcription helpers and the other non-media tools.
 struct MoreToolTests {
     /// A fresh, empty folder.
     func workspace() throws -> URL {
@@ -32,160 +29,6 @@ struct MoreToolTests {
         context.textPosition = CGPoint(x: 60, y: 110)
         CTLineDraw(line, context)
         return try #require(context.makeImage())
-    }
-
-    // MARK: OCR
-
-    /// A PDF with a real text page and a scanned one: the searchable copy keeps
-    /// the real page's own content (a page drawn after its document was let go
-    /// came out blank).
-    @Test func ocrKeepsPagesThatAlreadyHaveText() async throws {
-        let folder = try workspace()
-        let pdf = folder.appendingPathComponent("Mixed.pdf")
-        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
-        let context = try #require(CGContext(pdf as CFURL, mediaBox: &box, nil))
-        context.beginPDFPage(nil)
-        let font = CTFontCreateWithName("Helvetica" as CFString, 24, nil)
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: "Vector page text", attributes: [.init(kCTFontAttributeName as String): font]))
-        context.textPosition = CGPoint(x: 72, y: 700)
-        CTLineDraw(line, context)
-        context.endPDFPage()
-        context.beginPDFPage(nil)
-        context.draw(try Self.picture(of: "Scanned words here"), in: CGRect(x: 0, y: 300, width: 612, height: 153))
-        context.endPDFPage()
-        context.closePDF()
-
-        // The pages outlive the code that opened the document, as they do in OCR.run.
-        let pages = try autoreleasepool { try OCRPage.load(pdf) }
-        let canvas = try #require(CGContext(
-            data: nil, width: 612, height: 792, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ))
-        canvas.setFillColor(.white)
-        canvas.fill(CGRect(x: 0, y: 0, width: 612, height: 792))
-        pages[0].draw(in: canvas)
-        let drawn = try #require(canvas.makeImage()?.dataProvider?.data as Data?)
-        #expect(drawn.contains { $0 < 128 }, "the first page drew nothing")
-
-        let output = try await OCR.run(pdf, output: .searchablePDF)
-        let document = try #require(PDFDocument(url: output))
-        #expect(document.pageCount == 2)
-        #expect(document.page(at: 0)?.string?.contains("Vector page text") == true)
-        #expect(document.page(at: 1)?.string?.contains("Scanned") == true)
-    }
-
-    /// How far this process's footprint rises while `body` runs, sampled every 20 ms.
-    static func peakRise(_ body: () async throws -> Void) async rethrows -> Double {
-        func footprint() -> Double {
-            var info = rusage_info_v4()
-            _ = withUnsafeMutablePointer(to: &info) { $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V4, $0) } }
-            return Double(info.ri_phys_footprint) / 1_048_576
-        }
-        let start = footprint()
-        let peak = PeakBox(start)
-        let sampler = Task.detached {
-            while !Task.isCancelled {
-                peak.update(footprint())
-                try? await Task.sleep(for: .milliseconds(20))
-            }
-        }
-        try await body()
-        sampler.cancel()
-        return peak.value - start
-    }
-
-    /// PDF pages become images one at a time: all 40 at 300 dpi at once would be about 1.3 GB.
-    @Test func pdfPagesAreRenderedOneAtATime() async throws {
-        let folder = try workspace()
-        let pdf = folder.appendingPathComponent("Forty.pdf")
-        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
-        let context = try #require(CGContext(pdf as CFURL, mediaBox: &box, nil))
-        let page = try Self.picture(of: "A page")
-        for _ in 0..<40 {
-            context.beginPDFPage(nil)
-            context.draw(page, in: box)
-            context.endPDFPage()
-        }
-        context.closePDF()
-        let rise = try await Self.peakRise {
-            let images = try await Converter.convert(pdf, to: .png, tools: ExternalTools()) { _ in }
-            #expect(images.count == 40)
-        }
-        #expect(rise < 700, "rose \(Int(rise)) MB")
-    }
-
-    // MARK: Shared Core Image contexts
-
-    func pixels(_ image: CGImage) -> Data? {
-        image.dataProvider?.data as Data?
-    }
-
-    /// Resizing with the shared context gives exactly what a context of its
-    /// own did, and the context is made once per colour space.
-    @Test func sharedContextsRenderTheSame() throws {
-        let picture = try Self.picture(of: "Resize me", size: CGSize(width: 800, height: 300))
-        let size = CGSize(width: 333, height: 125)
-        let shared = try #require(ImageResizer.resize(picture, to: size))
-        let again = try #require(ImageResizer.resize(picture, to: size))
-
-        // What ResizeEditor did before: a fresh context in the image's colour space.
-        let filter = CIFilter.lanczosScaleTransform()
-        filter.inputImage = CIImage(cgImage: picture).clampedToExtent()
-        filter.scale = Float(size.height / CGFloat(picture.height))
-        filter.aspectRatio = Float((size.width / CGFloat(picture.width)) / (size.height / CGFloat(picture.height)))
-        let rect = CGRect(origin: .zero, size: size)
-        let space = picture.colorSpace!
-        let fresh = try #require(CIContext(options: [.workingColorSpace: space]).createCGImage(filter.outputImage!.cropped(to: rect), from: rect, format: .RGBA8, colorSpace: space))
-
-        #expect(pixels(shared) == pixels(fresh))
-        #expect(pixels(again) == pixels(fresh))
-        let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
-        #expect(ImageContexts.working(in: sRGB) === ImageContexts.working(in: sRGB))
-        #expect(ImageContexts.working(in: sRGB) !== ImageContexts.working(in: CGColorSpace(name: CGColorSpace.displayP3)!))
-
-        // The standard context (Remove Background's) renders as a fresh default one does.
-        let image = CIImage(cgImage: picture).applyingGaussianBlur(sigma: 3).cropped(to: CGRect(x: 0, y: 0, width: 800, height: 300))
-        let standard = try #require(ImageContexts.standard.createCGImage(image, from: image.extent, format: .RGBA8, colorSpace: sRGB))
-        let plain = try #require(CIContext().createCGImage(image, from: image.extent, format: .RGBA8, colorSpace: sRGB))
-        #expect(pixels(standard) == pixels(plain))
-    }
-
-    @Test func picksSystemLanguagesVisionKnows() {
-        let supported = ["en-US", "fr-FR", "de-DE", "zh-Hans"]
-        #expect(OCR.recognitionLanguages(preferred: ["en-GB", "de-AT", "ja-JP"], supported: supported) == ["en-US", "de-DE"])
-        #expect(OCR.recognitionLanguages(preferred: ["fr-FR", "fr-CA"], supported: supported) == ["fr-FR"])
-    }
-
-    @Test func readsTopToBottomThenLeftToRight() {
-        let lines = [
-            OCR.Line(text: "b", box: CGRect(x: 0.5, y: 0.8, width: 0.1, height: 0.05)),
-            OCR.Line(text: "c", box: CGRect(x: 0.1, y: 0.2, width: 0.1, height: 0.05)),
-            OCR.Line(text: "a", box: CGRect(x: 0.1, y: 0.81, width: 0.1, height: 0.05)),
-        ]
-        #expect(OCR.readingOrder(lines).map(\.text) == ["a", "b", "c"])
-    }
-
-    @Test func recognisesTextInAnImageAndAScannedPDF() async throws {
-        let folder = try workspace()
-        let png = folder.appendingPathComponent("Scan.png")
-        try EditableImage.write(try Self.picture(of: "Hello OpenShelf 2026"), to: png, type: .png)
-
-        let text = try await OCR.run(png, output: .text)
-        #expect(text.lastPathComponent == "Scan OCR.txt")
-        #expect(try String(contentsOf: text, encoding: .utf8).contains("OpenShelf"))
-
-        let pdf = try await OCR.run(png, output: .searchablePDF)
-        #expect(pdf.lastPathComponent == "Scan OCR.pdf")
-        let document = try #require(PDFDocument(url: pdf))
-        #expect(document.string?.contains("OpenShelf") == true)
-        // Found where it's drawn: the text sits across the middle of the page.
-        let selection = try #require(document.findString("OpenShelf", withOptions: []).first)
-        let bounds = selection.bounds(for: try #require(document.page(at: 0)))
-        #expect(bounds.minY > 0 && bounds.maxY < 300 && bounds.width > 100)
-
-        // That scan-only PDF, read again: its page now has text, so it's kept as it is.
-        let again = try await OCR.run(pdf, output: .text)
-        #expect(try String(contentsOf: again, encoding: .utf8).contains("OpenShelf"))
     }
 
     // MARK: Transcription (the recogniser itself needs permission, so only the writing is tested)
@@ -518,12 +361,4 @@ struct MoreToolTests {
         let move = FileActions.transfer([report], into: source, operation: .move, prompt: Self.never)
         #expect(move.done.isEmpty && move.failures.isEmpty && FileManager.default.fileExists(atPath: report.path))
     }
-}
-
-private final class PeakBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var peak: Double
-    init(_ start: Double) { peak = start }
-    func update(_ value: Double) { lock.withLock { peak = max(peak, value) } }
-    var value: Double { lock.withLock { peak } }
 }

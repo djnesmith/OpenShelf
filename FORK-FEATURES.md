@@ -18,7 +18,8 @@ upstream's, which hold all of the fork's code and tests plus more: credential-li
 its own queue, cancels, retries on the CPU and maps rotated pages (#24); ⌘⌥-number keeps
 its modifiers (#39); a Move saves the shelves and moves the selection anchor (#40); the
 Excel row count handles CR, UTF-16 and escaped quotes (#9, keeping "Save as CSV or
-Parquet"). Expect those files to conflict again when upstream fixes them further.
+Parquet"). Expect those files to conflict again when upstream fixes them further. The
+fork's own copies of tests that upstream's files also hold were removed, so each runs once.
 
 ## Security
 
@@ -64,25 +65,25 @@ ProcessRunner reads stdout and stderr on their own threads and waits up to 2 s f
 Frames are decoded before ffmpeg's temporary PNGs are deleted, and progress that arrives after a job ends is dropped.
 - Commits: b7f0f32, ab60495
 - Files: `Sources/OpenShelf/Tools/Media/MediaLoading.swift`, `Convert/FFmpegJob.swift`
-- Check: `swift test --filter ffmpegFramesOutliveTheirTemporaryFile` and `swift test --filter progressStopsWhenTheJobEnds`.
+- Check: `swift test --filter MediaRaceTests` (`Tests/OpenShelfTests/MediaRaceTests.swift`, upstream's copy since 1.5.0: `ffmpegFramesOutliveTheirTemporaryFile`, `progressStopsWhenTheJobEnds`).
 
 ### 8. PDF pages rendered one at a time
 OCR and PDF-to-image release each page before rendering the next one. OCR of a 500-page scan went from 16.4 GB to 485 MB.
 - Commits: 207bc44
 - Files: `Sources/OpenShelf/Convert/DocumentConversion.swift`, `Tools/OCR.swift`, `Tools/PDF/PDFImagesEditor.swift`
-- Check: `swift test --filter pdfPagesAreRenderedOneAtATime`.
+- Check: `swift test --filter pdfPagesAreRenderedOneAtATime` (`Tests/OpenShelfTests/ImageRenderingRegressionTests.swift`, upstream's copy since 1.5.0).
 
 ### 9. Excel row limit
 Output to XLSX is refused, with a message, when it would pass Excel's 1,048,576 rows.
 - Commits: 309934c
 - Files: `Sources/OpenShelf/Convert/Spreadsheet.swift`, `Convert/DatabaseConversion.swift`
-- Check: `swift test --filter excelLimitMessage` and `swift test --filter csvOverTheLimitIsRefused`.
+- Check: `swift test --filter ExcelLimitTests` (`Tests/OpenShelfTests/ExcelLimitTests.swift`, upstream's copy since 1.5.0) and `swift test --filter parquetAndSQLiteOverTheLimitAreRefused` (`MoreConversionTests.swift`, needs duckdb).
 
 ### 10. Shared Core Image contexts
 The Resize and Remove Background editors reuse one Core Image context instead of making one per render.
 - Commits: 81e412e
 - Files: `Sources/OpenShelf/Tools/ImageContexts.swift`, `Tools/Editors/ResizeEditor.swift`, `Tools/Editors/RemoveBackgroundEditor.swift`
-- Check: `swift test --filter sharedContextsRenderTheSame`.
+- Check: `swift test --filter sharedContextsRenderTheSame` (`Tests/OpenShelfTests/ImageRenderingRegressionTests.swift`, upstream's copy since 1.5.0).
 
 ## Media edits (Tools wheel)
 
@@ -171,7 +172,7 @@ Turns speech into TXT and SRT, on this Mac, with Apple's speech recognition.
 Recognises text in images and scanned PDFs and makes text files or searchable PDFs. Pages that already have text are kept as they are.
 - Commits: d0b71b4
 - Files: `Sources/OpenShelf/Tools/OCR.swift`, `Tools/OCREditor.swift`
-- Check: `swift test --filter recognisesTextInAnImageAndAScannedPDF`.
+- Check: `swift test --filter OCRTests` (`Tests/OpenShelfTests/OCRTests.swift`, upstream's copy since 1.5.0).
 
 ### 25. PDF pages to images
 Saves chosen pages at a chosen DPI. Offered for one PDF at a time; upstream's other page tools take several.
@@ -270,7 +271,7 @@ On the keyboard wheel, ⌘1–⌘7 run that wedge and ⌘0 opens More. Each wedg
 "Open Wheel for Selection" opens the wheel on the selected shelf items when a shelf is in front, and on Finder's selection otherwise. Moving files from that wheel moves the shelf items too.
 - Commits: a2c6d6f
 - Files: `Sources/OpenShelf/App/FinderSelection.swift`, `App/AppDelegate.swift`, `App/OpenShelfApp.swift`, `Shelf/ShelfManager.swift`
-- Check: `swift test --filter shortcutPicksTheSelectionInFront`.
+- Check: `swift test --filter shortcutPicksTheSelectionInFront` (`Tests/OpenShelfTests/ShelfWheelSelectionTests.swift`, upstream's copy since 1.5.0) and `swift test --filter aMoveFromTheWheelMovesTheShelfItemsToo` (`HideShelvesTests.swift`).
 
 ### 41. Open in iTerm2
 The Terminal action opens folders in iTerm2 when it is installed, and in Terminal otherwise.

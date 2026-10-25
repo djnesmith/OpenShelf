@@ -464,30 +464,4 @@ struct MoreMediaToolTests {
         #expect(mka.lastPathComponent == "tone MKA.mka")
         #expect(try await probe(mka).audio.first?.codec == "aac")
     }
-
-    /// A frame ffmpeg decodes is read into memory before its temporary PNG is
-    /// deleted, so it can still be saved afterwards.
-    @Test(.enabled(if: hasFFmpeg)) func ffmpegFramesOutliveTheirTemporaryFile() async throws {
-        let folder = try workspace()
-        let image = try await MediaLoading.frame(of: folder.appendingPathComponent("clip.mp4"), at: 1, maximumSize: 400, ffmpeg: Self.ffmpeg)
-        let saved = folder.appendingPathComponent("frame.png")
-        try EditableImage.write(image, to: saved, type: .png)
-        #expect(try EditableImage.load(saved).cgImage.width == 320)
-    }
-
-    @Test func progressStopsWhenTheJobEnds() {
-        let log = ProgressRecorder()
-        let gate = ProgressGate { log.add($0) }
-        gate.report(0.5)
-        gate.close()
-        gate.report(0.9)
-        #expect(log.values == [0.5])
-    }
-}
-
-private final class ProgressRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var recorded: [Double] = []
-    func add(_ value: Double) { lock.withLock { recorded.append(value) } }
-    var values: [Double] { lock.withLock { recorded } }
 }
