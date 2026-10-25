@@ -9,6 +9,15 @@ After any merge, run `swift test` (all tests must pass) and then `make app`. The
 below name the tests for each feature: `swift test --filter <name>`. "In the app" checks
 need the built app at `/Applications/OpenShelf.app`.
 
+Upstream 1.5.0 took in its own adapted copies of #3, #6, #7, #8, #9, #10, #24, #39, #40
+(shelves following a Move) and #46; its `docs/FORK_REVIEW.md` lists them. Where both had
+a version, the merge kept the fork's and added upstream's hardening: credential-like
+`LC_*` names are dropped (#3); pipe writers close when a launch fails (#6); OCR runs on
+its own queue, cancels, retries on the CPU and maps rotated pages (#24); ⌘⌥-number keeps
+its modifiers (#39); a Move saves the shelves and moves the selection anchor (#40); the
+Excel row count handles CR, UTF-16 and escaped quotes (#9, keeping "Save as CSV or
+Parquet"). Expect those files to conflict again when upstream fixes them further.
+
 ## Security
 
 ### 1. No in-app updates
@@ -47,7 +56,7 @@ calibre's `ebook-convert` runs with `QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu`, 
 ProcessRunner reads stdout and stderr on their own threads and waits up to 2 s for both to finish, so a tool's last error line always reaches the toast.
 - Commits: 556ed2b
 - Files: `Sources/OpenShelf/Convert/ProcessRunner.swift`
-- Check: `swift test --filter ProcessOutputTests`.
+- Check: `swift test --filter ProcessOutputTests` (`Tests/OpenShelfTests/ProcessOutputTests.swift`, upstream's copy since 1.5.0).
 
 ### 7. ffmpeg race fixes
 Frames are decoded before ffmpeg's temporary PNGs are deleted, and progress that arrives after a job ends is dropped.
@@ -253,7 +262,7 @@ A menu item hides every shelf and brings them all back. A new shelf or a drop wh
 On the keyboard wheel, ⌘1–⌘9 run that wedge and ⌘0 opens More. Each wedge shows its number as a badge.
 - Commits: e543433
 - Files: `Sources/OpenShelf/Wheel/WheelKeyboard.swift`, `Wheel/WheelController.swift`, `Wheel/WheelView.swift`
-- Check: `swift test --filter WheelBadgeTests`.
+- Check: `swift test --filter WheelBadgeTests` (`Tests/OpenShelfTests/WheelBadgeTests.swift`, upstream's copy since 1.5.0, with ⌘⌥-number and pass-through cases).
 
 ### 40. Wheel on selected shelf items
 "Open Wheel for Selection" opens the wheel on the selected shelf items when a shelf is in front, and on Finder's selection otherwise. Moving files from that wheel moves the shelf items too.

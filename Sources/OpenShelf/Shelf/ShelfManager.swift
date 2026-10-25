@@ -34,14 +34,6 @@ final class ShelfManager {
         controllers.last?.shelf.selectedItems.map(\.url) ?? []
     }
 
-    /// After a Move, every shelf holding a moved file follows it.
-    func relocate(_ moves: [URL: URL]) {
-        guard !moves.isEmpty else { return }
-        for controller in controllers {
-            controller.shelf.relocate(moves)
-        }
-    }
-
     /// Puts every shelf out of sight, edge tabs too, keeping each as it is.
     func hideAll() {
         guard hasShelves else { return }
@@ -101,6 +93,13 @@ final class ShelfManager {
         unhideAll()
         recent.shelf.add(urls)
         recent.present()
+    }
+
+    /// Updates every open reference after files move through the Actions wheel.
+    func relocate(_ moves: [URL: URL]) {
+        guard !moves.isEmpty else { return }
+        for controller in controllers { controller.shelf.relocate(moves) }
+        scheduleSave()
     }
 
     func closeAll() {

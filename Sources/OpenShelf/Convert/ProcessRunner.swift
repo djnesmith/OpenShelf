@@ -72,11 +72,17 @@ enum ProcessRunner {
         process.standardError = errorPipe
         readToEnd(errorPipe.fileHandleForReading, group: readers) { box.appendError($0) }
 
+        let outputPipe = Pipe()
+        // Also close parent writers when launch fails, so the reader threads
+        // reach EOF instead of retaining the process and its pipes forever.
+        defer {
+            try? errorPipe.fileHandleForWriting.close()
+            try? outputPipe.fileHandleForWriting.close()
+        }
         if let standardOutputFile {
             FileManager.default.createFile(atPath: standardOutputFile.path, contents: nil)
             process.standardOutput = try FileHandle(forWritingTo: standardOutputFile)
         } else {
-            let outputPipe = Pipe()
             process.standardOutput = outputPipe
             readToEnd(outputPipe.fileHandleForReading, group: readers) { box.appendOutput($0, onLine: onOutputLine) }
         }

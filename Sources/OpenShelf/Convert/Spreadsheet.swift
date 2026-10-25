@@ -9,20 +9,89 @@ typealias Table = [[String]]
 enum DelimitedText {
     /// The number of records in a CSV or TSV file, read in chunks without
     /// building the table: line breaks inside quoted fields don't count.
-    static func recordCount(_ url: URL) throws -> Int {
+    static func recordCount(_ url: URL, delimiter: Character = ",") throws -> Int {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
+        let separator: UInt16 = delimiter == "\t" ? 0x09 : 0x2C
         var count = 0
         var inQuotes = false
-        var last: UInt8 = 0x0A
-        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
-            for byte in chunk {
-                if byte == 0x22 { inQuotes.toggle() } else if byte == 0x0A, !inQuotes { count += 1 }
-                last = byte
+        var pendingQuote = false
+        var fieldHasContent = false
+        var hasFields = false
+        var afterCR = false
+
+        // Use the same quote and record rules as parse, including CR-only
+        // records, escaped quotes, and a final record without a line break.
+        func consume(_ unit: UInt16) {
+            if afterCR {
+                afterCR = false
+                if unit == 0x0A { return }
+            }
+            if inQuotes {
+                if unit == 0x22 {
+                    if pendingQuote {
+                        fieldHasContent = true
+                        pendingQuote = false
+                    } else {
+                        pendingQuote = true
+                    }
+                    return
+                }
+                if pendingQuote {
+                    inQuotes = false
+                    pendingQuote = false
+                } else {
+                    fieldHasContent = true
+                    return
+                }
+            }
+            if unit == 0x22, !fieldHasContent {
+                inQuotes = true
+            } else if unit == separator {
+                hasFields = true
+                fieldHasContent = false
+            } else if unit == 0x0A || unit == 0x0D {
+                count += 1
+                fieldHasContent = false
+                hasFields = false
+                afterCR = unit == 0x0D
+            } else {
+                fieldHasContent = true
             }
         }
-        // A last record without a closing line break.
-        return last == 0x0A ? count : count + 1
+
+        var first = true
+        var utf16LittleEndian: Bool?
+        var pendingByte: UInt8?
+        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+            try Task.checkCancellation()
+            var bytes = chunk[...]
+            if first {
+                first = false
+                if bytes.starts(with: [0xFF, 0xFE]) {
+                    utf16LittleEndian = true
+                    bytes = bytes.dropFirst(2)
+                } else if bytes.starts(with: [0xFE, 0xFF]) {
+                    utf16LittleEndian = false
+                    bytes = bytes.dropFirst(2)
+                } else if bytes.starts(with: [0xEF, 0xBB, 0xBF]) {
+                    bytes = bytes.dropFirst(3)
+                }
+            }
+            for byte in bytes {
+                if let littleEndian = utf16LittleEndian {
+                    if let leading = pendingByte {
+                        consume(littleEndian ? UInt16(leading) | UInt16(byte) << 8 : UInt16(leading) << 8 | UInt16(byte))
+                        pendingByte = nil
+                    } else {
+                        pendingByte = byte
+                    }
+                } else {
+                    consume(UInt16(byte))
+                }
+            }
+        }
+        return count + (fieldHasContent || hasFields ? 1 : 0)
     }
 
     static func parse(_ text: String, delimiter: Character) -> Table {
@@ -422,7 +491,7 @@ enum SpreadsheetConversion {
     static func convert(_ source: URL, to format: OutputFormat, tools: ExternalTools, rowLimit: Int = ExcelLimit.rows) async throws -> [URL] {
         let ext = source.pathExtension.lowercased()
         if format == .xlsx, ["csv", "tsv"].contains(ext) {
-            try ExcelLimit.check(rows: try DelimitedText.recordCount(source), limit: rowLimit)
+            try ExcelLimit.check(rows: try DelimitedText.recordCount(source, delimiter: ext == "tsv" ? "\t" : ","), limit: rowLimit)
         }
         // Formats only LibreOffice reads or writes.
         if format == .ods || !["csv", "tsv", "xlsx"].contains(ext) {

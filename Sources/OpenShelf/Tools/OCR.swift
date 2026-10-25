@@ -1,5 +1,8 @@
+// Adapted from David NeSmith’s d0b71b4 and 207bc44; see docs/FORK_REVIEW.md.
 import CoreGraphics
+import CoreML
 import CoreText
+import Dispatch
 import Foundation
 import ImageIO
 import PDFKit
@@ -26,7 +29,13 @@ enum OCR {
 
     // MARK: Recognition
 
-    static func recognize(_ image: CGImage, languages: [String] = Locale.preferredLanguages) throws -> [Line] {
+    static func recognize(
+        _ image: CGImage,
+        languages: [String] = Locale.preferredLanguages,
+        checkCancellation: () throws -> Void = { try Task.checkCancellation() },
+        perform: (VNImageRequestHandler, VNRecognizeTextRequest) throws -> Void = { try $0.perform([$1]) }
+    ) throws -> [Line] {
+        try checkCancellation()
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
@@ -34,7 +43,23 @@ enum OCR {
         let supported = (try? request.supportedRecognitionLanguages()) ?? []
         let chosen = recognitionLanguages(preferred: languages, supported: supported)
         if !chosen.isEmpty { request.recognitionLanguages = chosen }
-        try VNImageRequestHandler(cgImage: image).perform([request])
+        do {
+            try perform(VNImageRequestHandler(cgImage: image), request)
+        } catch {
+            try checkCancellation()
+            // Accelerator execution can fail under load. Retry once on the
+            // supported CPU devices, keeping the same recognition settings.
+            guard let stages = try? request.supportedComputeStageDevices else { throw error }
+            var hasCPU = false
+            for (stage, devices) in stages {
+                if let cpu = devices.first(where: { if case .cpu = $0 { return true }; return false }) {
+                    request.setComputeDevice(cpu, for: stage)
+                    hasCPU = true
+                }
+            }
+            guard hasCPU else { throw error }
+            try perform(VNImageRequestHandler(cgImage: image), request)
+        }
         let lines = (request.results ?? []).compactMap { observation in
             observation.topCandidates(1).first.map { Line(text: $0.string, box: observation.boundingBox) }
         }
@@ -65,41 +90,79 @@ enum OCR {
     /// Recognises `url` (an image or PDF) and saves "<name> OCR.pdf" or "<name> OCR.txt".
     /// PDF pages that already have text are kept as they are.
     static func run(_ url: URL, output: Output, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> URL {
-        try await Task.detached(priority: .userInitiated) {
-            let pages = try OCRPage.load(url)
-            var recognised: [(page: OCRPage, lines: [Line])] = []
-            for (index, page) in pages.enumerated() {
-                try Task.checkCancellation()
-                // Each rendered page is let go before the next, not at the end.
-                let lines = try autoreleasepool {
-                    try page.existingText == nil ? page.image().map { try recognize($0) } ?? [] : []
+        try Task.checkCancellation()
+        let job = OCRJob()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                workerQueue.async {
+                    do {
+                        let result = try autoreleasepool {
+                            try process(url, output: output, progress: progress, job: job)
+                        }
+                        continuation.resume(returning: result)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 }
-                recognised.append((page, lines))
-                progress(Double(index + 1) / Double(pages.count))
             }
-            switch output {
-            case .text:
-                let destination = OutputNaming.destination(for: url, suffix: "OCR", pathExtension: "txt")
-                try SaveError.checkWritable(destination)
-                let text = recognised.map { $0.page.existingText ?? $0.lines.map(\.text).joined(separator: "\n") }
-                    .joined(separator: "\n\n")
-                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    throw ConversionError.failed("No text was found in “\(url.lastPathComponent)”.")
-                }
-                try text.write(to: destination, atomically: true, encoding: .utf8)
-                return destination
-            case .searchablePDF:
-                let destination = OutputNaming.destination(for: url, suffix: "OCR", pathExtension: "pdf")
-                try SaveError.checkWritable(destination)
-                try writePDF(recognised, to: destination)
-                return destination
-            }
-        }.value
+        } onCancel: {
+            job.cancel()
+        }
     }
 
-    private static func writePDF(_ pages: [(page: OCRPage, lines: [Line])], to url: URL) throws {
+    // Vision performs blocking work and may schedule its own Swift tasks.
+    // Keep it off Swift's cooperative executor, and limit concurrent model work.
+    private static let workerQueue = DispatchQueue(label: "OpenShelf.OCR", qos: .userInitiated)
+
+    private static func process(
+        _ url: URL,
+        output: Output,
+        progress: @escaping @Sendable (Double) -> Void,
+        job: OCRJob
+    ) throws -> URL {
+        try job.checkCancellation()
+        let pages = try OCRPage.load(url)
+        var recognised: [(page: OCRPage, lines: [Line])] = []
+        for (index, page) in pages.enumerated() {
+            try job.checkCancellation()
+            // Each rendered page is let go before the next, not at the end.
+            let lines = try autoreleasepool {
+                try page.existingText == nil ? page.image().map { try recognize($0, checkCancellation: job.checkCancellation) } ?? [] : []
+            }
+            try job.checkCancellation()
+            recognised.append((page, lines))
+            progress(Double(index + 1) / Double(pages.count))
+        }
+        try job.checkCancellation()
+        switch output {
+        case .text:
+            let destination = OutputNaming.destination(for: url, suffix: "OCR", pathExtension: "txt")
+            try SaveError.checkWritable(destination)
+            let text = recognised.map { $0.page.existingText ?? $0.lines.map(\.text).joined(separator: "\n") }
+                .joined(separator: "\n\n")
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ConversionError.failed("No text was found in “\(url.lastPathComponent)”.")
+            }
+            try job.checkCancellation()
+            try Data(text.utf8).writeNew(to: destination)
+            return destination
+        case .searchablePDF:
+            let destination = OutputNaming.destination(for: url, suffix: "OCR", pathExtension: "pdf")
+            try SaveError.checkWritable(destination)
+            let partial = destination.deletingLastPathComponent().appendingPathComponent(".openshelf-ocr-\(UUID().uuidString).pdf")
+            defer { try? FileManager.default.removeItem(at: partial) }
+            try writePDF(recognised, to: partial, checkCancellation: job.checkCancellation)
+            try job.checkCancellation()
+            try FileManager.default.moveItem(at: partial, to: destination)
+            return destination
+        }
+    }
+
+    private static func writePDF(_ pages: [(page: OCRPage, lines: [Line])], to url: URL, checkCancellation: () throws -> Void) throws {
         guard let context = CGContext(url as CFURL, mediaBox: nil, nil) else { throw EditableImageError.unwritable(url) }
+        defer { context.closePDF() }
         for (page, lines) in pages {
+            try checkCancellation()
             autoreleasepool {
                 var box = CGRect(origin: .zero, size: page.size)
                 context.beginPage(mediaBox: &box)
@@ -108,7 +171,6 @@ enum OCR {
                 context.endPage()
             }
         }
-        context.closePDF()
     }
 
     /// Each line as invisible text stretched over where it appears, so
@@ -182,8 +244,23 @@ struct OCRPage: @unchecked Sendable {
     func draw(in context: CGContext) {
         if let picture {
             context.draw(picture, in: CGRect(origin: .zero, size: size))
-        } else if let pdfPage {
-            pdfPage.draw(with: .mediaBox, to: context)
+        } else if let page = pdfPage?.pageRef {
+            context.saveGState()
+            context.concatenate(page.getDrawingTransform(.mediaBox, rect: CGRect(origin: .zero, size: size), rotate: 0, preserveAspectRatio: true))
+            context.drawPDFPage(page)
+            context.restoreGState()
         }
+    }
+}
+
+/// Cooperative cancellation for synchronous work running outside a Swift task.
+private final class OCRJob: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isCancelled = false
+
+    func cancel() { lock.withLock { isCancelled = true } }
+
+    func checkCancellation() throws {
+        if lock.withLock({ isCancelled }) { throw CancellationError() }
     }
 }

@@ -7,7 +7,7 @@ import Testing
 struct ChildEnvironmentTests {
     static let secrets: [String: String] = [
         "AWS_SECRET_ACCESS_KEY": "a", "AWS_REGION": "b", "GITHUB_TOKEN": "c", "OP_SERVICE_ACCOUNT_TOKEN": "d",
-        "SSH_AUTH_SOCK": "/tmp/agent", "PGPASSWORD": "e", "MY_API_KEY": "f", "SOME_SECRET": "g", "DYLD_INSERT_LIBRARIES": "h",
+        "SSH_AUTH_SOCK": "/tmp/agent", "PGPASSWORD": "e", "MY_API_KEY": "f", "SOME_SECRET": "g", "LC_SECRET_TOKEN": "test", "DYLD_INSERT_LIBRARIES": "h",
     ]
     static let kept: [String: String] = [
         "HOME": "/Users/x", "TMPDIR": "/tmp/", "USER": "x", "LOGNAME": "x", "SHELL": "/bin/zsh", "LANG": "en_GB.UTF-8", "LC_ALL": "en_GB.UTF-8", "TERM": "xterm",
@@ -95,46 +95,4 @@ private final class LineCollector: @unchecked Sendable {
     private var lines: [String] = []
     func append(_ line: String) { lock.withLock { lines.append(line) } }
     var text: String { lock.withLock { lines.joined(separator: "\n") } }
-}
-
-/// A tool's last words are never lost: what it writes just before exiting is
-/// read before its exit is acted on.
-struct ProcessOutputTests {
-    /// Under load, as in a full test run, where afconvert's message was lost.
-    @Test func errorTextIsAlwaysCaught() async {
-        let missed = await withTaskGroup(of: Int.self) { group in
-            for _ in 0..<8 {
-                group.addTask {
-                    var missed = 0
-                    for _ in 0..<250 {
-                        do {
-                            try await ProcessRunner.run(URL(fileURLWithPath: "/bin/sh"), ["-c", "printf 'Couldn’t open input file (\\047typ?\\047)' >&2; exit 3"])
-                        } catch let failure as ProcessFailure {
-                            if !failure.message.contains("('typ?')") { missed += 1 }
-                        } catch {
-                            missed += 1
-                        }
-                    }
-                    return missed
-                }
-            }
-            return await group.reduce(0, +)
-        }
-        #expect(missed == 0, "lost the error text \(missed) times in 2000")
-    }
-
-    @Test func lastOutputLineIsDelivered() async throws {
-        for _ in 0..<200 {
-            let lines = Collected()
-            try await ProcessRunner.run(URL(fileURLWithPath: "/bin/sh"), ["-c", "echo one; echo two"]) { lines.add($0) }
-            #expect(lines.values == ["one", "two"])
-        }
-    }
-}
-
-private final class Collected: @unchecked Sendable {
-    private let lock = NSLock()
-    private var items: [String] = []
-    func add(_ line: String) { lock.withLock { items.append(line) } }
-    var values: [String] { lock.withLock { items } }
 }

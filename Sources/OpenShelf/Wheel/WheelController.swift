@@ -401,7 +401,7 @@ final class WheelController {
         session.taps.keyPressed()
         keyboardSession = session
         if event.modifierFlags.contains(.command) {
-            return runBadge(event.charactersIgnoringModifiers ?? "")
+            return runBadge(event.charactersIgnoringModifiers ?? "", modifiers: event.modifierFlags)
         }
         switch Int(event.keyCode) {
         case kVK_RightArrow, kVK_DownArrow:
@@ -409,7 +409,7 @@ final class WheelController {
         case kVK_LeftArrow, kVK_UpArrow:
             step(.counterClockwise)
         case kVK_Return, kVK_ANSI_KeypadEnter:
-            runHighlighted()
+            runHighlighted(modifiers: event.modifierFlags)
         case kVK_Escape:
             dismiss(after: .zero)
         case kVK_Tab:
@@ -423,21 +423,21 @@ final class WheelController {
     }
 
     /// ⌘ and a wedge's number: runs it as Return would, or turns the page for 0.
-    private func runBadge(_ key: String) -> Bool {
+    private func runBadge(_ key: String, modifiers: NSEvent.ModifierFlags) -> Bool {
         guard let slot = WheelBadges.slot(forKey: key, in: model.slots) else { return false }
         setHighlight(slot)
-        runHighlighted()
+        runHighlighted(modifiers: modifiers)
         return true
     }
 
     /// Runs the highlighted wedge, or turns the page when it's More or Back.
-    private func runHighlighted() {
+    private func runHighlighted(modifiers: NSEvent.ModifierFlags? = nil) {
         guard let session = keyboardSession, let slot = model.highlightedSlot, let highlighted = model.highlighted else { return }
         guard let item = highlighted.item else {
             turnPage(from: slot)
             return
         }
-        let modifiers = session.taps.chosen(NSEvent.modifierFlags)
+        let modifiers = session.taps.chosen(modifiers ?? NSEvent.modifierFlags)
         dismiss(after: .zero)
         onDrop?(item, session.urls, modifiers)
     }

@@ -1,3 +1,4 @@
+// Adapted from David NeSmith’s d0b71b4 and 207bc44; see docs/FORK_REVIEW.md.
 import Observation
 import SwiftUI
 
@@ -69,6 +70,7 @@ final class OCRModel {
     }
 
     func save(actions: EditorActions) {
+        guard progress == nil, !urls.isEmpty else { return }
         progress = 0
         let urls = urls
         let output = output
@@ -76,11 +78,13 @@ final class OCRModel {
             var saved: [URL] = []
             do {
                 for (index, url) in urls.enumerated() {
+                    try Task.checkCancellation()
                     self?.detail = urls.count > 1 ? "Reading \(index + 1) of \(urls.count)…" : nil
                     saved.append(try await OCR.run(url, output: output) { fraction in
                         Task { @MainActor in self?.progress = (Double(index) + fraction) / Double(urls.count) }
                     })
                 }
+                try Task.checkCancellation()
                 actions.saved(saved)
             } catch is CancellationError {
                 self?.progress = nil

@@ -217,6 +217,6 @@ enum FileTool: CaseIterable, Hashable {
         if kinds == [.audio] {
             return merge + [.trim, .speed, .splitMedia, .compressAudio, .export, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : [])
         }
-        return combine
+        return kinds.isSubset(of: [.image, .pdf]) ? combine + [.ocr] : combine
     }
 }

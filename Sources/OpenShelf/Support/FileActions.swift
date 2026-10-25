@@ -156,7 +156,7 @@ enum FileActions {
                 switch operation {
                 case .move:
                     try fileManager.moveItem(at: url, to: target)
-                    moves[url.standardizedFileURL] = target
+                    moves[url.standardizedFileURL] = target.standardizedFileURL
                 case .copy:
                     try fileManager.copyItem(at: url, to: target)
                 }

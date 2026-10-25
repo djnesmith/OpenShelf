@@ -26,8 +26,8 @@ struct FileToolTests {
         #expect(FileTool.available(for: urls("a.pdf", "b.pdf"), tools: ExternalTools()) == [.combinePDF, .organizePages, .splitPDF, .compressPDF, .pdfMetadata, .ocr])
     }
 
-    @Test func imagesAndPDFsTogetherOnlyCombine() {
-        #expect(FileTool.available(for: urls("a.pdf", "b.jpg"), tools: ExternalTools()) == [.combinePDF])
+    @Test func imagesAndPDFsTogetherOfferCombineAndOCR() {
+        #expect(FileTool.available(for: urls("a.pdf", "b.jpg"), tools: ExternalTools()) == [.combinePDF, .ocr])
     }
 
     @Test func mediaTools() {

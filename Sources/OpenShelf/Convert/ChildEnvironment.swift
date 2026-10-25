@@ -21,7 +21,7 @@ enum ChildEnvironment {
         from base: [String: String] = ProcessInfo.processInfo.environment,
         extra: [String: String] = [:]
     ) -> [String: String] {
-        var environment = base.filter { allowed.contains($0.key) || $0.key.hasPrefix("LC_") }
+        var environment = base.filter { (allowed.contains($0.key) || $0.key.hasPrefix("LC_")) && !isCredential($0.key) }
         environment["PATH"] = searchPath
         environment.merge(extra) { _, new in new }
         return environment
