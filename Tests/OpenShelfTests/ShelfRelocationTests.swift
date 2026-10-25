@@ -5,7 +5,7 @@ import Testing
 /// Adapted from David NeSmith's a2c6d6f, with selection-anchor coverage.
 @MainActor
 struct ShelfRelocationTests {
-    @Test func followsSuccessfulMovesAndKeepsFailedOnes() throws {
+    @Test func followsSuccessfulMovesAndKeepsSkippedOnes() throws {
         let fm = FileManager.default
         let folder = fm.temporaryDirectory.appendingPathComponent("openshelf-relocate-\(UUID().uuidString)")
         defer { try? fm.removeItem(at: folder) }

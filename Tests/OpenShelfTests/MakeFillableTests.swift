@@ -155,10 +155,13 @@ struct MakeFillableTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let source = try formPDF(named: "form.pdf", in: folder)
         let tools = try stub(in: folder, seconds: 5).tools
+        let start = Date()
         let run = Task { try await MakeFillable.make(source, tools: tools) }
         try await Task.sleep(for: .milliseconds(500))
         run.cancel()
         await #expect(throws: CancellationError.self) { try await run.value }
+        // The stub sleeps 5 s, so returning sooner means it was stopped, not waited for.
+        #expect(Date().timeIntervalSince(start) < 4)
         #expect(try !FileManager.default.contentsOfDirectory(atPath: folder.path).contains { $0.contains(".fillable") })
     }
 

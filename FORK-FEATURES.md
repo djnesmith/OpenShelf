@@ -11,7 +11,9 @@ need the built app at `/Applications/OpenShelf.app`.
 
 Upstream 1.5.0 took in its own adapted copies of #3, #6, #7, #8, #9, #10, #24, #39, #40
 (shelves following a Move) and #46; its `docs/FORK_REVIEW.md` lists them. Where both had
-a version, the merge kept the fork's and added upstream's hardening: credential-like
+a version, the merge kept the fork's and added upstream's hardening, except that OCR
+(`OCR.swift`, `OCREditor.swift`) and the ProcessOutputTests and WheelBadgeTests files are
+upstream's, which hold all of the fork's code and tests plus more: credential-like
 `LC_*` names are dropped (#3); pipe writers close when a launch fails (#6); OCR runs on
 its own queue, cancels, retries on the CPU and maps rotated pages (#24); ⌘⌥-number keeps
 its modifiers (#39); a Move saves the shelves and moves the selection anchor (#40); the
@@ -259,7 +261,7 @@ A menu item hides every shelf and brings them all back. A new shelf or a drop wh
 - Check: `swift test --filter HideShelvesTests`.
 
 ### 39. ⌘-number wedges
-On the keyboard wheel, ⌘1–⌘9 run that wedge and ⌘0 opens More. Each wedge shows its number as a badge.
+On the keyboard wheel, ⌘1–⌘7 run that wedge and ⌘0 opens More. Each wedge shows its number as a badge.
 - Commits: e543433
 - Files: `Sources/OpenShelf/Wheel/WheelKeyboard.swift`, `Wheel/WheelController.swift`, `Wheel/WheelView.swift`
 - Check: `swift test --filter WheelBadgeTests` (`Tests/OpenShelfTests/WheelBadgeTests.swift`, upstream's copy since 1.5.0, with ⌘⌥-number and pass-through cases).
@@ -313,7 +315,7 @@ The Background swatches sit 1 pt apart instead of 3, so nine colours and the col
 ## PDF
 
 ### 47. Make Fillable
-A PDF Tools-wheel wedge, for one PDF at a time, that saves `name.fillable.pdf` next to the original with form fields where the blanks, boxes and signature lines are. It uses commonforms (`uv tool install commonforms`, about 1.6 GB, not bundled), found on the PATH folders, in `~/.local/bin`, or in uv's or pipx's commonforms venv. The wedge shows only when commonforms is installed. Settings → Extra Formats lists it with "Copy Install Command". A run that finds no new fields saves nothing and says "No fields found". The window warns "Scanned pages may miss most fields" when a page has no text, "This PDF already has form fields; new ones will be added alongside" when it has some (warn only), and "Downloading the form model, 18 MB, first time only" until the FFDNet-S model is in `~/.cache/huggingface`.
+A PDF Tools-wheel wedge, for one PDF at a time, that saves `name.fillable.pdf` next to the original with form fields where the blanks, boxes and signature lines are. It uses commonforms (`uv tool install commonforms`, about 1.6 GB, not bundled), found on the PATH folders, in `~/.local/bin`, or in uv's or pipx's commonforms venv. The wedge shows only when commonforms is installed. Settings → Extra Formats lists it with "Copy Install Command". A run that finds no new fields saves nothing and says "No fields found". The window warns "Scanned pages may miss most fields" when a page has no text, "This PDF already has form fields; the copy will repeat them" when it has some (warn only: commonforms adds a same-named field on top of each old one), and "Downloading the form model, 18 MB, first time only" until the FFDNet-S model is in `~/.cache/huggingface`.
 - Command: `commonforms input.pdf output.pdf --model FFDNet-S --use-signature-fields`, plus `--keep-existing-fields` when the PDF has any annotations, since commonforms otherwise deletes all of them (links and comments too). It runs on a copy named `input.pdf` in an empty temp folder. Closing the window stops it and saves nothing.
 - Lockdown: the child-process env allowlist; HOME, TMPDIR, XDG_CONFIG_HOME and YOLO_CONFIG_DIR are the temp folder. `YOLO_OFFLINE=true` stops ultralytics' Google Analytics event on every run and its online checks ("true", since ultralytics 8.3 ignores "1"); `YOLO_AUTOINSTALL=0` stops its pip installs. `HF_HUB_OFFLINE=1` once the model is cached, `HF_HUB_DISABLE_TELEMETRY=1`, and `HF_HUB_DISABLE_IMPLICIT_TOKEN=1` so a saved Hugging Face token is never sent.
 - Commits: this one

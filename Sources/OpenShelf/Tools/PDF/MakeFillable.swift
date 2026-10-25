@@ -16,7 +16,8 @@ enum MakeFillable {
     static let model = "FFDNet-S"
     static let modelDownloadNote = "Downloading the form model, 18 MB, first time only"
     static let scannedNote = "Scanned pages may miss most fields"
-    static let existingFieldsNote = "This PDF already has form fields; new ones will be added alongside"
+    /// commonforms finds the old fields' blanks again and adds a same-named field on each.
+    static let existingFieldsNote = "This PDF already has form fields; the copy will repeat them"
 
     /// - Parameter keepingExisting: The PDF has annotations. commonforms
     ///   otherwise deletes every one, links and comments included.
@@ -98,6 +99,7 @@ enum MakeFillable {
             throw ConversionError.failed("“\(source.lastPathComponent)” couldn’t be made fillable: \(FailureMessage.sanitized(failure.message))")
         }
 
+        try Task.checkCancellation()
         guard let result = PDFDocument(url: output), fieldCount(result) > fieldCount(document) else { return nil }
         let destination = OutputNaming.uniqueURL(in: source.deletingLastPathComponent(), baseName: base, pathExtension: "pdf")
         try await PartialFile.write(destination) { try FileManager.default.copyItem(at: output, to: $0) }
