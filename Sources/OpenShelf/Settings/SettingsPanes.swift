@@ -2,7 +2,7 @@ import Carbon.HIToolbox
 import ServiceManagement
 import SwiftUI
 
-/// Settings → General: opening at login, and the welcome guide.
+/// Settings → General: opening at login, and the guided tour.
 struct GeneralSettingsPane: View {
     @State private var opensAtLogin = SMAppService.mainApp.status == .enabled
 
@@ -15,11 +15,14 @@ struct GeneralSettingsPane: View {
                     }
             }
             Section {
-                LabeledContent("How to use OpenShelf") {
-                    Button("Show Guide") { WelcomeView.present() }
+                LabeledContent("Learn OpenShelf") {
+                    HStack {
+                        Button("Start Over") { TourWindowController.present(startingOver: true) }
+                        Button("Take the Tour") { TourWindowController.present() }
+                    }
                 }
             } footer: {
-                Text("The drag gestures and the keyboard shortcut, as shown the first time OpenShelf opened.")
+                Text("A hands-on tour with practice files: converting, the Tools wheel, PDFs, video, shelves and the keyboard shortcut. Pick up where you left off, or start over.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -107,6 +110,13 @@ struct ShelvesSettingsPane: View {
                 Toggle("Remove files from a shelf after dragging them out", isOn: $preferences.removeAfterDragOut)
                 Toggle("Restore shelves when OpenShelf opens", isOn: $preferences.restoresShelves)
                 Toggle("Hide docked shelves to the screen edge", isOn: $preferences.hidesDockedShelves)
+            }
+            Section {
+                Toggle("Add conversion and tool results back to the shelf", isOn: $preferences.addsConversionResultsToShelf)
+            } footer: {
+                Text("When a file on a shelf is converted or edited with the Tools wheel, the result is added to that shelf too. Files dragged in from elsewhere aren't affected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .settingsPane()

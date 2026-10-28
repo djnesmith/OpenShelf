@@ -11,9 +11,16 @@ final class ConversionRunner {
 
     private var current: Task<Void, Never>?
 
-    /// - Parameter settings: How to encode; nil for Settings → Output's,
-    ///   read now so a change mid-batch doesn't mix two kinds of output.
-    func convert(_ urls: [URL], to format: OutputFormat, settings: OutputSettings? = nil, near location: NSPoint = NSEvent.mouseLocation) {
+    /// Called with the files a batch wrote, and the shelf the operation was
+    /// started from, if any. Wired once at launch to add them back to that
+    /// shelf when Settings → Shelves allows it.
+    var onSaved: (([URL], Shelf.ID?) -> Void)?
+
+    /// - Parameters:
+    ///   - settings: How to encode; nil for Settings → Output's, read now so
+    ///     a change mid-batch doesn't mix two kinds of output.
+    ///   - sourceShelfID: The shelf `urls` were dragged or selected from, if any.
+    func convert(_ urls: [URL], to format: OutputFormat, settings: OutputSettings? = nil, near location: NSPoint = NSEvent.mouseLocation, sourceShelfID: Shelf.ID? = nil) {
         let tools = ExternalTools.current
         let settings = settings ?? Preferences.shared.output
         let isArchive = ConversionCatalog.archiveFormats.contains(format)
@@ -24,7 +31,7 @@ final class ConversionRunner {
         }
         // Several files go into one archive; everything else converts per file.
         let jobs: [[URL]] = isArchive ? [urls] : urls.map { [$0] }
-        run(title: title, jobs: jobs, savedSubtitle: format == .extract ? nil : "as \(format.title)", near: location) { sources, progress in
+        run(title: title, jobs: jobs, savedSubtitle: format == .extract ? nil : "as \(format.title)", near: location, sourceShelfID: sourceShelfID) { sources, progress in
             switch format {
             case .zip: return [try await ArchiveConversion.zip(sources)]
             case _ where isArchive: return [try await ArchiveConversion.archive(sources, as: format)]
@@ -44,6 +51,7 @@ final class ConversionRunner {
         keepsFormat: Bool = false,
         unchangedLabel: String? = nil,
         near location: NSPoint = NSEvent.mouseLocation,
+        sourceShelfID: Shelf.ID? = nil,
         operation: @escaping Operation
     ) {
         guard !jobs.isEmpty else { return }
@@ -51,7 +59,7 @@ final class ConversionRunner {
         current = Task { [weak self] in
             // Batches queue behind each other so their toasts don't collide.
             await previous?.value
-            await self?.execute(title: title, jobs: jobs, savedSubtitle: savedSubtitle, keepsFormat: keepsFormat, unchangedLabel: unchangedLabel, near: location, operation: operation)
+            await self?.execute(title: title, jobs: jobs, savedSubtitle: savedSubtitle, keepsFormat: keepsFormat, unchangedLabel: unchangedLabel, near: location, sourceShelfID: sourceShelfID, operation: operation)
         }
     }
 
@@ -62,6 +70,7 @@ final class ConversionRunner {
         keepsFormat: Bool,
         unchangedLabel: String?,
         near location: NSPoint,
+        sourceShelfID: Shelf.ID?,
         operation: @escaping Operation
     ) async {
         let toasts = ToastController.shared
@@ -72,26 +81,29 @@ final class ConversionRunner {
             var failures: [String] = []
             for (index, sources) in jobs.enumerated() {
                 if Task.isCancelled { break }
+                let step = StepProgress(index: index, total: total) { toasts.updateProgress($0, subtitle: $1) }
                 do {
                     let written = try await operation(sources) { fraction in
-                        Task { @MainActor in toasts.updateProgress((Double(index) + fraction) / Double(total)) }
+                        Task { @MainActor in step.report(fraction) }
                     }
                     if written.isEmpty { unchanged += 1 }
                     saved += written
                 } catch is CancellationError {
+                    step.cancel()
                     break
                 } catch {
                     failures.append("\(sources[0].lastPathComponent): \(error.localizedDescription)")
                 }
-                toasts.updateProgress(Double(index + 1) / Double(total), subtitle: "\(index + 1) of \(total) saved")
+                step.finish(subtitle: "\(index + 1) of \(total) saved")
             }
             return (saved, unchanged, failures)
         }
 
-        toasts.showProgress(Toast(systemImage: "arrow.triangle.2.circlepath", title: title, subtitle: "0 of \(total) saved", progress: 0), near: location) {
+        toasts.showProgress(Toast(systemImage: "arrow.triangle.2.circlepath", title: title, subtitle: "0 of \(total) saved", progress: .determinate(0)), near: location) {
             job.cancel()
         }
         let (saved, unchanged, failures) = await job.value
+        if !saved.isEmpty { onSaved?(saved, sourceShelfID) }
 
         if job.isCancelled {
             toasts.show(Toast(systemImage: "xmark", title: "Cancelled", subtitle: saved.isEmpty ? nil : "\(saved.count) saved"))
@@ -107,5 +119,50 @@ final class ConversionRunner {
                 toasts.show(SaveOutcome(saved: saved, detail: note ?? savedSubtitle).toast)
             }
         }
+    }
+}
+
+/// Tracks one file's share of the batch toast. Conversions that can't
+/// measure their own progress (LibreOffice, Pandoc, AppKit printing…) simply
+/// never call `report`; after a short wait with nothing to show, this swaps
+/// the toast to a busy bar instead of leaving it looking stuck.
+///
+/// Internal, not private, for tests.
+@MainActor
+final class StepProgress {
+    /// How long a file gets to report real progress before this gives up and
+    /// shows a busy bar instead.
+    static let indeterminateDelay: Duration = .milliseconds(350)
+
+    private let index: Int
+    private let total: Int
+    /// Sets the toast's progress, and its subtitle when given.
+    private let update: @MainActor (ToastProgress, String?) -> Void
+    private var pending: Task<Void, Never>?
+
+    init(index: Int, total: Int, update: @escaping @MainActor (ToastProgress, String?) -> Void) {
+        self.index = index
+        self.total = total
+        self.update = update
+        pending = Task { [weak self] in
+            try? await Task.sleep(for: Self.indeterminateDelay)
+            guard let self, !Task.isCancelled else { return }
+            self.update(.indeterminate, nil)
+        }
+    }
+
+    /// `fraction` is this file's own 0...1 progress.
+    func report(_ fraction: Double) {
+        pending?.cancel()
+        update(.determinate((Double(index) + min(max(fraction, 0), 1)) / Double(total)), nil)
+    }
+
+    func finish(subtitle: String) {
+        pending?.cancel()
+        update(.determinate(Double(index + 1) / Double(total)), subtitle)
+    }
+
+    func cancel() {
+        pending?.cancel()
     }
 }

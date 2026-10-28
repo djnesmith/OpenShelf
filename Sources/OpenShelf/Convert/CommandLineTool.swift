@@ -7,7 +7,6 @@ import Foundation
 enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
     case cwebp
     case calibre
-    case pandoc
     case yq
     case cjxl
     case duckdb
@@ -35,7 +34,6 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: "cwebp"
         case .calibre: "calibre"
-        case .pandoc: "pandoc"
         case .yq: "yq"
         case .cjxl: "cjxl"
         case .duckdb: "DuckDB"
@@ -58,7 +56,6 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: "Smaller WebP images"
         case .calibre: "EPUB, MOBI, AZW3 and FB2"
-        case .pandoc: "LaTeX, Typst, reST, AsciiDoc and Org"
         case .yq: "YAML, XML and CSV data"
         case .cjxl: "JPEG XL"
         case .duckdb: "Parquet"
@@ -80,7 +77,6 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: "brew install webp"
         case .calibre: "brew install --cask calibre"
-        case .pandoc: "brew install pandoc"
         case .yq: "brew install yq"
         case .cjxl: "brew install jpeg-xl"
         case .duckdb: "brew install duckdb"
@@ -119,7 +115,6 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: tools.cwebp = placeholder
         case .calibre: tools.ebookConvert = placeholder
-        case .pandoc: tools.pandoc = placeholder
         case .yq: tools.yq = placeholder
         case .cjxl: tools.cjxl = placeholder
         case .duckdb: tools.duckdb = placeholder
@@ -142,7 +137,6 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: tools.cwebp
         case .calibre: tools.ebookConvert
-        case .pandoc: tools.pandoc
         case .yq: tools.yq
         case .cjxl: tools.cjxl
         case .duckdb: tools.duckdb

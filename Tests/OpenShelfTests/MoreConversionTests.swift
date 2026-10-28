@@ -119,6 +119,29 @@ struct MoreConversionTests {
         #expect(!PandocConversion.handles(url("a.md"), to: .pdf))
     }
 
+    /// Markdown and Word go through upstream's engine without `--sandbox`, so
+    /// pictures embed; a dead proxy keeps an HTTP-capable pandoc off the network.
+    @Test func unsandboxedPandocGetsADeadProxy() async throws {
+        let folder = try workspace()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let environment = folder.appendingPathComponent("environment.txt")
+        let stub = folder.appendingPathComponent("pandoc")
+        try """
+        #!/bin/sh
+        env > '\(environment.path)'
+        while [ $# -gt 0 ]; do [ "$1" = "--output" ] && echo x > "$2"; shift; done
+        """.write(to: stub, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)
+        let markdown = folder.appendingPathComponent("Notes.md")
+        try "# Title\n".write(to: markdown, atomically: true, encoding: .utf8)
+
+        _ = try await PandocConversion.convert(markdown, to: .docx, tools: ExternalTools(pandoc: stub))
+        let lines = Set(try String(contentsOf: environment, encoding: .utf8).split(separator: "\n").map(String.init))
+        for name in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"] {
+            #expect(lines.contains("\(name)=http://127.0.0.1:9"), "\(name)")
+        }
+    }
+
     @Test(.enabled(if: hasPandoc)) func convertsMarkupBothWays() async throws {
         let folder = try workspace()
         let markdown = folder.appendingPathComponent("Notes.md")

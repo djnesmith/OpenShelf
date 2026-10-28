@@ -102,7 +102,7 @@ struct MissingToolAdviceTests {
     @Test func namesCommandLineToolsWithTheirHomebrewCommand() {
         #expect(blocking(urls("a.epub"), none) == .commandLine(.calibre))
         #expect(blocking(urls("a.parquet"), none) == .commandLine(.duckdb))
-        #expect(blocking(urls("a.rst"), none) == .commandLine(.pandoc))
+        #expect(blocking(urls("a.rst"), none) == .extra(.pandoc))
         #expect(blocking(urls("a.edn"), none) == .commandLine(.jet))
         // LaTeX converts without pandoc, so nothing is missing.
         #expect(blocking(urls("a.tex"), none) == nil)

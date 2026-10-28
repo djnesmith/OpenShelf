@@ -42,6 +42,7 @@ enum ProcessRunner {
         environment: [String: String]? = nil,
         standardInputFile: URL? = nil,
         standardOutputFile: URL? = nil,
+        extraEnvironment: [String: String] = [:],
         onOutputLine: (@Sendable (String) -> Void)? = nil
     ) async throws {
         // Launching a missing file fails with a cryptic "file doesn't exist";
@@ -58,7 +59,7 @@ enum ProcessRunner {
             process.currentDirectoryURL = currentDirectory
         }
         // Never the app's own environment; see `ChildEnvironment`.
-        process.environment = environment ?? ChildEnvironment.minimal()
+        process.environment = environment ?? ChildEnvironment.minimal(extra: extraEnvironment)
         if let standardInputFile {
             process.standardInput = try FileHandle(forReadingFrom: standardInputFile)
         }

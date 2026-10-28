@@ -66,6 +66,7 @@ enum SettingsTab: String, CaseIterable, Sendable {
             [Preferences.shared.output.video.quality == .custom ? "custom" : ""]
         case .extraFormats:
             ExtraTool.allCases.map { ExtraFormatsPane.layout(of: $0, installer: .shared) }
+                + ["typesetter \(ToolInstaller.shared.tools.pdfEngine != nil)"]
                 + CommandLineTool.allCases.map { "\($0.rawValue) \($0.path(in: ToolInstaller.shared.tools) != nil)" }
                 + ["expanded \(Preferences.shared.showsCommandLineTools)"]
         case .general, .shelves:

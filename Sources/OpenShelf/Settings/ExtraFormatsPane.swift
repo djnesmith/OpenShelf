@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// Settings → Extra Formats: ffmpeg and LibreOffice, whether they're on this
-/// Mac and where from, and installing or removing them; then the other tools
-/// OpenShelf uses when Homebrew has put them there.
+/// Settings → Extra Formats: ffmpeg, LibreOffice and Pandoc, whether they're
+/// on this Mac and where from, and installing or removing them; then the other
+/// tools OpenShelf uses when Homebrew has put them there.
 struct ExtraFormatsPane: View {
     let installer: ToolInstaller
     /// The command-line tools list starts collapsed, keeping the pane short.
@@ -16,7 +16,7 @@ struct ExtraFormatsPane: View {
                     ExtraToolRow(tool: tool, installer: installer)
                 }
             } footer: {
-                Text("Free software, downloaded only when you click Install: ffmpeg (LGPL/GPL) from [ffmpeg.martin-riedl.de](https://ffmpeg.martin-riedl.de), LibreOffice (MPL) from [libreoffice.org](https://www.libreoffice.org). When the ffmpeg server is down, the same signed build comes from OpenShelf’s mirror on GitHub.")
+                Text("Free software, downloaded only when you click Install: ffmpeg (LGPL/GPL) from [ffmpeg.martin-riedl.de](https://ffmpeg.martin-riedl.de), LibreOffice (MPL) from [libreoffice.org](https://www.libreoffice.org), Pandoc (GPL) from [its GitHub releases](https://github.com/jgm/pandoc/releases). When the ffmpeg server is down, the same signed build comes from OpenShelf’s mirror on GitHub.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -92,9 +92,15 @@ private struct ExtraToolRow: View {
         .confirmationDialog("Remove \(tool.name)?", isPresented: $isConfirmingRemoval) {
             Button("Remove", role: .destructive) { installer.remove(tool) }
         } message: {
-            Text(tool == .libreOffice
-                ? "LibreOffice.app goes to the Trash, and the formats it adds leave the wheel."
-                : "The formats it adds leave the wheel until it’s installed again.")
+            Text(removalMessage)
+        }
+    }
+
+    private var removalMessage: String {
+        switch tool {
+        case .libreOffice: "LibreOffice.app goes to the Trash, and the formats it adds leave the wheel."
+        case .pandoc: "Markdown and Word documents go back to OpenShelf’s own conversions."
+        case .ffmpeg: "The formats it adds leave the wheel until it’s installed again."
         }
     }
 
@@ -112,6 +118,10 @@ private struct ExtraToolRow: View {
             }
         case .installed, .notInstalled:
             Text(tool.unlocks)
+            if tool == .pandoc, case .installed = status, installer.tools.pdfEngine == nil {
+                Text("For PDFs through Pandoc, also install a typesetter such as MacTeX, Tectonic or Typst.")
+                    .font(.caption)
+            }
         }
     }
 

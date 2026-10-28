@@ -6,6 +6,84 @@ tags `v<version>` and publishes a GitHub release with that section as notes.
 
 Format: one `## [x.y.z] - YYYY-MM-DD` heading per version, newest first.
 
+## [Unreleased]
+
+### New
+
+- **Conversion and tool results return to their shelf.** Convert or edit a
+  file that's on a shelf (with the Convert or Tools wheel, or the keyboard
+  shortcut) and the result is added to that same shelf, so it's right there
+  with the original. Files dragged in from Finder or another app behave as
+  before. Turn it off in Settings → Shelves.
+
+### Fixed and improved
+
+- **Dragging with the wheel open is smooth again.** Two things on the wheel's
+  hover path were doing far more work than a mouse move needs:
+  - Once a wheel appeared mid-drag, moving the pointer over it re-read the
+    system drag pasteboard on every single mouse move instead of once when
+    the drag arrived. The dragged files are now read once and reused for the
+    rest of the hover, matching how shelves already read drops.
+  - Tracking the highlight and the More/Back dwell ring wrote to the wheel's
+    `@Observable` state on every hover reading even when the value hadn't
+    changed, which re-renders every petal regardless. Those writes now happen
+    only when the value actually changes.
+- **Converting to or from PDF shows real progress, and freezes the app
+  less.** The progress toast sat at 0% for the whole of a PDF's conversion,
+  then jumped to 100%: turning a PDF into images, Word, Markdown, EPUB,
+  PowerPoint or Excel (and slides into images) now moves page by page, and
+  Combine into PDF moves file by file. A step that can't measure its own
+  progress (LibreOffice, Pandoc, printing a document) shows a moving busy bar
+  instead of one stuck at a fraction. Making a PDF from Markdown, RTF, Word or
+  OpenDocument now reads the file and loads its pictures in the background,
+  leaving only the printing itself on the main thread, so the wheel, the shelf
+  and the toast stay responsive for longer.
+
+## [1.7.0] - 2026-10-25
+
+A hands-on tour, and Pandoc in one click.
+
+### New
+
+- **A hands-on tour.** The first time OpenShelf opens, a guided tour teaches
+  it by doing: practice files are made for you (a photo, Markdown notes, a PDF,
+  a video and a letter), and each step shows the keys to press and waits until
+  you've done it for real, from converting a photo and typesetting Markdown to
+  trimming a video, using shelves and opening a wheel without dragging. Skip any
+  step, or the whole tour; take it again or start over from the menu bar or
+  Settings → General. It replaces the welcome window, and opens once after
+  this update too, so you can try it (or choose Not Now).
+- **Install Pandoc from Settings.** Settings → Extra Formats installs Pandoc
+  in one click, like ffmpeg and LibreOffice: the official build from GitHub,
+  checked against GitHub's checksum and Pandoc's code signature, installed
+  for you alone with no administrator password. Remove it there too.
+
+## [1.6.0] - 2026-10-25
+
+Markdown that converts properly, and Pandoc when you have it.
+
+### New
+
+- **Pandoc, when it's installed.** With [Pandoc](https://pandoc.org)
+  (`brew install pandoc`), Markdown becomes Word, HTML, EPUB and RTF through it,
+  and Word, ODT and HTML documents become Markdown and EPUB. PDFs go through
+  Pandoc too when a typesetter such as MacTeX, Tectonic or Typst is installed.
+  Settings → Extra Formats shows whether it was found. If Pandoc fails, the
+  built-in conversion runs instead.
+
+### Fixed and improved
+
+- **Markdown converts properly.** Markdown to PDF, Word, HTML, RTF and plain
+  text used to come out as the Markdown source itself, asterisks and all
+  ([#5](https://github.com/Manan-Santoki/OpenShelf/issues/5)). Headings,
+  emphasis, lists, quotes, code blocks, tables, links, pictures, footnotes and
+  math are now the real thing in every format, and Word files use Word's own
+  heading styles, numbered lists and footnotes. Pandoc's definition lists,
+  simple and multi-line tables, line blocks, math and smart quotes are read
+  too. Thanks to [@wada3n](https://github.com/wada3n) for the report and the
+  comparison files.
+- **Word documents to PDF keep their layout** when LibreOffice is installed.
+
 ## [1.5.0] - 2026-10-24
 
 Read scanned documents, work directly from shelves, and choose wheel actions faster.

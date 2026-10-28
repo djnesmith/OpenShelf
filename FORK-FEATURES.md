@@ -21,6 +21,15 @@ Excel row count handles CR, UTF-16 and escaped quotes (#9, keeping "Save as CSV 
 Parquet"). Expect those files to conflict again when upstream fixes them further. The
 fork's own copies of tests that upstream's files also hold were removed, so each runs once.
 
+Upstream 1.6.0 and 1.7.0 added Pandoc as an installable Extra Formats row and a
+`DocumentEngine` that sends Markdown, Word, ODT and HTML through it. The merge keeps both
+Pandoc paths in `PandocConversion.swift`: the fork's sandboxed markup conversions (#30,
+`handles`, `convertMarkup`) and upstream's unsandboxed engine (`convert`), with a dead
+proxy (#4). Pandoc left the fork's Command-Line Tools list for upstream's row (#45).
+The fork's own tools now also send their results back to the shelf they came from, as
+upstream's do (`sourceShelfID` in `ToolLauncher.swift`). The welcome window is gone for
+upstream's tour; no fork feature used it.
+
 ## Security
 
 ### 1. No in-app updates
@@ -42,10 +51,12 @@ Every tool the app runs (ffmpeg, calibre, pandoc, yq, duckdb, sqlite3, jet, Libr
 - Check: `swift test --filter ChildEnvironmentTests`. Any new `Process()` in upstream code must go through `ChildEnvironment` too: `grep -rn 'Process()' Sources` and check each hit.
 
 ### 4. Locked-down data tools
-duckdb runs with autoinstall, autoload and community extensions off, `lock_configuration` on, and `-init /dev/null`. sqlite3 runs as `/usr/bin/sqlite3 -readonly -safe -init /dev/null`. pandoc runs with `--sandbox`. A file can't make these tools run its own SQL or load code.
-- Commits: e31f6ad, e5e1b51
-- Files: `Sources/OpenShelf/Convert/DatabaseConversion.swift`, `Convert/PandocConversion.swift`
-- Check: `swift test --filter refusesToRunSQLFromTheFile` and `swift test --filter pandocRunsSandboxed`.
+duckdb runs with autoinstall, autoload and community extensions off, `lock_configuration` on, and `-init /dev/null`. sqlite3 runs as `/usr/bin/sqlite3 -readonly -safe -init /dev/null`. A file can't make these tools run its own SQL or load code.
+
+pandoc runs two ways. Markup conversions (#30) run with `--sandbox`: no network and no files but the input. Upstream's engine for Markdown, Word, ODT and HTML runs without it, so pictures next to the document embed; its environment sets `http_proxy`, `https_proxy`, `HTTP_PROXY` and `HTTPS_PROXY` to `http://127.0.0.1:9`, where nothing listens, so pandoc can't fetch web pictures. Not verified: Homebrew's pandoc 3.12.1 is built without HTTP, so the proxy block was never tried against an HTTP-capable pandoc (such as the GitHub build Settings installs). A weasyprint or wkhtmltopdf PDF engine could still fetch web pictures, since pandoc passes their addresses through; the engine list tries xelatex, lualatex and tectonic first.
+- Commits: e31f6ad, e5e1b51, the 1.7.0 merge
+- Files: `Sources/OpenShelf/Convert/DatabaseConversion.swift`, `Convert/PandocConversion.swift` (`arguments(source:to:output:)`, `noNetworkProxy`)
+- Check: `swift test --filter refusesToRunSQLFromTheFile`, `swift test --filter pandocRunsSandboxed` and `swift test --filter unsandboxedPandocGetsADeadProxy`.
 
 ## Reliability and memory
 
@@ -207,9 +218,9 @@ EPUB, MOBI, AZW3, FB2 and others, to and from each other and PDF, through calibr
 - Check: `swift test --filter convertsBooksBothWays`.
 
 ### 30. Markup documents with pandoc
-Markdown, reST, Org, LaTeX, AsciiDoc and others, both ways.
+LaTeX, Typst, reST, AsciiDoc and Org, to and from Markdown, Word, HTML, EPUB and text. Markdown ↔ Word, HTML and EPUB without markup is upstream's engine since 1.6.0. Pandoc's row in Settings → Extra Formats (upstream's) lists these formats.
 - Commits: e5e1b51
-- Files: `Sources/OpenShelf/Convert/PandocConversion.swift`
+- Files: `Sources/OpenShelf/Convert/PandocConversion.swift` (`handles`, `markupWriter`, `convertMarkup`), `Convert/Converter.swift`, `Convert/ExtraFormats.swift` (`ExtraTool.pandoc.unlocks`)
 - Check: `swift test --filter convertsMarkupBothWays`.
 
 ### 31. Data files
@@ -302,7 +313,7 @@ A Tools-wheel wedge that saves a re-formatted copy as `name.formatted.ext` next 
 - Check: `swift test --filter PrettyPrintTests`. `configsNearTheFileAreIgnored` plants configs next to the file and in the folder above it, and fails if any formatter follows one.
 
 ### 45. Settings lists every tool, and missing-tool hints name it
-Settings → Extra Formats has a collapsed "Command-Line Tools · N of M installed" row under ffmpeg and LibreOffice. It opens to every other tool OpenShelf finds: cwebp, calibre, pandoc, yq, cjxl, DuckDB, jet, the ten Pretty Print formatters and commonforms (#47). Each row shows Installed · Homebrew (path on hover) or Copy Homebrew Command; jet's row says its tap is third-party, not homebrew-core. Whether the list is open is remembered. The "X needs Y" toast uses the same list: an EPUB without calibre says "EPUB needs calibre / brew install --cask calibre", and an empty Tools wheel names the missing formatter ("PY needs ruff"). Wheels offering only ZIP, tar and 7z count as having nothing.
+Settings → Extra Formats has a collapsed "Command-Line Tools · N of M installed" row under ffmpeg, LibreOffice and Pandoc (Pandoc moved to upstream's own row in 1.7.0). It opens to every other tool OpenShelf finds: cwebp, calibre, yq, cjxl, DuckDB, jet, the ten Pretty Print formatters and commonforms (#47). Each row shows Installed · Homebrew (path on hover) or Copy Homebrew Command; jet's row says its tap is third-party, not homebrew-core. Whether the list is open is remembered. The "X needs Y" toast uses the same list: an EPUB without calibre says "EPUB needs calibre / brew install --cask calibre", and an empty Tools wheel names the missing formatter ("PY needs ruff"). Wheels offering only ZIP, tar and 7z count as having nothing.
 - Commits: this one
 - Files: `Sources/OpenShelf/Convert/CommandLineTool.swift`, `Convert/ExtraFormats.swift` (`MissingTool`, `MissingToolAdvice`), `Settings/ExtraFormatsPane.swift`, `Settings/SettingsTab.swift`, `App/Preferences.swift` (`showsCommandLineTools`), `App/AppDelegate.swift`
 - Check: `swift test --filter CommandLineToolTests` (fails when `ExternalTools` resolves a tool with no Settings row), `--filter MissingToolAdviceTests` and `--filter panesHaveAHeightToFit` (collapsed pane under 700 pt).

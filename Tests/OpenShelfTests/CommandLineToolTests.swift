@@ -6,7 +6,7 @@ struct CommandLineToolTests {
     /// Every executable `ExternalTools.detect` looks for. A tool added to
     /// detection but not here leaves its field empty, and the test below fails.
     static let commandNames = [
-        "ffmpeg", "ffprobe", "cwebp", "ebook-convert", "pandoc", "yq", "cjxl", "duckdb", "jet",
+        "ffmpeg", "ffprobe", "cwebp", "ebook-convert", "pandoc", "yq", "cjxl", "duckdb", "jet", "xelatex",
         "deno", "cljfmt", "ruff", "shfmt", "swift-format", "pg_format", "clang-format", "gofmt", "rustfmt", "commonforms",
     ]
 
@@ -36,7 +36,8 @@ struct CommandLineToolTests {
             guard let label = field.label, label != "formatters" else { continue }
             let path = try #require(field.value as? URL?, "\(label) isn't a tool path")
             let found = try #require(path, "\(label) wasn't detected; add its command to commandNames")
-            if label == "ffprobe" { continue }
+            // ffprobe comes with ffmpeg; Pandoc's row shows its typesetter.
+            if label == "ffprobe" || label == "pdfEngine" { continue }
             #expect(listed.contains(found), "\(label) has no row in Settings → Extra Formats")
             checked += 1
         }
@@ -44,8 +45,8 @@ struct CommandLineToolTests {
     }
 
     @Test func collapsedRowCountsWhatsInstalled() throws {
-        #expect(CommandLineTool.title(tools: ExternalTools()) == "Command-Line Tools · 0 of 17 installed")
-        #expect(CommandLineTool.title(tools: try everythingInstalled()) == "Command-Line Tools · 17 of 17 installed")
+        #expect(CommandLineTool.title(tools: ExternalTools()) == "Command-Line Tools · 0 of 16 installed")
+        #expect(CommandLineTool.title(tools: try everythingInstalled()) == "Command-Line Tools · 16 of 16 installed")
     }
 
     /// Every row but commonforms installs with Homebrew; the rest say how they differ.
@@ -61,6 +62,6 @@ struct CommandLineToolTests {
         #expect(CommandLineTool.commonforms.installCommand == "uv tool install commonforms")
         #expect(CommandLineTool.commonforms.installNote == "a Python tool from PyPI, about 1.6 GB plus an 18 MB model")
         #expect(MissingTool.commandLine(.commonforms).installHint == "uv tool install commonforms")
-        #expect(CommandLineTool.pandoc.installNote == nil)
+        #expect(CommandLineTool.yq.installNote == nil)
     }
 }

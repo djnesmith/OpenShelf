@@ -1,8 +1,9 @@
 import Foundation
 
 /// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
-/// calibre's ebook-convert, pandoc, yq, cjxl (JPEG XL), DuckDB, jet (EDN),
-/// commonforms (Make Fillable), and the source-code formatters Pretty Print uses.
+/// calibre's ebook-convert, pandoc with a program it can make PDFs with, yq,
+/// cjxl (JPEG XL), DuckDB, jet (EDN), commonforms (Make Fillable), and the
+/// source-code formatters Pretty Print uses.
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
     var cwebp: URL?
@@ -10,6 +11,8 @@ struct ExternalTools: Equatable, Sendable {
     var libreOffice: URL? = nil
     var ebookConvert: URL? = nil
     var pandoc: URL? = nil
+    /// A typesetter Pandoc can make PDFs with (see `PandocConversion.pdfEngines`).
+    var pdfEngine: URL? = nil
     var yq: URL? = nil
     var cjxl: URL? = nil
     var duckdb: URL? = nil
@@ -82,6 +85,12 @@ struct ExternalTools: Equatable, Sendable {
                 .first { FileManager.default.isExecutableFile(atPath: $0.path) }
         }
         let apps = ignored.contains("libreoffice") ? locations.ownLibreOfficeApps : locations.libreOfficeApps
+        let pandoc = find("pandoc", ignoredAs: "pandoc")
+        let pdfEngine = pandoc == nil ? nil : PandocConversion.pdfEngines.lazy.compactMap { name in
+            (locations.commandDirectories + locations.texDirectories)
+                .map { $0.appendingPathComponent(name) }
+                .first { FileManager.default.isExecutableFile(atPath: $0.path) }
+        }.first
         return ExternalTools(
             ffmpeg: find("ffmpeg", ignoredAs: "ffmpeg"),
             cwebp: find("cwebp", ignoredAs: "cwebp"),
@@ -92,7 +101,8 @@ struct ExternalTools: Equatable, Sendable {
             ebookConvert: (locations.calibreApps.map { $0.appendingPathComponent("Contents/MacOS/ebook-convert") }
                 + locations.commandDirectories.map { $0.appendingPathComponent("ebook-convert") })
                 .first { FileManager.default.isExecutableFile(atPath: $0.path) },
-            pandoc: find("pandoc", ignoredAs: "pandoc"),
+            pandoc: pandoc,
+            pdfEngine: pdfEngine,
             yq: find("yq", ignoredAs: "yq"),
             cjxl: find("cjxl", ignoredAs: "cjxl"),
             duckdb: find("duckdb", ignoredAs: "duckdb"),
@@ -117,8 +127,8 @@ struct ExternalTools: Equatable, Sendable {
     /// Tools whose Homebrew, MacPorts and /Applications copies are ignored, to
     /// try OpenShelf as someone without them sees it, and to try installing
     /// them from Settings: `defaults write com.djnesmith.OpenShelf
-    /// IgnoredExternalTools -array ffmpeg cwebp libreoffice` ("ffmpeg" covers
-    /// ffprobe too). `defaults delete` the key to undo.
+    /// IgnoredExternalTools -array ffmpeg cwebp libreoffice pandoc` ("ffmpeg"
+    /// covers ffprobe too). `defaults delete` the key to undo.
     static var ignoredTools: Set<String> {
         let names = UserDefaults.standard.stringArray(forKey: "IgnoredExternalTools") ?? []
         return Set(names.map { $0.lowercased() })
@@ -129,6 +139,8 @@ struct ExternalTools: Equatable, Sendable {
 struct ToolLocations: Sendable {
     var commandDirectories: [URL]
     var libreOfficeApps: [URL]
+    /// Where MacTeX and BasicTeX put LaTeX, for Pandoc's PDFs.
+    var texDirectories: [URL] = [URL(fileURLWithPath: "/Library/TeX/texbin")]
     /// Where OpenShelf installs tools itself (see `ToolInstallation`).
     var ownCommandDirectories: [URL] = []
     var ownLibreOfficeApps: [URL] = []

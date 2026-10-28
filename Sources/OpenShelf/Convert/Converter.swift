@@ -56,11 +56,11 @@ enum Converter {
         case .pdf where EbookConversion.calibreOnly.contains(format):
             return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .pdf:
-            return try PDFConversion.convert(source, to: format, imageQuality: settings.image.quality)
+            return try PDFConversion.convert(source, to: format, imageQuality: settings.image.quality, progress: progress)
         case .document where tools.pandoc != nil && PandocConversion.handles(source, to: format):
-            return [try await PandocConversion.convert(source, to: format, tools: tools)]
+            return [try await PandocConversion.convertMarkup(source, to: format, tools: tools)]
         case .document:
-            return [try await DocumentConversion.convert(source, to: format)]
+            return [try await DocumentConversion.convert(source, to: format, tools: tools)]
         case .data where EdnConversion.handles(source, to: format):
             return [try await EdnConversion.convert(source, to: format, tools: tools)]
         case .data where DatabaseConversion.handles(source, to: format):
@@ -74,7 +74,7 @@ enum Converter {
         case .spreadsheet:
             return try await SpreadsheetConversion.convert(source, to: format, tools: tools)
         case .presentation:
-            return try await OfficeConversion.convert(source, to: format, tools: tools)
+            return try await OfficeConversion.convert(source, to: format, tools: tools, progress: progress)
         case .audio, .video:
             return [try await MediaConversion.convert(source, to: format, tools: tools, settings: settings, progress: progress)]
         case .subtitle:
