@@ -19,6 +19,12 @@ this spec; it does not contain or derive from any other app's code or assets.
   opens the matching wheel at the pointer. A *tap* is enough: the wheel stays
   open until the drag ends (drop anywhere, or Esc).
 - Each wheel has its own configurable modifier combination (see §5).
+- Following starts on any primary-button press (or, if that press was never
+  seen, on its first drag movement; a once-a-second check catches the rest).
+  The "before" change count is the one from after the previous press, kept
+  current once a second while the button is up, so a pasteboard written a
+  little after the button goes down still counts and one written just after
+  it comes up doesn't.
 
 ## 2. The wheel
 
@@ -93,11 +99,14 @@ the pointer shows "Converting to JPG · 1 of 3 saved" with a cancel button.
 |---|---|---|
 | Image (incl. SVG) | PNG, JPG, WEBP†, HEIC, TIFF, AVIF, BMP, PDF, DOCX, ZIP | ImageIO, PDF context, hand-built DOCX |
 | PDF | DOCX, JPG, PNG, TXT, MD, EPUB, PPTX, XLSX, ZIP | PDFKit (pages at 300 dpi; scanned PDFs become image DOCX/EPUB/PPTX; TXT/MD/XLSX refuse scans); hand-built EPUB 3, PresentationML (one picture per slide) and SpreadsheetML (one sheet per page, cells split at tabs/wide gaps) |
-| Text / RTF / RTFD / DOCX / DOC / ODT / HTML | PDF, DOCX, TXT, MD, EPUB, HTML, RTF, ZIP | NSAttributedString, AppKit printing, Core Text; Markdown and EPUB from detected headings, lists, bold/italic and links. DOCX/DOC/ODT/RTF → PDF through LibreOffice‡ when installed; DOCX/ODT/HTML → MD and EPUB through Pandoc§ |
+| Text / RTF / RTFD / DOCX / DOC / ODT / HTML | PDF, DOCX, TXT, MD, EPUB, HTML, RTF, PAGES¶, ZIP | NSAttributedString, AppKit printing, Core Text; Markdown and EPUB from detected headings, lists, bold/italic and links. DOCX/DOC/ODT/RTF → PDF through LibreOffice‡ when installed; DOCX/ODT/HTML → MD and EPUB through Pandoc§ |
 | Markdown | PDF, DOCX, TXT, EPUB, HTML, RTF, ZIP | Built-in parser (CommonMark, GitHub tables/task lists/strikethrough, Pandoc footnotes, definition lists, simple and multi-line tables, line blocks, math, smart punctuation, YAML title) rendered to AppKit rich text (PDF, RTF), hand-built WordprocessingML with Word styles, numbering, tables, footnotes and pictures (DOCX), XHTML (HTML, EPUB) and plain text (TXT). Pandoc§ for DOCX/HTML/EPUB/RTF, and PDF when it has a typesetter |
-| CSV / TSV / XLSX | XLSX, CSV, TSV, PDF, ODS‡, ZIP | Built-in RFC 4180 parser, SpreadsheetML writer/reader, Core Text table PDF (landscape, repeated header) |
-| XLS / ODS | XLSX, CSV, PDF, ODS‡, ZIP | LibreOffice‡ |
-| PPTX / PPT / ODP | PDF‡, JPG‡, PNG‡, ZIP | LibreOffice‡ → PDF → page images ("Name Slide 2.jpg") |
+| CSV / TSV / XLSX | XLSX, CSV, TSV, PDF, ODS‡, NUMBERS¶, ZIP | Built-in RFC 4180 parser, SpreadsheetML writer/reader, Core Text table PDF (landscape, repeated header) |
+| XLS / ODS | XLSX, CSV, PDF, ODS‡, NUMBERS¶ (XLS), ZIP | LibreOffice‡ |
+| PPTX / PPT / ODP | PDF‡, JPG‡, PNG‡, KEY¶ (PPTX, PPT), ZIP | LibreOffice‡ → PDF → page images ("Name Slide 2.jpg") |
+| Pages | PDF, DOCX‡, RTF‡, TXT‡, JPG, PNG, ZIP | LibreOffice‡ (libetonyek), → PDF → page images; without it, the Quick Look preview inside the package (see below) |
+| Numbers | PDF, XLSX‡, CSV‡, ODS‡, JPG, PNG, ZIP | as Pages |
+| Keynote | PDF, PPTX‡, JPG, PNG, ZIP | as Pages; images are "Name Slide 2.jpg" |
 | Audio | MP3†, M4A, WAV, AIFF, FLAC, OGG†, OPUS†, WMA†, ZIP | AVFoundation, afconvert; ffmpeg† for MP3/OGG/Opus/WMA and for sources macOS can't decode (OGG, Opus, WMA, MKA, APE, AC3) |
 | Video | MP4, MOV, M4A, GIF†, MP3†, MKV†, WEBM†, AVI†, WMV†, ZIP | AVFoundation; ffmpeg† (H.264/AAC, VP9/Opus, MPEG-4/MP3, WMV2/WMA2; MKV copies streams when it can) and for sources macOS can't open (MKV, WebM, AVI, WMV, FLV, MPEG, …) |
 | SRT / VTT | TXT, SRT, VTT, ZIP | built in |
@@ -119,7 +128,33 @@ same places and `/Library/TeX/texbin`: XeLaTeX, LuaLaTeX, Tectonic, Typst,
 pdfLaTeX, WeasyPrint or wkhtmltopdf, in that order. If Pandoc or LibreOffice
 fails, the built-in conversion runs instead.
 
-Not offered: Apple Pages (private format) and Keynote (no converter can read it).
+Pages, Numbers and Keynote files (`IWorkConversion`) are zip files, or folder
+packages in older and synced copies; `FileKind` classifies both by extension
+as document, spreadsheet and presentation. With LibreOffice they convert
+through it, falling back to the preview if it fails. Without it, the preview
+saved inside for Quick Look is used: `QuickLook/Preview.pdf` (iWork '09: every
+page) gives PDF, JPG and PNG; `preview.jpg` (current versions) or
+`QuickLook/Thumbnail.jpg` gives JPG and PNG of the first page. Zip entries are
+found by reading the central directory (`ZipDirectory`), so the wheel never
+unpacks anything; the preview is extracted with `unzip -p` when converting.
+With no preview and no LibreOffice the wheel is ZIP-only, so the "Keynote
+needs LibreOffice" toast shows instead, and a conversion that still runs says
+to install it in Settings → Extra Formats.
+
+¶ PAGES, NUMBERS and KEY (`IWorkExport`) are offered only when Pages, Numbers
+or Keynote is in /Applications or ~/Applications (checked by bundle identifier:
+`com.apple.Pages` etc. for current "… Creator Studio" versions,
+`com.apple.iWork.Pages` etc. for older ones), for files that app opens: DOCX, DOC, RTF, RTFD
+and TXT for Pages; XLSX, XLS, CSV and TSV for Numbers (on spreadsheet wheels);
+PPTX and PPT for Keynote (on slide wheels, even without LibreOffice). The app
+does the work over Apple Events: `osascript` opens the file, `save … in` writes
+the new document next to the original, then it's closed and the app quit if
+it wasn't already running (300-second limit). Paths are passed as script
+arguments, never spliced into the script. Each of these wedges shows the
+installed app's icon above its label. Denied Automation access (-1743) ends
+the batch with "Allow OpenShelf to control …" and opens Privacy & Security →
+Automation, like the keyboard shortcut does for Finder. (macOS lets the app
+open the file without that access, so it's left open with the document.)
 Wheels hold at most 12 wedges (the largest, images, has 10).
 
 #### 2.3.1 Output settings
@@ -264,6 +299,10 @@ never copies or modifies them by itself).
   clicking the tab, or dragging files onto it, slides the shelf back out so the
   drop lands on it; adding files from the Actions wheel also reveals it. With
   Reduce Motion the shelf fades instead of sliding. Can be turned off in Settings.
+- **Motion:** sliding, expanding and collapsing take 0.25 s on Core Animation's
+  default curve, with no bounce; a hiding shelf fades only near the edge, and
+  its tab appears once it's gone. The stack and the full view swap at once and
+  are laid out at the shelf's final size, which the window then uncovers.
 - **Restoring:** open shelves (files, position, docked edge, expanded state and
   view mode) are saved to `~/Library/Application Support/OpenShelf/shelves.json`
   shortly after each change and on quit, and reopened at launch. Each file is
@@ -274,10 +313,47 @@ never copies or modifies them by itself).
   removed. Closing never touches the files.
 - Multiple shelves may exist at once.
 
+### 3.1 Watched folders
+
+Off until a folder is added in Settings → Shelves → Watched Folders (Add
+Folder… with an open panel, or Watch Screenshots: the `location-screenshot`
+default of `com.apple.screencapture` (macOS 27), else its `location`, with `~`
+expanded, else `~/Desktop`; re-read each
+time watching starts). Saved to
+`~/Library/Application Support/OpenShelf/watched-folders.json` with a path and
+a bookmark per folder, a per-folder on/off switch and an optional action.
+
+- **Watching:** a dispatch source per switched-on folder (top level only)
+  says when its entries change; the folder is then listed off the main thread.
+  Files present at the first listing are never reported. A file renamed inside
+  the folder (same file number) or saved over in place under the same name
+  isn't new. Hidden names (`.DS_Store`, Screenshot's `.Screenshot …` partials),
+  `~$` lock files and `.download`, `.crdownload`, `.part`, `.partial`,
+  `.opdownload`, `.tmp`, `.temp`, `.screenshot` files are ignored, so the
+  finished file they're renamed to counts as new. Only regular files count.
+- **Debounce:** a new file is reported once its size has stayed the same for
+  1 s (5 s for an empty file) and Finder no longer marks it as copying
+  (creation date 1984-01-24); the folder is listed every 0.5 s meanwhile.
+- **Routing:** new files go on the folder's own shelf (revealed if hidden at
+  an edge), or a new shelf near the pointer when it has none open.
+- **Action:** none, a conversion (JPG, PNG, HEIC, WebP, AVIF, PDF, MP4, GIF,
+  M4A, MP3) or a single-file tool, run through the same paths as the wheels
+  on the files it applies to, with the shelf as the source shelf (so results
+  follow the results-back-on-the-shelf setting). Files OpenShelf wrote itself
+  are recorded as each one is saved and never count as arrivals.
+- A folder that's deleted, moved away or ejected stops being watched and
+  shows "Folder not found"; switching it off and on tries again.
+
 ## 4. Menu-bar item
 
 New Shelf · Show Shelves · Close All Shelves · Open Wheel for Selection ·
 Take the Tour… · Settings… · Check for Updates… · Quit.
+
+When the icon can't be reached (behind the notch, or in the macOS 27 menu
+bar's overflow), opening the app again from Finder or Spotlight shows
+Settings, and so does pressing the wheel shortcut again while "Select files in
+Finder first" is showing (within 2 s; that toast says so). Settings → General
+mentions both.
 
 ## 5. Settings
 
@@ -289,7 +365,8 @@ height (scrolling when the screen is shorter) and opens on the tab used last.
   and the shortcut for Finder's selection.
 - Shelves: remove files from a shelf after dragging them out (default off);
   restore shelves when OpenShelf opens (default on); hide docked shelves to the
-  screen edge (default on).
+  screen edge (default on); add conversion and tool results back to the shelf
+  (default on); watched folders (§3.1, none by default).
 - Output: video codec, quality (or a custom bitrate) and largest size; audio
   bitrate; image quality and metadata; GIF width and frame rate (§2.3.1), all
   Automatic by default, with Reset to Automatic. Stored as one JSON value;
@@ -326,7 +403,46 @@ drag needed, Choose the settings), then You're set.
   of file completes it. Any file of the right kind counts. Done steps are
   remembered across launches; Skip for Now moves on without them.
 
-## 7. Roadmap
+## 7. Shortcuts and Spotlight
+
+App Intents (`Sources/OpenShelf/Intents`) expose the engines with no UI, run
+in the app's process (`openAppWhenRun` is false) and never go online.
+
+- **Actions:** Convert Files (files + format; every `OutputFormat`, as the
+  `IntentFormat` choice), Compress Images and PDFs (Light/Balanced/Strong:
+  the PDF tool's levels, image quality 85/70/45), Extract Text (text file or
+  searchable PDF), Remove Background, Combine into PDF, Remove Audio from
+  Videos, Read QR Codes (returns strings) and Add to Shelf (most recent shelf,
+  or a new one). File actions return the files written.
+- **Inputs:** each file must be a kind the matching Tools-wheel entry takes.
+  Convert accepts only formats `ConversionCatalog` offers for the file; a file
+  already in the target format is passed on unchanged, ZIP/TAR/TAR.GZ make one
+  archive of all the files. Compress passes on a file that wouldn't get
+  smaller. A failing file doesn't stop the rest, but the action then fails
+  naming it ("“a.png”: reason (and 2 more files failed)").
+- **Where results go:** next to each file, as on the wheels. Files with no
+  location on disk, or in a folder that can't be written to, are copied to a
+  temporary folder first; Add to Shelf copies such files to
+  `~/Library/Application Support/OpenShelf/From Shortcuts` instead, so the
+  shelf's references outlast the shortcut.
+- **App Shortcuts** (Spotlight on macOS 26+, Siri, the Shortcuts gallery):
+  Convert Files, Compress, Extract Text, Remove Background, Combine into PDF,
+  Add to Shelf.
+- **Build:** `make` runs `scripts/appintents-metadata.sh`, which compiles the
+  sources once more for their constant values (`-emit-const-values-path`) and
+  runs Xcode's `appintentsmetadataprocessor` to write
+  `Contents/Resources/Metadata.appintents`. The processor only handles apps
+  whose linker dependency info lists AppIntents.framework, so the app is
+  linked with `-framework AppIntents -Xlinker -dependency_info` and that file
+  is passed along. Without that tool it warns and the
+  app builds without the actions.
+- **Signing:** macOS 27 only connects App Intents to apps with a team ID
+  (linkd logs "Unable to get teamId" and Shortcuts says it couldn't
+  communicate with the app). Ad-hoc signed builds have none, so the Release
+  workflow builds with `SKIP_APPINTENTS=1` until releases are signed with a
+  Developer ID.
+
+## 8. Roadmap
 
 1. ~~Convert wheel~~ (done, §2.3) — wedges chosen by input type (e.g. PDF → DOCX/JPG/PNG/TXT;
    image → PNG/WEBP/HEIC/TIFF/AVIF/BMP/PDF/DOCX). Output is saved beside the
@@ -351,3 +467,6 @@ drag needed, Choose the settings), then You're set.
 7. ~~Shelf persistence across relaunches (with bookmarks).~~ (done, §3)
 8. ~~Batch progress for long-running conversions.~~ (done: the progress card, §2.3)
 9. Notarized builds once a Developer ID is available; then a Homebrew cask.
+10. Follow AppKit's move to gesture recognizers (TN3212): wheel and shelf
+    mouse tracking still uses mouse events and tracking areas, which macOS 27
+    supports; port it to `NSGestureRecognizer` when that becomes the better path.

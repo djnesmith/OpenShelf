@@ -20,13 +20,22 @@ ENTITLEMENTS  := Support/OpenShelf.entitlements
 
 SWIFTC = swiftc -sdk "$(SDK)" -swift-version 6 -parse-as-library -O
 
+# The linker's record of what it linked. App Intents' metadata step reads it
+# to see that AppIntents.framework is linked, as it does in Xcode, and skips
+# the app otherwise; the framework is named explicitly so it's always listed.
+DEPENDENCY_INFO := $(BUILD_DIR)/$(APP_NAME)_dependency_info.dat
+LINK_RECORD     = -framework AppIntents -Xlinker -dependency_info -Xlinker $(1)
+
 # Assembles $(APP_BUNDLE) around $(BUILD_DIR)/$(APP_NAME) and signs it with the hardened runtime.
+# The App Intents metadata (Shortcuts and Spotlight actions) needs Xcode; the
+# script warns and carries on without it otherwise. SKIP_APPINTENTS=1 skips it.
 define bundle_app
 	rm -rf "$(APP_BUNDLE)"
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources"
 	cp "$(BUILD_DIR)/$(APP_NAME)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	cp Support/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
 	cp Support/AppIcon.icns "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
+	SDK="$(SDK)" DEPENDENCY_INFO="$(DEPENDENCY_INFO)" sh scripts/appintents-metadata.sh "$(APP_BUNDLE)" "$(BUILD_DIR)/appintents" $(SOURCES)
 	codesign --force --options runtime --timestamp=none --entitlements "$(ENTITLEMENTS)" --sign "$(SIGN_IDENTITY)" "$(APP_BUNDLE)"
 endef
 
@@ -37,7 +46,7 @@ build: $(BUILD_DIR)/$(APP_NAME)
 
 $(BUILD_DIR)/$(APP_NAME): $(SOURCES)
 	mkdir -p $(BUILD_DIR)
-	$(SWIFTC) -target $(ARCH)-apple-macosx14.0 $(SOURCES) -o $@
+	$(SWIFTC) -target $(ARCH)-apple-macosx14.0 $(SOURCES) $(call LINK_RECORD,$(DEPENDENCY_INFO)) -o $@
 
 # Wraps the binary in a signed .app bundle.
 app: build
@@ -50,8 +59,9 @@ run: app
 release:
 	mkdir -p $(BUILD_DIR)/arm64 $(BUILD_DIR)/x86_64
 	for arch in arm64 x86_64; do \
-		$(SWIFTC) -target $$arch-apple-macosx14.0 $(SOURCES) -o $(BUILD_DIR)/$$arch/$(APP_NAME) || exit 1; \
+		$(SWIFTC) -target $$arch-apple-macosx14.0 $(SOURCES) $(call LINK_RECORD,$(BUILD_DIR)/$$arch/$(APP_NAME)_dependency_info.dat) -o $(BUILD_DIR)/$$arch/$(APP_NAME) || exit 1; \
 	done
+	cp $(BUILD_DIR)/$(ARCH)/$(APP_NAME)_dependency_info.dat $(DEPENDENCY_INFO)
 	lipo -create -output $(BUILD_DIR)/$(APP_NAME) $(BUILD_DIR)/arm64/$(APP_NAME) $(BUILD_DIR)/x86_64/$(APP_NAME)
 	$(bundle_app)
 	rm -f "$(RELEASE_ZIP)"

@@ -24,7 +24,7 @@ enum ExtraTool: String, CaseIterable, Identifiable, Sendable {
     var unlocks: String {
         switch self {
         case .ffmpeg: "MP3, OGG, WebP, MKV, WebM, AVI and WMV"
-        case .libreOffice: "PowerPoint, ODP, XLS and ODS"
+        case .libreOffice: "PowerPoint, Keynote, Pages, Numbers, ODP, XLS and ODS"
         case .pandoc: "LaTeX, Typst, reST, AsciiDoc and Org, and Pandoc’s Markdown and Word conversions"
         }
     }
@@ -122,8 +122,8 @@ enum MissingToolAdvice {
 
     /// The tool whose absence leaves these files with nothing but ZIP on the
     /// Convert wheel, when installing it would offer real conversions. Nil
-    /// for folders, unknown files, Keynote decks and mixes that share no
-    /// format anyway: their ZIP wheel is all there is.
+    /// for folders, unknown files and mixes that share no format anyway:
+    /// their ZIP wheel is all there is.
     static func blockingTool(for urls: [URL], formats: [OutputFormat], tools: ExternalTools) -> MissingTool? {
         guard !urls.isEmpty, onlyArchives(formats) else { return nil }
         return MissingTool.allCases.first { tool in
@@ -167,14 +167,21 @@ enum MissingToolAdvice {
     }
 
     /// A one-time note for audio and video that convert natively but would get
-    /// MP3, MKV, WebM and more with ffmpeg.
+    /// MP3, MKV, WebM and more with ffmpeg, and for Pages, Numbers and Keynote
+    /// files that only convert from their preview without LibreOffice.
     static func moreFormatsHint(for urls: [URL], tools: ExternalTools) -> String? {
-        guard tools.ffmpeg == nil, !urls.isEmpty else { return nil }
-        let isNativeMedia = urls.allSatisfy { url in
+        guard !urls.isEmpty else { return nil }
+        let hint = "More formats in Settings → Extra Formats"
+        if tools.ffmpeg == nil, urls.allSatisfy({ url in
             let kind = FileKind(url: url)
             return (kind == .audio || kind == .video) && MediaFormats.isAVFoundationReadable(url)
+        }) {
+            return hint
         }
-        return isNativeMedia ? "More formats in Settings → Extra Formats" : nil
+        if tools.libreOffice == nil, urls.allSatisfy({ IWorkFormat(url: $0) != nil }) {
+            return hint
+        }
+        return nil
     }
 
     /// How a format is known to people: "PowerPoint", "WebM", "MKV"; empty
@@ -182,6 +189,9 @@ enum MissingToolAdvice {
     static func displayName(forExtension ext: String) -> String {
         switch ext.lowercased() {
         case "ppt", "pptx": "PowerPoint"
+        case "key": "Keynote"
+        case "pages": "Pages"
+        case "numbers": "Numbers"
         case "webm": "WebM"
         case "opus": "Opus"
         case "oga": "OGG"

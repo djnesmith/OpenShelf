@@ -2,8 +2,8 @@ import Foundation
 
 /// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
 /// calibre's ebook-convert, pandoc with a program it can make PDFs with, yq,
-/// cjxl (JPEG XL), DuckDB, jet (EDN), commonforms (Make Fillable), and the
-/// source-code formatters Pretty Print uses.
+/// cjxl (JPEG XL), DuckDB, jet (EDN), commonforms (Make Fillable), the
+/// source-code formatters Pretty Print uses, and Pages, Numbers and Keynote.
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
     var cwebp: URL?
@@ -19,6 +19,8 @@ struct ExternalTools: Equatable, Sendable {
     var jet: URL? = nil
     var commonforms: URL? = nil
     var formatters = Formatters()
+    /// Which of Pages, Numbers and Keynote are installed, to save files as theirs.
+    var iWorkApps: Set<IWorkFormat> = []
 
     /// Pretty Print's formatters (xmllint ships with macOS).
     struct Formatters: Equatable, Sendable {
@@ -120,7 +122,14 @@ struct ExternalTools: Equatable, Sendable {
                 clangFormat: find("clang-format", ignoredAs: "clang-format"),
                 gofmt: find("gofmt", ignoredAs: "gofmt"),
                 rustfmt: find("rustfmt", ignoredAs: "rustfmt")
-            )
+            ),
+            iWorkApps: ignored.contains("iwork") ? [] : Set(IWorkFormat.allCases.filter { app in
+                locations.applicationDirectories.contains { directory in
+                    app.appFileNames.contains { name in
+                        Bundle(url: directory.appendingPathComponent(name))?.bundleIdentifier.map(app.bundleIdentifiers.contains) == true
+                    }
+                }
+            })
         )
     }
 
@@ -128,7 +137,8 @@ struct ExternalTools: Equatable, Sendable {
     /// try OpenShelf as someone without them sees it, and to try installing
     /// them from Settings: `defaults write com.djnesmith.OpenShelf
     /// IgnoredExternalTools -array ffmpeg cwebp libreoffice pandoc` ("ffmpeg"
-    /// covers ffprobe too). `defaults delete` the key to undo.
+    /// covers ffprobe too; "iwork" hides Pages, Numbers and Keynote).
+    /// `defaults delete` the key to undo.
     static var ignoredTools: Set<String> {
         let names = UserDefaults.standard.stringArray(forKey: "IgnoredExternalTools") ?? []
         return Set(names.map { $0.lowercased() })
@@ -150,6 +160,8 @@ struct ToolLocations: Sendable {
     /// Where `uv tool install` and pipx put commonforms (their bin link, then
     /// their venv), none of it on a GUI app's PATH.
     var commonforms: [URL] = []
+    /// Where Pages, Numbers and Keynote are looked for.
+    var applicationDirectories: [URL] = []
 
     /// Homebrew, MacPorts and the PATH come first: tools people installed
     /// themselves and keep up to date. OpenShelf's own copies (`ManagedTools`)
@@ -174,7 +186,12 @@ struct ToolLocations: Sendable {
             swiftFormat: [URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-format")],
             commonforms: [".local/bin", ".local/share/uv/tools/commonforms/bin", ".local/pipx/venvs/commonforms/bin"].map {
                 FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("\($0)/commonforms")
-            }
+            },
+            // Where the App Store puts Pages, Numbers and Keynote.
+            applicationDirectories: [
+                URL(fileURLWithPath: "/Applications"),
+                FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"),
+            ]
         )
     }
 }

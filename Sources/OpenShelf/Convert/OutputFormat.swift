@@ -27,6 +27,8 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     // Animated PNG, written as .png
     case apng
     case jxl
+    // Apple's own, saved by Pages, Numbers and Keynote
+    case pages, numbers, key
 
     var title: String {
         switch self {
@@ -97,6 +99,11 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
         [.mp3, .ogg, .opus, .wma, .mkv, .webm, .avi, .wmv, .apng].contains(self)
     }
 
+    /// The app that saves this format, for PAGES, NUMBERS and KEY.
+    var iWorkFormat: IWorkFormat? {
+        IWorkFormat.allCases.first { $0.outputFormat == self }
+    }
+
     /// Audio-only outputs, which need a sound track in the source.
     var isAudioOnly: Bool {
         [.m4a, .mp3, .wav, .aiff, .flac, .ogg, .opus, .wma].contains(self)
@@ -105,14 +112,14 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
 
 /// Which conversions apply to which files.
 ///
-/// Wheels stay at 12 items or fewer (the largest, images, has 10); more than
-/// seven are shown over two pages, in `WheelOrdering`'s order. PAGES is never
-/// offered: it's Apple's private format.
+/// Wheels stay at 12 items or fewer (`maxWedges`); more than
+/// seven are shown over two pages, in `WheelOrdering`'s order. PAGES, NUMBERS
+/// and KEY are offered only with the app installed, which does the saving.
 enum ConversionCatalog {
     /// What folders and other files can be packed into.
     static let archiveFormats: [OutputFormat] = [.zip, .tar, .tgz, .txz, .tzst, .sevenZip]
 
-    /// The most wedges a wheel shows; the last one is always ZIP.
+    /// The most wedges a wheel shows; conversion wheels end in ZIP.
     static let maxWedges = 12
 
     /// Formats every file in `urls` can be converted to; `WheelOrdering` orders long lists for the wheel.
@@ -134,10 +141,17 @@ enum ConversionCatalog {
         }
     }
 
-    static func formats(for url: URL, tools: ExternalTools) -> [OutputFormat] {
+    /// - Parameter fitsTheWheel: False for every format (Shortcuts): no `maxWedges` cut, and RST stays next to PAGES.
+    static func formats(for url: URL, tools: ExternalTools, fitsTheWheel: Bool = true) -> [OutputFormat] {
         let ext = url.pathExtension.lowercased()
         let hasFFmpeg = tools.ffmpeg != nil
         var formats: [OutputFormat]
+
+        // Pages, Numbers and Keynote files, whether zip files or folders.
+        if let iWork = IWorkFormat(url: url) {
+            formats = IWorkConversion.formats(for: url, format: iWork, tools: tools)
+            return formats.isEmpty ? [.zip] : wheel(formats, fitsTheWheel)
+        }
 
         switch FileKind(url: url) {
         case .image:
@@ -159,12 +173,16 @@ enum ConversionCatalog {
             formats = [.pdf, .docx, .txt, .md, .epub, .html, .rtf]
             if tools.pandoc != nil, PandocConversion.reader(for: url) != nil {
                 formats += PandocConversion.markupFormats
+                // The wheel is full; RST gives way to Pages, added below.
+                if fitsTheWheel, IWorkFormat.importing(extension: ext) == .pages, tools.iWorkApps.contains(.pages) {
+                    formats.removeAll { $0 == .rst }
+                }
             }
         case .spreadsheet:
             formats = spreadsheetFormats(ext: ext, tools: tools)
         case .presentation:
-            // Slides need LibreOffice to render; Keynote files can't be read at all.
-            formats = tools.libreOffice != nil && ext != "key" ? [.pdf, .jpg, .png] : []
+            // Slides need LibreOffice to render.
+            formats = tools.libreOffice != nil ? [.pdf, .jpg, .png] : []
         case .audio:
             if MediaFormats.isAVFoundationReadable(url) {
                 formats = [.m4a, .wav, .aiff, .flac]
@@ -199,8 +217,17 @@ enum ConversionCatalog {
         case .folder, .other:
             return archiveFormats
         }
+        // Pages, Numbers and Keynote save what they open as their own documents.
+        if let iWork = IWorkFormat.importing(extension: ext), tools.iWorkApps.contains(iWork) {
+            formats.append(iWork.outputFormat)
+        }
         formats.removeAll { $0.matches(extension: ext) }
-        return Array(formats.prefix(maxWedges - 1)) + [.zip]
+        return wheel(formats, fitsTheWheel)
+    }
+
+    /// `formats` then ZIP, cut to the wheel's wedges when `fitsTheWheel`.
+    private static func wheel(_ formats: [OutputFormat], _ fitsTheWheel: Bool) -> [OutputFormat] {
+        (fitsTheWheel ? Array(formats.prefix(maxWedges - 1)) : formats) + [.zip]
     }
 
     private static func spreadsheetFormats(ext: String, tools: ExternalTools) -> [OutputFormat] {

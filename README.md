@@ -45,7 +45,8 @@ the file on a wedge and it's done, saved right next to the original.
 - **Updates itself:** new versions install from the app (Sparkle), signed so
   only genuine OpenShelf releases are accepted
 - **Extra formats, one click away:** ffmpeg adds MP3, OGG, WebP, MKV, WebM,
-  AVI and WMV; LibreOffice adds PowerPoint, XLS and ODS; Pandoc converts
+  AVI and WMV; LibreOffice adds PowerPoint, Keynote, Pages, Numbers, XLS and
+  ODS; Pandoc converts
   Markdown and Word documents its own way. Install any of them from
   Settings → Extra Formats (no Homebrew or administrator needed), or use the
   copies you already have from Homebrew
@@ -69,8 +70,9 @@ so macOS asks once on first launch:
 - **macOS 14 Sonoma:** right-click OpenShelf in Applications → **Open** → **Open**.
 - Or, in Terminal: `xattr -dr com.apple.quarantine /Applications/OpenShelf.app`
 
-Requires macOS 14 Sonoma or later, on Apple silicon or Intel. A `.zip` of the
-app is also attached to each release.
+Requires macOS 14 Sonoma or later. Tested on macOS 27. Runs on Apple silicon
+and on Intel Macs up to macOS 26 (macOS 27 is Apple silicon only). A `.zip` of
+the app is also attached to each release.
 
 ## How to use
 
@@ -133,10 +135,13 @@ A small card next to the pointer shows progress; click its **×** to cancel.
 |---|---|
 | Image (JPG, PNG, HEIC, SVG, …) | PNG, JPG, WEBP², HEIC, TIFF, AVIF, BMP, PDF, DOCX, ZIP |
 | PDF | DOCX, JPG, PNG, TXT, Markdown, EPUB, PPTX, XLSX, ZIP |
-| Document (TXT, RTF, RTFD, DOCX, DOC, ODT, HTML, Markdown) | PDF, DOCX, TXT, Markdown, EPUB, HTML, RTF, ZIP |
-| Spreadsheet (CSV, TSV, XLSX) | XLSX, CSV, TSV, PDF, ODS¹, ZIP |
+| Document (TXT, RTF, RTFD, DOCX, DOC, ODT, HTML, Markdown) | PDF, DOCX, TXT, Markdown, EPUB, HTML, RTF, PAGES³, ZIP |
+| Spreadsheet (CSV, TSV, XLSX) | XLSX, CSV, TSV, PDF, ODS¹, NUMBERS³, ZIP |
 | Spreadsheet (XLS, ODS)¹ | XLSX, CSV, PDF, ODS, ZIP |
-| Slides (PPTX, PPT, ODP)¹ | PDF, JPG, PNG (one image per slide), ZIP |
+| Slides (PPTX, PPT, ODP)¹ | PDF, JPG, PNG (one image per slide), KEY³, ZIP |
+| Pages document | PDF⁴, DOCX¹, RTF¹, TXT¹, JPG⁴, PNG⁴, ZIP |
+| Numbers spreadsheet | PDF⁴, XLSX¹, CSV¹, ODS¹, JPG⁴, PNG⁴, ZIP |
+| Keynote deck | PDF⁴, PPTX¹, JPG⁴, PNG⁴ (one image per slide), ZIP |
 | Audio (MP3, M4A, WAV, AIFF, FLAC, OGG², Opus², WMA², …) | MP3², M4A, WAV, AIFF, FLAC, OGG², Opus², WMA², ZIP |
 | Video (MP4, MOV, MKV², WebM², AVI², WMV², …) | MP4, MOV, M4A, GIF, MP3², MKV², WebM², AVI², WMV², ZIP |
 | Subtitles (SRT, VTT) | TXT, SRT, VTT, ZIP |
@@ -146,6 +151,14 @@ A small card next to the pointer shows progress; click its **×** to cancel.
 Drag several files at once to convert them all; mixed selections show only the
 formats every file supports. Several files sent to ZIP, TAR or TAR.GZ go into
 one archive.
+
+³ Offered when Pages, Numbers or Keynote is installed; that app does the
+saving, so macOS asks once whether OpenShelf may control it (Privacy &
+Security → Automation). Pages takes DOCX, DOC, RTF and TXT; Numbers XLSX, XLS,
+CSV and TSV; Keynote PPTX and PPT. ⁴ With LibreOffice, from the whole
+document; without it, from the preview Pages, Numbers and Keynote save inside
+each file: a PDF of every page in older files, a picture of the first page
+(JPG and PNG only) in newer ones. Files without a preview need LibreOffice.
 
 ¹ Needs LibreOffice. ² Needs ffmpeg (`brew install webp` also adds WebP).
 
@@ -161,8 +174,7 @@ Homebrew** runs `brew install` for you. Copies from Homebrew (`brew install ffmp
 `brew install --cask libreoffice`) are used too and take precedence. Without
 them those wedges are hidden, and dragging a file only they can open (an MKV,
 a PowerPoint deck) says which one it needs. GIFs from video are made without
-ffmpeg, though it makes slightly cleaner ones when installed. Keynote files
-can't be converted, and Apple's Pages format isn't offered.
+ffmpeg, though it makes slightly cleaner ones when installed.
 
 #### Markdown and Word documents
 
@@ -278,6 +290,56 @@ any time, and drag them out to any app or folder when you need them.
 - Closing a shelf never touches your files. **New Shelf** and **Close All
   Shelves** are in the menu-bar menu.
 
+#### Watched folders
+
+OpenShelf can put new files on a shelf by itself. In Settings → Shelves →
+**Watched Folders**, click **Add Folder…** (Downloads, a project inbox, …) or
+**Watch Screenshots**, which follows the folder chosen in the Screenshot app's
+Options (the Desktop unless you changed it).
+
+- Each watched folder gets its own shelf. A file appears on it once it has
+  finished arriving: downloads still in progress, files Finder is still
+  copying, hidden files and files that were already there are left alone, and
+  so are files renamed inside the folder. Subfolders aren't watched.
+- Optionally pick what happens to new files: convert them (e.g. every
+  screenshot to JPG) or open them in a tool (Compress, Annotate, Redact, OCR,
+  Compress PDF, Trim, …). It only runs on files it applies to, and the result
+  goes back on the shelf when **Add conversion and tool results back to the
+  shelf** is on. Files OpenShelf writes itself never count as new.
+- Nothing is watched until you add a folder. Switch a folder off, or click ⊖
+  to stop watching it.
+
+### Shortcuts and Spotlight
+
+OpenShelf's engines are also actions in the Shortcuts app, so they can run
+without a drag: in a shortcut, from a Finder Quick Action, or in a folder
+automation that converts whatever lands in a folder. On macOS 26 and later
+the main ones appear in Spotlight too. Like the wheels, they run entirely on
+this Mac and save results next to the originals, never overwriting them.
+
+| Action | What it does |
+|---|---|
+| **Convert Files** | Converts files to any format the Convert wheel offers; files already in that format pass through, and ZIP, TAR and TAR.GZ put everything in one archive |
+| **Compress Images and PDFs** | Smaller copies, Light, Balanced or Strong; a file that can't get smaller passes through |
+| **Extract Text (OCR)** | Saves the text of images and scanned PDFs as a text file or a searchable PDF |
+| **Remove Background** | Cuts out the subject of each photo as a transparent PNG |
+| **Combine into PDF** | Combines PDFs and images, in order, into one PDF |
+| **Remove Audio from Videos** | Saves a silent copy of each video |
+| **Read QR Codes** | Returns the text of the codes in images |
+| **Add to Shelf** | Puts files on the shelf you used last, or a new one |
+
+Each action returns the files it wrote, so actions can be chained. Conversions
+use your Settings → Output choices. Files that don't come from a folder
+OpenShelf can write to are converted in a temporary folder and handed on;
+Add to Shelf keeps such files in
+`~/Library/Application Support/OpenShelf/From Shortcuts`.
+
+**Not in releases yet.** macOS only runs Shortcuts actions from apps signed
+with an Apple developer certificate, and OpenShelf's releases are ad-hoc
+signed for now, so the actions are left out of them until that changes. A
+build made with Xcode installed includes them (see [Build & run](#build--run)),
+but they only run once it's signed with a Developer ID.
+
 ### Updates
 
 OpenShelf checks GitHub for new versions once a day (it asks the first time).
@@ -296,11 +358,17 @@ tab you used last:
 - **Wheels:** the keys that open each wheel while dragging, and the shortcut
   for Finder or shelf selections
 - **Shelves:** remove files from a shelf after dragging them out, restore
-  shelves at launch, hide docked shelves at the screen edge
+  shelves at launch, hide docked shelves at the screen edge, add conversion
+  results back to the shelf, and [watched folders](#watched-folders)
 - **Output:** how conversions encode video, audio, images and GIFs (see
   [Output settings](#output-settings))
 - **Extra Formats:** install or remove ffmpeg, LibreOffice and Pandoc
 - **Updates:** automatic checks and installs, and Check Now
+
+If the wheel icon is out of sight (behind the notch, or tucked into the menu
+bar's overflow on macOS 27), open OpenShelf again from Finder or Spotlight and
+Settings opens. Pressing the wheel shortcut (⌃⌥Space) twice with no files
+selected does the same.
 
 ffmpeg and ffprobe that OpenShelf installs live in
 `~/Library/Application Support/OpenShelf/Tools`; LibreOffice goes to
@@ -333,6 +401,11 @@ make release  # universal build, zipped for a GitHub release
 make dmg      # drag-to-Applications installer (after make release; needs create-dmg)
 ```
 
+`make app` and `make release` also add the App Intents metadata that makes the
+Shortcuts actions appear, using `appintentsmetadataprocessor` from Xcode. With
+only the Command Line Tools it prints a warning and builds the app without
+them; everything else works. `SKIP_APPINTENTS=1 make app` skips the step.
+
 You can also open `Package.swift` in Xcode.
 
 ## Project layout
@@ -350,8 +423,10 @@ Sources/OpenShelf/
   Tools/Media/    video and audio tools (trim, speed, crop, rotate, split, merge, compress, mute)
   Shelf/          shelf model, floating panel, docking, layout
   Shelf/Views/    SwiftUI shelf UI and the AppKit drag source
+  Intents/        Shortcuts and Spotlight actions (App Intents)
   Support/        file actions, Quick Look
   Settings/       settings window
+  WatchedFolders/ folders watched for new files, and what to do with them
 ```
 
 ## How drag detection works

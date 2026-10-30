@@ -67,6 +67,17 @@ struct HideShelvesTests {
         #expect(!manager.areHidden && manager.openShelves.count == 2)
     }
 
+    /// Upstream's watched folders: every arrival shows hidden shelves, not only the first.
+    @Test func everyWatchedFolderArrivalWhileHiddenShowsThemAll() throws {
+        let manager = ShelfManager(storeURL: store)
+        defer { manager.closeAll() }
+        let folder = UUID()
+        manager.addArrivals(try files(1), fromWatchedFolder: folder)
+        manager.hideAll()
+        manager.addArrivals(try files(1), fromWatchedFolder: folder)
+        #expect(!manager.areHidden && manager.openShelves.count == 1)
+    }
+
     @Test func closingEverythingWhileHiddenEndsHiding() throws {
         let manager = ShelfManager(storeURL: store)
         manager.newShelf(with: try files(1), near: NSPoint(x: 300, y: 300))

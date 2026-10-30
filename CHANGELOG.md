@@ -10,13 +10,86 @@ Format: one `## [x.y.z] - YYYY-MM-DD` heading per version, newest first.
 
 ### New
 
+- **OpenShelf in Shortcuts and Spotlight.** Convert Files, Compress, Extract
+  Text (OCR), Remove Background, Combine into PDF, Remove Audio, Read QR Codes
+  and Add to Shelf are now actions in the Shortcuts app, so you can chain
+  them, add them to a Finder Quick Action, or run them on everything that
+  lands in a folder with a folder automation, no dragging needed. On macOS 26
+  and later the main ones are in Spotlight too. They run entirely on your Mac,
+  like the wheels, and save results next to the originals.
+
+  These are in the code but switched off in release builds until releases
+  are signed with an Apple developer certificate: macOS only runs Shortcuts
+  actions from apps signed that way.
+
+## [1.8.1] - 2026-10-28
+
+Smoother shelves.
+
+### Fixed and improved
+
+- **Shelves move like the rest of macOS.** A shelf docked at a screen edge
+  now slides out when you point at its tab and slides back behind the edge
+  when you move away, instead of appearing or vanishing in a blink, and its
+  tab shows up once it's gone. Expanding and collapsing a shelf grows and
+  shrinks it evenly instead of jumping most of the way at once. Every shelf
+  animation is shorter and no longer bounces, and the scroll bar no longer
+  flashes down the side of a shelf that shows all its files.
+
+## [1.8.0] - 2026-10-28
+
+Watched folders, Pages, Numbers and Keynote, and ready for macOS 27.
+
+### New
+
+- **Watched folders and a screenshot shelf.** Pick folders such as Downloads
+  or a project inbox in Settings → Shelves → Watched Folders, or click
+  **Watch Screenshots** to follow wherever your screenshots are saved. New
+  files that land there pop onto a shelf of their own as soon as they've
+  finished arriving, so a fresh screenshot or download is ready to drag
+  straight into a message. Files that were already there, hidden files and
+  unfinished downloads are left alone. Each folder can also convert new files
+  or open them in a tool (for example, every screenshot to JPG, or every PDF
+  into Compress PDF); results go back on the shelf when that setting is on.
+  Nothing is watched until you add a folder, and each one can be switched off
+  or removed at any time.
 - **Conversion and tool results return to their shelf.** Convert or edit a
   file that's on a shelf (with the Convert or Tools wheel, or the keyboard
   shortcut) and the result is added to that same shelf, so it's right there
   with the original. Files dragged in from Finder or another app behave as
   before. Turn it off in Settings → Shelves.
+- **Pages, Numbers and Keynote files convert.** Drag a `.pages`, `.numbers`
+  or `.key` file and the Convert wheel offers PDF, JPG and PNG, plus DOCX,
+  RTF and TXT for Pages documents, XLSX, CSV and ODS for Numbers
+  spreadsheets and PPTX for Keynote decks. With LibreOffice installed
+  (Settings → Extra Formats) the whole document is converted. Without it,
+  OpenShelf uses the preview these apps save inside each file: older files
+  become a full PDF or one picture per page, newer ones a picture of the first
+  page. A file with no preview says it needs LibreOffice. Both the single-file
+  and the folder ("package") versions of these documents work.
+- **Save as Pages, Numbers or Keynote.** When the app is installed, Word, RTF
+  and text files get a PAGES wedge, spreadsheets (XLSX, XLS, CSV, TSV) a
+  NUMBERS wedge and PowerPoint decks a KEY wedge, each with the app's icon.
+  The app itself does the saving, so the first time macOS asks whether
+  OpenShelf may control it; if that's turned off, OpenShelf opens the setting
+  (System Settings → Privacy & Security → Automation).
 
 ### Fixed and improved
+
+- **Ready for macOS 27.** OpenShelf has been checked against macOS 27's
+  changes:
+  - When the menu bar icon is out of reach, behind the notch or tucked into
+    the new menu bar overflow, open OpenShelf again from Finder or Spotlight
+    and Settings opens. Pressing the wheel shortcut twice with no files
+    selected does the same; the "Select files in Finder first" toast now says
+    so.
+  - Drags are picked up more reliably: a drag whose mouse-down OpenShelf
+    didn't see (which can happen with trackpad drags) is noticed as soon as
+    it moves instead of up to a second later, and an app that updates its
+    drag data just after a drop is less likely to make a later ordinary
+    click look like a file drag.
+  - macOS 27 runs on Apple silicon only, so Intel Macs are supported up to
+    macOS 26.
 
 - **Dragging with the wheel open is smooth again.** Two things on the wheel's
   hover path were doing far more work than a mouse move needs:

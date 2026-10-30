@@ -16,6 +16,11 @@ final class ConversionRunner {
     /// shelf when Settings → Shelves allows it.
     var onSaved: (([URL], Shelf.ID?) -> Void)?
 
+    /// Called with each job's files as soon as they're written, before the
+    /// rest of the batch finishes. Wired once at launch so watched folders
+    /// can tell OpenShelf's own output from files that arrived.
+    var onJobSaved: (@MainActor @Sendable ([URL]) -> Void)?
+
     /// - Parameters:
     ///   - settings: How to encode; nil for Settings → Output's, read now so
     ///     a change mid-batch doesn't mix two kinds of output.
@@ -75,10 +80,12 @@ final class ConversionRunner {
     ) async {
         let toasts = ToastController.shared
         let total = jobs.count
+        let onJobSaved = onJobSaved
         let job = Task {
             var saved: [URL] = []
             var unchanged = 0
             var failures: [String] = []
+            var notAllowed: AutomationNotAllowed?
             for (index, sources) in jobs.enumerated() {
                 if Task.isCancelled { break }
                 let step = StepProgress(index: index, total: total) { toasts.updateProgress($0, subtitle: $1) }
@@ -88,25 +95,41 @@ final class ConversionRunner {
                     }
                     if written.isEmpty { unchanged += 1 }
                     saved += written
+                    onJobSaved?(written)
                 } catch is CancellationError {
                     step.cancel()
+                    break
+                } catch let refusal as AutomationNotAllowed {
+                    // The rest would be refused the same way.
+                    step.cancel()
+                    notAllowed = refusal
                     break
                 } catch {
                     failures.append("\(sources[0].lastPathComponent): \(error.localizedDescription)")
                 }
                 step.finish(subtitle: "\(index + 1) of \(total) saved")
             }
-            return (saved, unchanged, failures)
+            return (saved, unchanged, failures, notAllowed)
         }
 
         toasts.showProgress(Toast(systemImage: "arrow.triangle.2.circlepath", title: title, subtitle: "0 of \(total) saved", progress: .determinate(0)), near: location) {
             job.cancel()
         }
-        let (saved, unchanged, failures) = await job.value
+        let (saved, unchanged, failures, notAllowed) = await job.value
         if !saved.isEmpty { onSaved?(saved, sourceShelfID) }
 
         if job.isCancelled {
             toasts.show(Toast(systemImage: "xmark", title: "Cancelled", subtitle: saved.isEmpty ? nil : "\(saved.count) saved"))
+        } else if let notAllowed {
+            // Like Finder's: the full sentence doesn't fit a toast, so name the
+            // setting and open it.
+            toasts.show(
+                Toast(systemImage: "lock", title: "Allow OpenShelf to control \(notAllowed.appName)", subtitle: "Privacy & Security → Automation"),
+                for: .seconds(5)
+            )
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
+                NSWorkspace.shared.open(url)
+            }
         } else if let failure = failures.first {
             let title = failures.count == 1 ? "Something went wrong" : "\(failures.count) files failed"
             toasts.show(Toast(systemImage: "exclamationmark.triangle", title: title, subtitle: failure), for: .seconds(4))
@@ -138,7 +161,8 @@ final class StepProgress {
     private let total: Int
     /// Sets the toast's progress, and its subtitle when given.
     private let update: @MainActor (ToastProgress, String?) -> Void
-    private var pending: Task<Void, Never>?
+    /// The late switch to the busy bar; readable so tests can wait for it.
+    private(set) var pending: Task<Void, Never>?
 
     init(index: Int, total: Int, update: @escaping @MainActor (ToastProgress, String?) -> Void) {
         self.index = index

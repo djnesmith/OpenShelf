@@ -115,9 +115,11 @@ struct WheelOrderingTests {
             ("a.mov", .video), ("a.mkv", .video), ("a.mp3", .audio), ("a.ogg", .audio), ("a.epub", .ebook),
             ("a.csv", .spreadsheet),
         ]
+        var tools = allTools
+        tools.iWorkApps = Set(IWorkFormat.allCases)
         for (name, kind) in sources {
             let priority = Set(WheelOrdering.formatsBySource[kind] ?? [])
-            for format in ConversionCatalog.formats(for: urls(name), tools: allTools) {
+            for format in ConversionCatalog.formats(for: urls(name), tools: tools) {
                 #expect(priority.contains(format), "\(format) for \(name)")
             }
         }

@@ -30,6 +30,13 @@ The fork's own tools now also send their results back to the shelf they came fro
 upstream's do (`sourceShelfID` in `ToolLauncher.swift`). The welcome window is gone for
 upstream's tour; no fork feature used it.
 
+Upstream 1.8.0 and 1.8.1 added Pages, Numbers and Keynote conversions, watched folders,
+and Shortcuts actions (App Intents). Upstream's releases leave the Shortcuts actions out
+(`SKIP_APPINTENTS=1`) because macOS won't run them from an ad-hoc signed app; the fork's
+`make app` keeps them, since it signs with a team ID (#2). The fork's formats are in
+upstream's Shortcuts format list too (`IntentFormat` in `Intents/FileIntents.swift`), and
+Convert Files packs TAR.XZ, TAR.ZST and 7Z into one archive, as the wheel does (#34).
+
 ## Security
 
 ### 1. No in-app updates
@@ -41,7 +48,7 @@ Sparkle is gone, so the app never downloads or installs updates by itself. Upstr
 ### 2. David's signing identity and bundle ID
 Builds are signed as "Apple Development: David Nesmith (JFGJA89Z8H)" with the hardened runtime. The bundle ID is `com.djnesmith.OpenShelf`. The only entitlement is `com.apple.security.automation.apple-events`, which is needed to read Finder's selection.
 - Commits: f036332
-- Files: `Makefile` (`SIGN_IDENTITY ?=`), `Support/Info.plist`, `Support/OpenShelf.entitlements`, `Sources/OpenShelf/Convert/ExternalTools.swift` (the `defaults` domain in a comment)
+- Files: `Makefile` (`SIGN_IDENTITY ?=`; `bundle_app` adds upstream's App Intents metadata before signing), `Support/Info.plist`, `Support/OpenShelf.entitlements`, `Sources/OpenShelf/Convert/ExternalTools.swift` (the `defaults` domain in a comment)
 - Check: `codesign -dv --verbose=2 /Applications/OpenShelf.app` shows `Identifier=com.djnesmith.OpenShelf`, `TeamIdentifier=CHJ32A2B4N`, and `flags=0x10000(runtime)`. `codesign -d --entitlements - /Applications/OpenShelf.app` lists only apple-events.
 
 ### 3. Minimal environment for child processes
@@ -218,10 +225,10 @@ EPUB, MOBI, AZW3, FB2 and others, to and from each other and PDF, through calibr
 - Check: `swift test --filter convertsBooksBothWays`.
 
 ### 30. Markup documents with pandoc
-LaTeX, Typst, reST, AsciiDoc and Org, to and from Markdown, Word, HTML, EPUB and text. Markdown ↔ Word, HTML and EPUB without markup is upstream's engine since 1.6.0. Pandoc's row in Settings → Extra Formats (upstream's) lists these formats.
+LaTeX, Typst, reST, AsciiDoc and Org, to and from Markdown, Word, HTML, EPUB and text. Markdown ↔ Word, HTML and EPUB without markup is upstream's engine since 1.6.0. Pandoc's row in Settings → Extra Formats (upstream's) lists these formats. With Pages installed, DOCX, TXT and RTF wheels leave out RST so upstream's PAGES fits the 12 wedges; every other wheel keeps it, and Shortcuts' Convert Files offers every format, uncapped (`IntentRouting.formats`).
 - Commits: e5e1b51
 - Files: `Sources/OpenShelf/Convert/PandocConversion.swift` (`handles`, `markupWriter`, `convertMarkup`), `Convert/Converter.swift`, `Convert/ExtraFormats.swift` (`ExtraTool.pandoc.unlocks`)
-- Check: `swift test --filter convertsMarkupBothWays`.
+- Check: `swift test --filter convertsMarkupBothWays`, `--filter iWorkOutputsNeedTheirApp` and `--filter shortcutsOfferFormatsTheWheelHasNoRoomFor`.
 
 ### 31. Data files
 JSON, YAML, XML, property lists and CSV. Foundation handles JSON and plists; yq handles the rest.
@@ -267,10 +274,10 @@ Writes JXL with `cjxl`.
 - Check: `swift test --filter newShelvesOpenExpanded`.
 
 ### 38. Hide Shelves / Show Shelves
-A menu item hides every shelf and brings them all back. A new shelf or a drop while hidden shows them again.
+A menu item hides every shelf and brings them all back. A new shelf, a drop or a watched-folder arrival (upstream 1.8) while hidden shows them again.
 - Commits: 45756ef
 - Files: `Sources/OpenShelf/Shelf/ShelfManager.swift`, `Shelf/ShelfWindowController.swift`, `App/OpenShelfApp.swift`
-- Check: `swift test --filter HideShelvesTests`.
+- Check: `swift test --filter HideShelvesTests` (includes `everyWatchedFolderArrivalWhileHiddenShowsThemAll`).
 
 ### 39. ⌘-number wedges
 On the keyboard wheel, ⌘1–⌘7 run that wedge and ⌘0 opens More. Each wedge shows its number as a badge.

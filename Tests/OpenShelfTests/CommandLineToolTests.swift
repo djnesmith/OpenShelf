@@ -33,7 +33,8 @@ struct CommandLineToolTests {
         let fields = Array(Mirror(reflecting: tools).children) + Array(Mirror(reflecting: tools.formatters).children)
         var checked = 0
         for field in fields {
-            guard let label = field.label, label != "formatters" else { continue }
+            // iWorkApps are apps, not command-line tools.
+            guard let label = field.label, label != "formatters", label != "iWorkApps" else { continue }
             let path = try #require(field.value as? URL?, "\(label) isn't a tool path")
             let found = try #require(path, "\(label) wasn't detected; add its command to commandNames")
             // ffprobe comes with ffmpeg; Pandoc's row shows its typesetter.
