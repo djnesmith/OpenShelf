@@ -141,7 +141,7 @@ enum ConversionCatalog {
         }
     }
 
-    /// - Parameter fitsTheWheel: False for every format (Shortcuts): no `maxWedges` cut, and RST stays next to PAGES.
+    /// - Parameter fitsTheWheel: False for every format (Shortcuts): no `maxWedges` cut, and RST is kept.
     static func formats(for url: URL, tools: ExternalTools, fitsTheWheel: Bool = true) -> [OutputFormat] {
         let ext = url.pathExtension.lowercased()
         let hasFFmpeg = tools.ffmpeg != nil
@@ -173,10 +173,6 @@ enum ConversionCatalog {
             formats = [.pdf, .docx, .txt, .md, .epub, .html, .rtf]
             if tools.pandoc != nil, PandocConversion.reader(for: url) != nil {
                 formats += PandocConversion.markupFormats
-                // The wheel is full; RST gives way to Pages, added below.
-                if fitsTheWheel, IWorkFormat.importing(extension: ext) == .pages, tools.iWorkApps.contains(.pages) {
-                    formats.removeAll { $0 == .rst }
-                }
             }
         case .spreadsheet:
             formats = spreadsheetFormats(ext: ext, tools: tools)
@@ -222,6 +218,11 @@ enum ConversionCatalog {
             formats.append(iWork.outputFormat)
         }
         formats.removeAll { $0.matches(extension: ext) }
+        // A wheel with one too many (ODT, or Word with Pages): RST gives way,
+        // so ORG and PAGES keep their wedges.
+        if fitsTheWheel, formats.count > maxWedges - 1 {
+            formats.removeAll { $0 == .rst }
+        }
         return wheel(formats, fitsTheWheel)
     }
 

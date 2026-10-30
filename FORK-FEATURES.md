@@ -225,10 +225,10 @@ EPUB, MOBI, AZW3, FB2 and others, to and from each other and PDF, through calibr
 - Check: `swift test --filter convertsBooksBothWays`.
 
 ### 30. Markup documents with pandoc
-LaTeX, Typst, reST, AsciiDoc and Org, to and from Markdown, Word, HTML, EPUB and text. Markdown ↔ Word, HTML and EPUB without markup is upstream's engine since 1.6.0. Pandoc's row in Settings → Extra Formats (upstream's) lists these formats. With Pages installed, DOCX, TXT and RTF wheels leave out RST so upstream's PAGES fits the 12 wedges; every other wheel keeps it, and Shortcuts' Convert Files offers every format, uncapped (`IntentRouting.formats`).
+LaTeX, Typst, reST, AsciiDoc and Org, to and from Markdown, Word, HTML, EPUB and text. Markdown ↔ Word, HTML and EPUB without markup is upstream's engine since 1.6.0. Pandoc's row in Settings → Extra Formats (upstream's) lists these formats. A wheel with one format too many leaves out RST: ODT with pandoc, and DOCX, TXT and RTF with Pages installed (so upstream's PAGES fits the 12 wedges); every other wheel keeps it, and Shortcuts' Convert Files offers every format, uncapped (`IntentRouting.formats`).
 - Commits: e5e1b51
 - Files: `Sources/OpenShelf/Convert/PandocConversion.swift` (`handles`, `markupWriter`, `convertMarkup`), `Convert/Converter.swift`, `Convert/ExtraFormats.swift` (`ExtraTool.pandoc.unlocks`)
-- Check: `swift test --filter convertsMarkupBothWays`, `--filter iWorkOutputsNeedTheirApp` and `--filter shortcutsOfferFormatsTheWheelHasNoRoomFor`.
+- Check: `swift test --filter convertsMarkupBothWays`, `--filter iWorkOutputsNeedTheirApp`, `--filter odtWheelKeepsOrg`, `--filter wheelsStayWithinTwelveWedges` and `--filter shortcutsOfferFormatsTheWheelHasNoRoomFor`.
 
 ### 31. Data files
 JSON, YAML, XML, property lists and CSV. Foundation handles JSON and plists; yq handles the rest.

@@ -162,10 +162,37 @@ struct FormatCatalogTests {
         #expect(OutputFormat.tgz.title == "TAR.GZ")
     }
 
+    /// Every tool, so the wheels are as full as they get.
+    var everything: ExternalTools {
+        var tools = all
+        let tool = URL(fileURLWithPath: "/usr/bin/true")
+        tools.ebookConvert = tool
+        tools.pandoc = tool
+        tools.yq = tool
+        tools.cjxl = tool
+        tools.duckdb = tool
+        tools.jet = tool
+        tools.iWorkApps = Set(IWorkFormat.allCases)
+        return tools
+    }
+
+    /// The wheel's cut never drops a format silently; only RST gives way.
     @Test func wheelsStayWithinTwelveWedges() {
-        for name in ["a.jpg", "a.pdf", "a.docx", "a.mkv", "a.mov", "a.ogg", "a.aiff", "a.csv", "a.xls", "a.pptx", "a.pages", "a.numbers", "a.key"] {
-            #expect(ConversionCatalog.formats(for: [url(name)], tools: all).count <= ConversionCatalog.maxWedges)
+        for name in ["a.jpg", "a.gif", "a.pdf", "a.docx", "a.txt", "a.rtf", "a.odt", "a.md", "a.html", "a.epub", "a.tex", "a.mkv", "a.mov", "a.ogg", "a.aiff",
+                     "a.csv", "a.xlsx", "a.xls", "a.json", "a.parquet", "a.pptx", "a.pages", "a.numbers", "a.key"] {
+            let wheel = ConversionCatalog.formats(for: url(name), tools: everything)
+            let full = ConversionCatalog.formats(for: url(name), tools: everything, fitsTheWheel: false)
+            #expect(wheel.count <= ConversionCatalog.maxWedges, "\(name)")
+            #expect(Set(full).subtracting(wheel).isSubset(of: [.rst]), "\(name) loses \(Set(full).subtracting(wheel))")
         }
+    }
+
+    /// ODT with pandoc has one format too many; RST gives way so ORG stays.
+    @Test func odtWheelKeepsOrg() {
+        let pandoc = ExternalTools(ffmpeg: nil, cwebp: nil, pandoc: URL(fileURLWithPath: "/usr/bin/true"))
+        let wheel = ConversionCatalog.formats(for: url("a.odt"), tools: pandoc)
+        #expect(wheel == [.pdf, .docx, .txt, .md, .epub, .html, .rtf, .tex, .typ, .adoc, .org, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.odt"), tools: pandoc, fitsTheWheel: false).contains(.rst))
     }
 }
 
