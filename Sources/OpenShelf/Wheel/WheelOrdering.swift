@@ -21,10 +21,10 @@ enum WheelOrdering {
     static let formatsBySource: [FileKind: [OutputFormat]] = [
         .image: [.png, .jpg, .heic, .webp, .pdf, .avif, .tiff, .bmp, .docx, .jxl, .apng, .zip],
         .pdf: [.docx, .jpg, .png, .txt, .pptx, .xlsx, .md, .epub, .mobi, .azw3, .fb2, .zip],
-        .ebook: EbookConversion.formats + [.zip],
+        .ebook: EbookConversion.formats + [.md, .html, .odt, .zip],
         .spreadsheet: [.xlsx, .csv, .tsv, .pdf, .ods, .numbers, .json, .yaml, .xml, .parquet, .sqlite, .zip],
-        .video: [.mp4, .mov, .gif, .mp3, .m4a, .webm, .mkv, .avi, .wmv, .apng, .zip],
-        .audio: [.mp3, .m4a, .wav, .flac, .aiff, .ogg, .opus, .wma, .zip],
+        .video: [.mp4, .mov, .gif, .mp3, .m4a, .srt, .webm, .mkv, .avi, .wmv, .apng, .vtt, .zip],
+        .audio: [.mp3, .m4a, .wav, .txt, .srt, .flac, .aiff, .ogg, .opus, .wma, .vtt, .zip],
     ]
 
     /// `tools` (from `FileTool.available`) in wheel order.

@@ -25,7 +25,7 @@ enum TranscriptionError: LocalizedError, Equatable {
 /// Speech to text, always on this Mac: Apple's speech recogniser with
 /// on-device recognition required, so audio never leaves the computer.
 /// Writes "<name>.txt" and "<name>.srt" beside the file.
-enum Transcription {
+enum SpeechTranscription {
     /// A recognised word or phrase and when it's said, in seconds.
     struct Segment: Equatable, Sendable {
         var text: String

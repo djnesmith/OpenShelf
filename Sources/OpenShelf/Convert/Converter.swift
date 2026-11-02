@@ -53,6 +53,11 @@ enum Converter {
             break
         }
 
+        // calibre's conversions: books, and PDFs to Kindle formats.
+        if EbookConversion.handles(source, to: format, tools: tools) {
+            return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
+        }
+
         // Pages, Numbers and Keynote files, before their kind's own converters.
         if let iWork = IWorkFormat(url: source) {
             return try await IWorkConversion.convert(source, from: iWork, to: format, tools: tools, settings: settings, progress: progress)
@@ -61,8 +66,6 @@ enum Converter {
         switch FileKind(url: source) {
         case .image:
             return [try await ImageConversion.convert(source, to: format, tools: tools, settings: settings.image)]
-        case .pdf where EbookConversion.calibreOnly.contains(format):
-            return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
         case .pdf:
             return try PDFConversion.convert(source, to: format, imageQuality: settings.image.quality, progress: progress)
         case .document where tools.pandoc != nil && PandocConversion.handles(source, to: format):
@@ -84,11 +87,15 @@ enum Converter {
         case .presentation:
             return try await OfficeConversion.convert(source, to: format, tools: tools, progress: progress)
         case .audio, .video:
+            if Transcription.handles(format) {
+                return [try await Transcription.convert(source, to: format, tools: tools, progress: progress)]
+            }
             return [try await MediaConversion.convert(source, to: format, tools: tools, settings: settings, progress: progress)]
         case .subtitle:
             return [try await SubtitleConversion.convert(source, to: format, tools: tools)]
         case .ebook:
-            return [try await EbookConversion.convert(source, to: format, tools: tools, progress: progress)]
+            // calibre's conversions went above; Pandoc reads EPUB.
+            return [try await PandocConversion.convert(source, to: format, tools: tools)]
         case .archive, .folder, .other:
             throw ConversionError.unsupported("\(source.pathExtension.uppercased()) to \(format.title)")
         }

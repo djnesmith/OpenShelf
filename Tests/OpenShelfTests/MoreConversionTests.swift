@@ -103,7 +103,9 @@ struct MoreConversionTests {
 
     @Test func markupFormatsOnlyWithPandoc() {
         #expect(!ConversionCatalog.formats(for: url("a.md"), tools: none).contains(.tex))
-        #expect(ConversionCatalog.formats(for: url("a.md"), tools: pandoc).suffix(6) == [.tex, .typ, .rst, .adoc, .org, .zip])
+        // With upstream's ODT the Markdown wheel is one too many; ADOC gives way.
+        #expect(ConversionCatalog.formats(for: url("a.md"), tools: pandoc).suffix(6) == [.odt, .tex, .typ, .rst, .org, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.md"), tools: pandoc, fitsTheWheel: false).contains(.adoc))
         #expect(ConversionCatalog.formats(for: url("a.rst"), tools: none) == [.zip])
         #expect(ConversionCatalog.formats(for: url("a.tex"), tools: none).first == .pdf)
         #expect(ConversionCatalog.formats(for: url("a.typ"), tools: pandoc) == [.docx, .md, .html, .epub, .txt, .tex, .rst, .adoc, .org, .zip])

@@ -37,6 +37,17 @@ and Shortcuts actions (App Intents). Upstream's releases leave the Shortcuts act
 upstream's Shortcuts format list too (`IntentFormat` in `Intents/FileIntents.swift`), and
 Convert Files packs TAR.XZ, TAR.ZST and 7Z into one archive, as the wheel does (#34).
 
+Upstream 1.8.2 and 1.9.0 added whisper.cpp transcripts (TXT, SRT, VTT on the Convert wheel),
+its own calibre ebook conversions, Pandoc ODT output and EPUB input, and Word to PDF through
+Quick Look. None of it downloads anything: whisper.cpp and calibre are only found, and the
+speech model is added by hand to `~/Library/Application Support/OpenShelf/Models`. The merge
+renamed the fork's Apple-speech Transcribe to `SpeechTranscription` (#23), since upstream's
+whisper.cpp converter is `Transcription`. `EbookConversion.swift` is upstream's (crash retry,
+temp folder) with the fork's formats and environment on top (#29). Upstream's own "Command-line
+tools" Settings section was left out; whisper.cpp joined the fork's list instead (#45). Not
+verified: Word to PDF prints Quick Look's HTML preview in a WebKit view, which could fetch a
+picture a Word file links by web address.
+
 ## Security
 
 ### 1. No in-app updates
@@ -181,7 +192,7 @@ Video as H.264, HEVC, AV1, VP9 or ProRes, or in MPEG, TS, M2TS or VOB. Audio as 
 ### 23. Transcribe
 Turns speech into TXT and SRT, on this Mac, with Apple's speech recognition.
 - Commits: 9314e81
-- Files: `Sources/OpenShelf/Tools/Media/Transcription.swift`, `Support/Info.plist` (`NSSpeechRecognitionUsageDescription`)
+- Files: `Sources/OpenShelf/Tools/Media/SpeechTranscription.swift` (`SpeechTranscription`, renamed in the 1.9.0 merge), `Support/Info.plist` (`NSSpeechRecognitionUsageDescription`)
 - Check: `swift test --filter writesSRT`. In the app, run Tools → Transcribe on a one-minute audio file; it writes a TXT and an SRT.
 
 ## Image and PDF tools
@@ -220,14 +231,15 @@ Makes ICNS and ICO icons (ICNS through `iconutil`, so every size is kept). Turns
 
 ### 29. Ebooks with calibre
 EPUB, MOBI, AZW3, FB2 and others, to and from each other and PDF, through calibre's `ebook-convert`.
+Since 1.9.0 the code is upstream's `EbookConversion`, plus the fork's FB2 in and out, Word and text out (calibre still makes these from EPUB when Pandoc is installed too; upstream would use Pandoc), and PDF to FB2. Pandoc adds Markdown, HTML and ODT for EPUB. A book with neither tool still offers every archive format.
 - Commits: 4cd1c39
 - Files: `Sources/OpenShelf/Convert/EbookConversion.swift`, `Convert/ExternalTools.swift`, `Convert/FileKind.swift`, `Convert/OutputFormat.swift`
 - Check: `swift test --filter convertsBooksBothWays`.
 
 ### 30. Markup documents with pandoc
-LaTeX, Typst, reST, AsciiDoc and Org, to and from Markdown, Word, HTML, EPUB and text. Markdown ↔ Word, HTML and EPUB without markup is upstream's engine since 1.6.0. Pandoc's row in Settings → Extra Formats (upstream's) lists these formats. A wheel with one format too many leaves out RST: ODT with pandoc, and DOCX, TXT and RTF with Pages installed (so upstream's PAGES fits the 12 wedges); every other wheel keeps it, and Shortcuts' Convert Files offers every format, uncapped (`IntentRouting.formats`).
+LaTeX, Typst, reST, AsciiDoc and Org, to and from Markdown, Word, HTML, EPUB and text. Markdown ↔ Word, HTML and EPUB without markup is upstream's engine since 1.6.0. Pandoc's row in Settings → Extra Formats (upstream's) lists these formats. A wheel with one format too many leaves out ADOC: ODT, DOCX, RTF, Markdown and HTML with pandoc (upstream's ODT output takes the wedge), and TXT with Pages too. DOCX and RTF with both Pandoc and Pages have two too many and also leave out TYP. RST, ORG, TEX, ODT and PAGES always keep their wedges (David's call, 1.9.0 merge). Shortcuts' Convert Files offers every format, uncapped (`IntentRouting.formats`).
 - Commits: e5e1b51
-- Files: `Sources/OpenShelf/Convert/PandocConversion.swift` (`handles`, `markupWriter`, `convertMarkup`), `Convert/Converter.swift`, `Convert/ExtraFormats.swift` (`ExtraTool.pandoc.unlocks`)
+- Files: `Sources/OpenShelf/Convert/PandocConversion.swift` (`handles`, `markupWriter`, `convertMarkup`), `Convert/Converter.swift`, `Convert/ExtraFormats.swift` (`ExtraTool.pandoc.unlocks`), `Convert/OutputFormat.swift` (the ADOC-then-TYP rule in `ConversionCatalog.formats`)
 - Check: `swift test --filter convertsMarkupBothWays`, `--filter iWorkOutputsNeedTheirApp`, `--filter odtWheelKeepsOrg`, `--filter wheelsStayWithinTwelveWedges` and `--filter shortcutsOfferFormatsTheWheelHasNoRoomFor`.
 
 ### 31. Data files
@@ -320,7 +332,7 @@ A Tools-wheel wedge that saves a re-formatted copy as `name.formatted.ext` next 
 - Check: `swift test --filter PrettyPrintTests`. `configsNearTheFileAreIgnored` plants configs next to the file and in the folder above it, and fails if any formatter follows one.
 
 ### 45. Settings lists every tool, and missing-tool hints name it
-Settings → Extra Formats has a collapsed "Command-Line Tools · N of M installed" row under ffmpeg, LibreOffice and Pandoc (Pandoc moved to upstream's own row in 1.7.0). It opens to every other tool OpenShelf finds: cwebp, calibre, yq, cjxl, DuckDB, jet, the ten Pretty Print formatters and commonforms (#47). Each row shows Installed · Homebrew (path on hover) or Copy Homebrew Command; jet's row says its tap is third-party, not homebrew-core. Whether the list is open is remembered. The "X needs Y" toast uses the same list: an EPUB without calibre says "EPUB needs calibre / brew install --cask calibre", and an empty Tools wheel names the missing formatter ("PY needs ruff"). Wheels offering only ZIP, tar and 7z count as having nothing.
+Settings → Extra Formats has a collapsed "Command-Line Tools · N of M installed" row under ffmpeg, LibreOffice and Pandoc (Pandoc moved to upstream's own row in 1.7.0). It opens to every other tool OpenShelf finds: cwebp, calibre, whisper.cpp (with upstream's "Open Models Folder" button while it has no speech model), yq, cjxl, DuckDB, jet, the ten Pretty Print formatters and commonforms (#47). Each row shows Installed · Homebrew (path on hover) or Copy Homebrew Command; jet's row says its tap is third-party, not homebrew-core. Whether the list is open is remembered. The "X needs Y" toast uses the same list: an EPUB without calibre says "EPUB needs calibre / brew install --cask calibre" (books name calibre first, though Pandoc reads EPUB too; upstream shows no hint), and an empty Tools wheel names the missing formatter ("PY needs ruff"). Wheels offering only ZIP, tar and 7z count as having nothing.
 - Commits: this one
 - Files: `Sources/OpenShelf/Convert/CommandLineTool.swift`, `Convert/ExtraFormats.swift` (`MissingTool`, `MissingToolAdvice`), `Settings/ExtraFormatsPane.swift`, `Settings/SettingsTab.swift`, `App/Preferences.swift` (`showsCommandLineTools`), `App/AppDelegate.swift`
 - Check: `swift test --filter CommandLineToolTests` (fails when `ExternalTools` resolves a tool with no Settings row), `--filter MissingToolAdviceTests` and `--filter panesHaveAHeightToFit` (collapsed pane under 700 pt).

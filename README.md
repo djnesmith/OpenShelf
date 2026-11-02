@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/Manan-Santoki/OpenShelf/releases/latest"><img height="40" src="https://img.shields.io/github/v/release/Manan-Santoki/OpenShelf?style=for-the-badge&label=latest&color=3d7bfd&labelColor=131316&logo=github" alt="Latest release"></a>
   &nbsp;
-  <a href="https://github.com/Manan-Santoki/OpenShelf/releases"><img height="40" src="https://img.shields.io/github/downloads/Manan-Santoki/OpenShelf/total?style=for-the-badge&label=downloads&color=2ea043&labelColor=131316&logo=apple&logoColor=white" alt="Downloads"></a>
+  <a href="https://openshelf.space/download"><img height="40" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fopenshelf.space%2Fapi%2Fbadge%2Fdownloads&style=for-the-badge&labelColor=131316&logo=apple&logoColor=white" alt="Downloads"></a>
 </p>
 
 <p align="center">
@@ -55,8 +55,8 @@ See [docs/SPEC.md](docs/SPEC.md) for the full behaviour and roadmap.
 
 ## Install
 
-1. Download **`OpenShelf-<version>.dmg`** from the
-   [latest release](https://github.com/Manan-Santoki/OpenShelf/releases/latest).
+1. [Download the latest **OpenShelf DMG**](https://openshelf.space/download)
+   (or pick a version from [Releases](https://github.com/Manan-Santoki/OpenShelf/releases)).
 2. Open it and drag **OpenShelf** onto the **Applications** folder.
 3. Open OpenShelf from Applications. It lives in the menu bar (the wheel icon),
    and a hands-on tour opens the first time (see below).
@@ -134,16 +134,18 @@ A small card next to the pointer shows progress; click its **×** to cancel.
 | Drag a… | Convert to |
 |---|---|
 | Image (JPG, PNG, HEIC, SVG, …) | PNG, JPG, WEBP², HEIC, TIFF, AVIF, BMP, PDF, DOCX, ZIP |
-| PDF | DOCX, JPG, PNG, TXT, Markdown, EPUB, PPTX, XLSX, ZIP |
-| Document (TXT, RTF, RTFD, DOCX, DOC, ODT, HTML, Markdown) | PDF, DOCX, TXT, Markdown, EPUB, HTML, RTF, PAGES³, ZIP |
+| PDF | DOCX, JPG, PNG, TXT, Markdown, EPUB, PPTX, XLSX, MOBI⁸, AZW3⁸, ZIP |
+| Document (TXT, RTF, RTFD, DOCX, DOC, ODT, HTML, Markdown) | PDF, DOCX, TXT, Markdown, EPUB, HTML, RTF, ODT⁶, PAGES³, ZIP |
+| Book (EPUB)⁶ ⁸ | MOBI⁸, AZW3⁸, PDF⁷ ⁸, DOCX⁶, Markdown⁶, HTML⁶, ODT⁶, TXT⁶, ZIP |
+| Kindle book (MOBI, AZW3, AZW)⁸ | EPUB, MOBI, AZW3, PDF, ZIP |
 | Spreadsheet (CSV, TSV, XLSX) | XLSX, CSV, TSV, PDF, ODS¹, NUMBERS³, ZIP |
 | Spreadsheet (XLS, ODS)¹ | XLSX, CSV, PDF, ODS, ZIP |
 | Slides (PPTX, PPT, ODP)¹ | PDF, JPG, PNG (one image per slide), KEY³, ZIP |
 | Pages document | PDF⁴, DOCX¹, RTF¹, TXT¹, JPG⁴, PNG⁴, ZIP |
 | Numbers spreadsheet | PDF⁴, XLSX¹, CSV¹, ODS¹, JPG⁴, PNG⁴, ZIP |
 | Keynote deck | PDF⁴, PPTX¹, JPG⁴, PNG⁴ (one image per slide), ZIP |
-| Audio (MP3, M4A, WAV, AIFF, FLAC, OGG², Opus², WMA², …) | MP3², M4A, WAV, AIFF, FLAC, OGG², Opus², WMA², ZIP |
-| Video (MP4, MOV, MKV², WebM², AVI², WMV², …) | MP4, MOV, M4A, GIF, MP3², MKV², WebM², AVI², WMV², ZIP |
+| Audio (MP3, M4A, WAV, AIFF, FLAC, OGG², Opus², WMA², …) | MP3², M4A, WAV, AIFF, FLAC, OGG², Opus², WMA², TXT⁵, SRT⁵, VTT⁵, ZIP |
+| Video (MP4, MOV, MKV², WebM², AVI², WMV², …) | MP4, MOV, M4A, GIF, MP3², MKV², WebM², AVI², WMV², SRT⁵, VTT⁵, ZIP |
 | Subtitles (SRT, VTT) | TXT, SRT, VTT, ZIP |
 | Archive (ZIP, TAR, GZ, 7Z, RAR) | Unzip into a folder |
 | Folder or anything else | ZIP, TAR, TAR.GZ |
@@ -161,6 +163,10 @@ each file: a PDF of every page in older files, a picture of the first page
 (JPG and PNG only) in newer ones. Files without a preview need LibreOffice.
 
 ¹ Needs LibreOffice. ² Needs ffmpeg (`brew install webp` also adds WebP).
+⁵ Needs whisper.cpp and a speech model (see [Optional command-line tools](#optional-command-line-tools)).
+⁶ Needs Pandoc; without it an EPUB offers ZIP, TAR and TAR.GZ as before. ODT is offered for Markdown, Word, ODT, HTML and RTF.
+⁷ Through Pandoc, also needs a typesetter (see below); with calibre installed, calibre makes it instead.
+⁸ Needs calibre.
 
 Both are free and optional. Install them from **Settings → Extra Formats**: one
 click downloads the official build (ffmpeg from
@@ -188,8 +194,10 @@ Word files get Word's own heading styles, numbered lists and footnotes.
 Pictures on the web are never downloaded; they're shown by their description.
 
 If [Pandoc](https://pandoc.org) is installed, OpenShelf uses it instead for
-Markdown to Word, HTML, EPUB and RTF, and for
-Word, ODT and HTML to Markdown and EPUB. Pandoc's PDFs also need a typesetter
+Markdown to Word, HTML, EPUB, RTF and ODT, and for
+Word, ODT and HTML to Markdown, EPUB and ODT. Pandoc also opens EPUB books:
+they become Word, Markdown, HTML (pictures included), ODT, plain text and,
+with a typesetter, PDF. Pandoc's PDFs also need a typesetter
 such as MacTeX, Tectonic or Typst; without one, PDFs keep OpenShelf's own
 layout. With LibreOffice installed, Word and ODT documents become PDFs through
 it, keeping their page layout. Should either fail, the built-in conversion
@@ -198,6 +206,46 @@ Install Pandoc from **Settings → Extra Formats** like ffmpeg and LibreOffice:
 OpenShelf downloads its official build from GitHub, checks the checksum GitHub
 lists and John MacFarlane's code signature, and installs it for you alone.
 Homebrew's copy (`brew install pandoc`) is used too.
+
+#### Optional command-line tools
+
+A few conversions come from free command-line tools that OpenShelf uses when
+they're installed, but never downloads, bundles or installs itself. Without
+one, its wedges simply aren't on the wheel; **Settings → Extra Formats** lists
+each with the command that installs it. They're found in Homebrew's folders on
+Apple silicon (`/opt/homebrew/bin`) and Intel (`/usr/local/bin`), MacPorts and
+your PATH, and run with a minimal environment, never your shell's.
+
+| Tool | Install | Adds |
+|---|---|---|
+| [whisper.cpp](https://github.com/ggml-org/whisper.cpp) | `brew install whisper-cpp`, plus a model (below) | Audio to TXT, SRT and VTT; video to SRT and VTT |
+| [Pandoc](https://pandoc.org) | `brew install pandoc` (or **Install** in Settings) | ODT output; EPUB to DOCX, Markdown, HTML, ODT and TXT |
+| A PDF typesetter for Pandoc | `brew install tectonic` or `brew install typst`, or [MacTeX](https://tug.org/mactex/) | PDFs through Pandoc, e.g. EPUB to PDF |
+| [calibre](https://calibre-ebook.com) | `brew install --cask calibre` | EPUB, MOBI and AZW3 to each other and to PDF; PDF to MOBI and AZW3 |
+
+**Transcripts and subtitles** are made entirely on your Mac: the sound is
+decoded (by macOS, or by ffmpeg for formats macOS can't read) and whisper.cpp
+recognises the speech; nothing is uploaded. whisper.cpp needs a speech model,
+which OpenShelf doesn't download either: put a `ggml-*.bin` file from
+[huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
+in `~/Library/Application Support/OpenShelf/Models` (**Settings → Extra
+Formats → Open Models Folder**). `ggml-base.bin` (150 MB) is quick and good;
+`ggml-small.bin` or `ggml-large-v3-turbo.bin` are more accurate and slower.
+Models ending in `.en` are English-only; the others detect the language. With
+several models, the most capable is used.
+
+```sh
+brew install whisper-cpp
+mkdir -p ~/Library/Application\ Support/OpenShelf/Models
+curl -L -o ~/Library/Application\ Support/OpenShelf/Models/ggml-base.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+```
+
+**Ebooks** go through calibre's `ebook-convert`, found inside `calibre.app` in
+`/Applications` or `~/Applications`, or on Homebrew's path. DRM-protected
+Kindle books can't be converted. calibre makes PDFs with a built-in browser
+engine that occasionally crashes; OpenShelf tries once more when it does, and
+macOS may still show a "calibre quit unexpectedly" report.
 
 #### Output settings
 
@@ -362,7 +410,8 @@ tab you used last:
   results back to the shelf, and [watched folders](#watched-folders)
 - **Output:** how conversions encode video, audio, images and GIFs (see
   [Output settings](#output-settings))
-- **Extra Formats:** install or remove ffmpeg, LibreOffice and Pandoc
+- **Extra Formats:** install or remove ffmpeg, LibreOffice and Pandoc, and
+  see which [optional command-line tools](#optional-command-line-tools) are found
 - **Updates:** automatic checks and installs, and Check Now
 
 If the wheel icon is out of sight (behind the notch, or tucked into the menu
@@ -405,6 +454,12 @@ make dmg      # drag-to-Applications installer (after make release; needs create
 Shortcuts actions appear, using `appintentsmetadataprocessor` from Xcode. With
 only the Command Line Tools it prints a warning and builds the app without
 them; everything else works. `SKIP_APPINTENTS=1 make app` skips the step.
+
+Tests never need ffmpeg, LibreOffice, Pandoc, whisper.cpp or calibre: the
+optional-tool converters are tested with a fake process runner. To also run
+them end to end against the tools installed on your Mac,
+`OPENSHELF_TOOL_TESTS=1 swift test` (they're opt-in because they keep every
+core busy).
 
 You can also open `Package.swift` in Xcode.
 
@@ -459,6 +514,13 @@ installed copies find the update: Sparkle reads
 the project's EdDSA key (stored as the `SPARKLE_PRIVATE_KEY` repository
 secret; the public key is `SUPublicEDKey` in `Support/Info.plist`). The **CI**
 workflow builds and tests every push and pull request.
+
+The website, [openshelf.space](https://openshelf.space), is maintained
+separately and isn't part of this repository. It picks up a release by itself:
+its server reads the newest release from GitHub, so the download buttons,
+version and download count update within ten minutes.
+The count is DMG downloads only; GitHub's own total also counts every update
+check and in-app update.
 
 ## Contributing
 

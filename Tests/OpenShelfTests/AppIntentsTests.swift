@@ -61,8 +61,8 @@ struct IntentRoutingTests {
         let tools = ExternalTools(ffmpeg: nil, cwebp: nil, pandoc: URL(fileURLWithPath: "/usr/bin/true"), iWorkApps: [.pages])
         for name in ["a.docx", "a.txt", "a.rtf"] {
             let available = IntentRouting.formats(for: url(name), tools: tools)
-            #expect(!ConversionCatalog.formats(for: url(name), tools: tools).contains(.rst), "\(name)")
-            #expect(available.contains(.rst) && available.contains(.pages), "\(name)")
+            #expect(!ConversionCatalog.formats(for: url(name), tools: tools).contains(.adoc), "\(name)")
+            #expect(available.contains(.adoc) && available.contains(.typ) && available.contains(.pages), "\(name)")
         }
     }
 

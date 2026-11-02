@@ -25,7 +25,7 @@ enum ExtraTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .ffmpeg: "MP3, OGG, WebP, MKV, WebM, AVI and WMV"
         case .libreOffice: "PowerPoint, Keynote, Pages, Numbers, ODP, XLS and ODS"
-        case .pandoc: "LaTeX, Typst, reST, AsciiDoc and Org, and Pandoc’s Markdown and Word conversions"
+        case .pandoc: "LaTeX, Typst, reST, AsciiDoc and Org, and Pandoc’s Markdown, Word, ODT and EPUB conversions"
         }
     }
 
@@ -126,7 +126,10 @@ enum MissingToolAdvice {
     /// their ZIP wheel is all there is.
     static func blockingTool(for urls: [URL], formats: [OutputFormat], tools: ExternalTools) -> MissingTool? {
         guard !urls.isEmpty, onlyArchives(formats) else { return nil }
-        return MissingTool.allCases.first { tool in
+        // Books name calibre, which reads every kind; Pandoc reads only EPUB.
+        let books = urls.allSatisfy { FileKind(url: $0) == .ebook }
+        let candidates = books ? [.commandLine(.calibre)] + MissingTool.allCases : MissingTool.allCases
+        return candidates.first { tool in
             !tool.isInstalled(in: tools)
                 && !onlyArchives(ConversionCatalog.formats(for: urls, tools: tool.assumedInstalled(in: tools)))
         }

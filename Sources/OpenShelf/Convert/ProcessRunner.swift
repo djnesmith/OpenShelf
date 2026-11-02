@@ -6,9 +6,13 @@ struct ProcessFailure: LocalizedError {
     /// Everything the tool wrote to standard error (the first 4 KB), for
     /// callers that recognise particular failures.
     var errorOutput: String = ""
+    /// Whether the tool crashed (ended by a signal such as SIGSEGV) rather
+    /// than exiting with an error of its own.
+    var crashed: Bool = false
 
     var errorDescription: String? {
-        message.isEmpty ? "\(tool) failed." : "\(tool) failed: \(FailureMessage.sanitized(message))"
+        if crashed { return "\(tool) crashed." }
+        return message.isEmpty ? "\(tool) failed." : "\(tool) failed: \(FailureMessage.sanitized(message))"
     }
 }
 
@@ -32,6 +36,36 @@ struct MissingToolError: LocalizedError, Equatable {
     }
 }
 
+/// One run of a command-line tool, as the optional-tool converters (whisper.cpp,
+/// Pandoc, calibre) describe it: arguments are always an array, never a shell
+/// string, and files are always passed as absolute paths, so a name starting
+/// with "-" can't be read as an option.
+struct ToolInvocation: Equatable, Sendable {
+    var executable: URL
+    var arguments: [String]
+    var currentDirectory: URL? = nil
+    /// Added to the minimal environment (see `ChildEnvironment`).
+    var extraEnvironment: [String: String] = [:]
+}
+
+/// Starts a tool and passes on each line it prints (standard output and
+/// error), for progress. `ProcessRunner` normally; tests swap in a fake that
+/// records the invocation and writes what the tool would have.
+typealias ToolRunner = @Sendable (ToolInvocation, _ onLine: @escaping @Sendable (String) -> Void) async throws -> Void
+
+extension ProcessRunner {
+    static let live: ToolRunner = { invocation, onLine in
+        try await run(
+            invocation.executable,
+            invocation.arguments,
+            currentDirectory: invocation.currentDirectory,
+            extraEnvironment: invocation.extraEnvironment,
+            onOutputLine: onLine,
+            onErrorLine: onLine
+        )
+    }
+}
+
 /// Runs command-line tools without blocking, with cancellation and line-by-line
 /// output for progress reporting.
 enum ProcessRunner {
@@ -43,7 +77,8 @@ enum ProcessRunner {
         standardInputFile: URL? = nil,
         standardOutputFile: URL? = nil,
         extraEnvironment: [String: String] = [:],
-        onOutputLine: (@Sendable (String) -> Void)? = nil
+        onOutputLine: (@Sendable (String) -> Void)? = nil,
+        onErrorLine: (@Sendable (String) -> Void)? = nil
     ) async throws {
         // Launching a missing file fails with a cryptic "file doesn't exist";
         // an optional tool may have been uninstalled since it was detected.
@@ -71,7 +106,7 @@ enum ProcessRunner {
         let readers = DispatchGroup()
         let errorPipe = Pipe()
         process.standardError = errorPipe
-        readToEnd(errorPipe.fileHandleForReading, group: readers) { box.appendError($0) }
+        readToEnd(errorPipe.fileHandleForReading, group: readers) { box.appendError($0, onLine: onErrorLine) }
 
         let outputPipe = Pipe()
         // Also close parent writers when launch fails, so the reader threads
@@ -105,9 +140,15 @@ enum ProcessRunner {
         // A process the tool started may keep a pipe open; don't wait on it for long.
         await waitForReaders(readers, upTo: .seconds(2))
         box.finishOutput(onLine: onOutputLine)
+        box.finishError(onLine: onErrorLine)
         try Task.checkCancellation()
         guard process.terminationStatus == 0 else {
-            throw ProcessFailure(tool: executable.lastPathComponent, message: box.lastErrorLine, errorOutput: box.errorText)
+            throw ProcessFailure(
+                tool: executable.lastPathComponent,
+                message: box.lastErrorLine,
+                errorOutput: box.errorText,
+                crashed: process.terminationReason == .uncaughtSignal
+            )
         }
     }
 }
@@ -143,6 +184,15 @@ private final class OnceFlag: @unchecked Sendable {
     func claim() -> Bool { lock.withLock { defer { claimed = true }; return !claimed } }
 }
 
+/// Whether `line` is one of Chromium's own log lines, as calibre's PDF
+/// output writes them: "[60878:259:1101/181024.142716:ERROR:service_utils.cc(339)] …".
+func isChromiumLog(_ line: Substring) -> Bool {
+    guard line.hasPrefix("["), let close = line.firstIndex(of: "]") else { return false }
+    let fields = line[line.index(after: line.startIndex)..<close].split(separator: ":")
+    return fields.count >= 5 && fields[0].allSatisfy(\.isNumber)
+        && ["INFO", "WARNING", "ERROR", "FATAL", "VERBOSE1"].contains(fields[3])
+}
+
 /// Owns a `Process` and its buffered output so they can be shared with the
 /// cancellation and pipe handlers.
 private final class ProcessBox: @unchecked Sendable {
@@ -150,6 +200,7 @@ private final class ProcessBox: @unchecked Sendable {
     private let lock = NSLock()
     private var errorData = Data()
     private var pendingOutput = ""
+    private var pendingError = ""
 
     func terminate() {
         lock.withLock {
@@ -157,8 +208,31 @@ private final class ProcessBox: @unchecked Sendable {
         }
     }
 
-    func appendError(_ data: Data) {
-        lock.withLock { errorData.append(data) }
+    func appendError(_ data: Data, onLine: (@Sendable (String) -> Void)? = nil) {
+        let lines: [String] = lock.withLock {
+            errorData.append(data)
+            guard onLine != nil else { return [] }
+            return Self.splitLines(&pendingError, adding: data)
+        }
+        if let onLine { lines.forEach(onLine) }
+    }
+
+    /// Delivers a last error line that had no line break after it.
+    func finishError(onLine: (@Sendable (String) -> Void)?) {
+        guard let onLine else { return }
+        let rest: String = lock.withLock {
+            defer { pendingError = "" }
+            return pendingError
+        }
+        if !rest.isEmpty { onLine(rest) }
+    }
+
+    /// Adds `data` to `pending` and takes out the complete lines.
+    private static func splitLines(_ pending: inout String, adding data: Data) -> [String] {
+        pending += String(decoding: data, as: UTF8.self)
+        var parts = pending.components(separatedBy: "\n")
+        pending = parts.removeLast()
+        return parts
     }
 
     var errorText: String {
@@ -167,9 +241,10 @@ private final class ProcessBox: @unchecked Sendable {
 
     var lastErrorLine: String {
         lock.withLock {
-            String(decoding: errorData, as: UTF8.self)
-                .split(whereSeparator: \.isNewline)
-                .last
+            let lines = String(decoding: errorData, as: UTF8.self).split(whereSeparator: \.isNewline)
+            // Chromium inside calibre logs "[pid:tid:date:ERROR:file(line)] …"
+            // after the real error; that's never the reason a tool failed.
+            return (lines.last { !isChromiumLog($0) } ?? lines.last)
                 .map(String.init)?
                 .trimmingCharacters(in: .whitespaces) ?? ""
         }
@@ -187,12 +262,7 @@ private final class ProcessBox: @unchecked Sendable {
 
     func appendOutput(_ data: Data, onLine: (@Sendable (String) -> Void)?) {
         guard let onLine, !data.isEmpty else { return }
-        let lines: [String] = lock.withLock {
-            pendingOutput += String(decoding: data, as: UTF8.self)
-            var parts = pendingOutput.components(separatedBy: "\n")
-            pendingOutput = parts.removeLast()
-            return parts
-        }
+        let lines: [String] = lock.withLock { Self.splitLines(&pendingOutput, adding: data) }
         lines.forEach(onLine)
     }
 }

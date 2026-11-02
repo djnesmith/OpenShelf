@@ -71,7 +71,7 @@ enum ToolLauncher {
 
         case .transcribe:
             runner.run(title: "Transcribing", jobs: urls.map { [$0] }, near: location, sourceShelfID: sourceShelfID) { sources, progress in
-                try await Transcription.transcribe(sources[0], progress: progress)
+                try await SpeechTranscription.transcribe(sources[0], progress: progress)
             }
 
         case .pdfImages:

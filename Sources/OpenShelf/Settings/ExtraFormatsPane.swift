@@ -23,7 +23,7 @@ struct ExtraFormatsPane: View {
             Section {
                 DisclosureGroup(isExpanded: $preferences.showsCommandLineTools) {
                     ForEach(CommandLineTool.allCases) { tool in
-                        CommandLineToolRow(tool: tool, path: tool.path(in: installer.tools))
+                        CommandLineToolRow(tool: tool, path: tool.path(in: installer.tools), incomplete: tool.isIncomplete(in: installer.tools))
                     }
                 } label: {
                     Text(CommandLineTool.title(tools: installer.tools))
@@ -54,6 +54,8 @@ struct ExtraFormatsPane: View {
 private struct CommandLineToolRow: View {
     let tool: CommandLineTool
     let path: URL?
+    /// whisper.cpp without a speech model.
+    var incomplete = false
 
     var body: some View {
         LabeledContent {
@@ -72,7 +74,18 @@ private struct CommandLineToolRow: View {
         } label: {
             Text(tool.name)
             Text(tool.installNote.map { "\(tool.adds) · \(tool.installCommand), \($0)" } ?? tool.adds)
+            if incomplete {
+                Text(.init(OptionalTool.whisper.completionHint))
+                    .font(.caption)
+                Button("Open Models Folder") { openModelsFolder() }
+            }
         }
+    }
+
+    private func openModelsFolder() {
+        let folder = ManagedTools.modelsDirectory
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(folder)
     }
 }
 

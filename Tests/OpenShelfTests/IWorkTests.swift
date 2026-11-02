@@ -234,14 +234,20 @@ struct IWorkTests {
         for name in ["a.rtf", "a.txt", "a.doc"] {
             #expect(ConversionCatalog.formats(for: [url(name)], tools: pages).contains(.pages), "\(name)")
         }
-        // With pandoc the wheel is full; RST gives way to Pages.
+        // With pandoc the wheel is full: ADOC gives way to Pages, and on Word
+        // and RTF (which also get ODT) TYP too. RST, ORG and TEX stay.
         let pagesAndPandoc = ExternalTools(ffmpeg: nil, cwebp: nil, pandoc: URL(fileURLWithPath: "/usr/bin/true"), iWorkApps: [.pages])
         let pandocOnly = ExternalTools(ffmpeg: nil, cwebp: nil, pandoc: URL(fileURLWithPath: "/usr/bin/true"))
-        for name in ["a.docx", "a.txt", "a.rtf"] {
-            let expected: [OutputFormat] = [.pdf, .docx, .txt, .md, .epub, .html, .rtf, .tex, .typ, .adoc, .org, .pages, .zip]
-                .filter { !$0.matches(extension: String(name.dropFirst(2))) }
-            #expect(ConversionCatalog.formats(for: [url(name)], tools: pagesAndPandoc) == expected, "\(name)")
+        let expected: [String: [OutputFormat]] = [
+            "a.docx": [.pdf, .txt, .md, .epub, .html, .rtf, .odt, .tex, .rst, .org, .pages, .zip],
+            "a.txt": [.pdf, .docx, .md, .epub, .html, .rtf, .tex, .typ, .rst, .org, .pages, .zip],
+            "a.rtf": [.pdf, .docx, .txt, .md, .epub, .html, .odt, .tex, .rst, .org, .pages, .zip],
+        ]
+        for (name, wheel) in expected {
+            #expect(ConversionCatalog.formats(for: [url(name)], tools: pagesAndPandoc) == wheel, "\(name)")
             #expect(ConversionCatalog.formats(for: [url(name)], tools: pandocOnly).contains(.rst), "\(name)")
+            let all = ConversionCatalog.formats(for: url(name), tools: pagesAndPandoc, fitsTheWheel: false)
+            #expect(all.contains(.adoc) && all.contains(.typ), "\(name)")
         }
         // Pages can't open Markdown, HTML or EPUB.
         #expect(!ConversionCatalog.formats(for: [url("a.md")], tools: all).contains(.pages))

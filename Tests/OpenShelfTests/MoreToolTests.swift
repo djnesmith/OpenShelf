@@ -33,12 +33,12 @@ struct MoreToolTests {
 
     // MARK: Transcription (the recogniser itself needs permission, so only the writing is tested)
 
-    typealias Segment = Transcription.Segment
+    typealias Segment = SpeechTranscription.Segment
 
     @Test func splitsLongAudioIntoPieces() {
-        #expect(Transcription.chunkStarts(duration: 0).isEmpty)
-        #expect(Transcription.chunkStarts(duration: 30) == [0])
-        #expect(Transcription.chunkStarts(duration: 120) == [0, 50, 100])
+        #expect(SpeechTranscription.chunkStarts(duration: 0).isEmpty)
+        #expect(SpeechTranscription.chunkStarts(duration: 30) == [0])
+        #expect(SpeechTranscription.chunkStarts(duration: 120) == [0, 50, 100])
     }
 
     @Test func groupsWordsIntoSubtitles() {
@@ -50,15 +50,15 @@ struct MoreToolTests {
             Segment(text: "you", start: 1.7, duration: 0.3),
             Segment(text: "Later", start: 5, duration: 0.5),
         ]
-        let cues = Transcription.cues(words)
+        let cues = SpeechTranscription.cues(words)
         #expect(cues.map(\.text) == ["Hello there.", "How are you", "Later"])
         #expect(cues[1].start == 1 && abs(cues[1].end - 2) < 0.0001)
-        #expect(Transcription.plainText(words) == "Hello there. How are you\n\nLater\n")
+        #expect(SpeechTranscription.plainText(words) == "Hello there. How are you\n\nLater\n")
     }
 
     @Test func writesSRT() {
-        #expect(Transcription.srtTime(3723.45) == "01:02:03,450")
-        let srt = Transcription.srt([Segment(text: "Hi", start: 0, duration: 1.5), Segment(text: "Bye", start: 2, duration: 1)])
+        #expect(SpeechTranscription.srtTime(3723.45) == "01:02:03,450")
+        let srt = SpeechTranscription.srt([Segment(text: "Hi", start: 0, duration: 1.5), Segment(text: "Bye", start: 2, duration: 1)])
         #expect(srt == "1\n00:00:00,000 --> 00:00:01,500\nHi\n\n2\n00:00:02,000 --> 00:00:03,000\nBye\n")
     }
 

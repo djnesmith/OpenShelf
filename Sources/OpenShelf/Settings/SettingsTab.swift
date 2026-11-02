@@ -70,6 +70,7 @@ enum SettingsTab: String, CaseIterable, Sendable {
                 + ["typesetter \(ToolInstaller.shared.tools.pdfEngine != nil)"]
                 + CommandLineTool.allCases.map { "\($0.rawValue) \($0.path(in: ToolInstaller.shared.tools) != nil)" }
                 + ["expanded \(Preferences.shared.showsCommandLineTools)"]
+                + ["whisper model \(ToolInstaller.shared.tools.whisperModel != nil)"]
         case .shelves:
             // A row per watched folder; a missing folder's row says so.
             WatchedFolders.shared.folders.map { folder in

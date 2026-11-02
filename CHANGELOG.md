@@ -22,6 +22,43 @@ Format: one `## [x.y.z] - YYYY-MM-DD` heading per version, newest first.
   are signed with an Apple developer certificate: macOS only runs Shortcuts
   actions from apps signed that way.
 
+## [1.9.0] - 2026-11-01
+
+Transcripts and subtitles, ODT and EPUB through Pandoc, and ebooks with
+calibre, all from free tools you install yourself.
+
+### New
+
+- **Transcripts and subtitles, made on your Mac.** With
+  [whisper.cpp](https://github.com/ggml-org/whisper.cpp) installed
+  (`brew install whisper-cpp`) and a speech model in
+  `~/Library/Application Support/OpenShelf/Models`, the Convert wheel turns
+  audio into TXT, SRT and VTT, and video into SRT and VTT. Nothing is
+  uploaded. Without whisper.cpp or a model the wedges don't appear;
+  Settings → Extra Formats says what's missing. OpenShelf never downloads
+  whisper.cpp or its models itself.
+- **ODT and EPUB through Pandoc.** With Pandoc installed, Markdown, Word,
+  HTML and RTF documents also convert to ODT, and EPUB books convert to
+  Word, Markdown, HTML (pictures included), ODT and plain text, plus PDF
+  when a typesetter such as Tectonic, Typst or MacTeX is installed. Without
+  Pandoc an EPUB offers ZIP, TAR and TAR.GZ, as before.
+- **Ebooks with calibre.** With [calibre](https://calibre-ebook.com)
+  installed (`brew install --cask calibre`), EPUB, MOBI and AZW3 books
+  convert to each other and to PDF, and PDFs convert to MOBI and AZW3, with
+  progress. OpenShelf never installs calibre; without it nothing changes.
+
+## [1.8.2] - 2026-10-30
+
+Word documents keep their pictures in PDFs.
+
+### Fixed and improved
+
+- **Word to PDF keeps pictures without LibreOffice.** Converting a Word
+  document (.docx or .doc) to PDF used to drop its pictures and page layout
+  unless LibreOffice was installed. It's now printed the way Quick Look shows
+  it, with its pictures, headers, formatting, paper size and margins.
+  LibreOffice still does it when it's installed.
+
 ## [1.8.1] - 2026-10-28
 
 Smoother shelves.

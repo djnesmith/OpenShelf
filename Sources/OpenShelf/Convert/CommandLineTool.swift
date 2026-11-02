@@ -7,6 +7,7 @@ import Foundation
 enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
     case cwebp
     case calibre
+    case whisper
     case yq
     case cjxl
     case duckdb
@@ -34,6 +35,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: "cwebp"
         case .calibre: "calibre"
+        case .whisper: "whisper.cpp"
         case .yq: "yq"
         case .cjxl: "cjxl"
         case .duckdb: "DuckDB"
@@ -56,6 +58,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: "Smaller WebP images"
         case .calibre: "EPUB, MOBI, AZW3 and FB2"
+        case .whisper: "Transcripts (TXT) and subtitles (SRT, VTT) of audio and video, made offline"
         case .yq: "YAML, XML and CSV data"
         case .cjxl: "JPEG XL"
         case .duckdb: "Parquet"
@@ -77,6 +80,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: "brew install webp"
         case .calibre: "brew install --cask calibre"
+        case .whisper: "brew install whisper-cpp"
         case .yq: "brew install yq"
         case .cjxl: "brew install jpeg-xl"
         case .duckdb: "brew install duckdb"
@@ -115,6 +119,9 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: tools.cwebp = placeholder
         case .calibre: tools.ebookConvert = placeholder
+        case .whisper:
+            tools.whisper = placeholder
+            tools.whisperModel = placeholder
         case .yq: tools.yq = placeholder
         case .cjxl: tools.cjxl = placeholder
         case .duckdb: tools.duckdb = placeholder
@@ -137,6 +144,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .cwebp: tools.cwebp
         case .calibre: tools.ebookConvert
+        case .whisper: tools.whisper
         case .yq: tools.yq
         case .cjxl: tools.cjxl
         case .duckdb: tools.duckdb
@@ -152,5 +160,10 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .rustfmt: tools.formatters.rustfmt
         case .commonforms: tools.commonforms
         }
+    }
+
+    /// Installed, but missing what it needs to work: whisper.cpp without a speech model.
+    func isIncomplete(in tools: ExternalTools) -> Bool {
+        self == .whisper && tools.whisper != nil && tools.whisperModel == nil
     }
 }

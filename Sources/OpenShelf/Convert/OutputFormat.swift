@@ -6,7 +6,7 @@ enum OutputFormat: String, CaseIterable, Hashable, Sendable {
     // Images
     case png, jpg, webp, heic, tiff, avif, bmp, gif
     // Documents
-    case pdf, docx, txt, rtf, html, md, epub, pptx
+    case pdf, docx, txt, rtf, html, md, epub, pptx, odt
     // Spreadsheets
     case xlsx, csv, tsv, ods
     // Audio and video
@@ -141,7 +141,7 @@ enum ConversionCatalog {
         }
     }
 
-    /// - Parameter fitsTheWheel: False for every format (Shortcuts): no `maxWedges` cut, and RST is kept.
+    /// - Parameter fitsTheWheel: False for every format (Shortcuts): no `maxWedges` cut, and ADOC and TYP are kept.
     static func formats(for url: URL, tools: ExternalTools, fitsTheWheel: Bool = true) -> [OutputFormat] {
         let ext = url.pathExtension.lowercased()
         let hasFFmpeg = tools.ffmpeg != nil
@@ -161,7 +161,7 @@ enum ConversionCatalog {
             if ext == "gif" { formats.append(.apng) }
         case .pdf:
             formats = [.docx, .jpg, .png, .txt, .md, .epub, .pptx, .xlsx]
-            if tools.ebookConvert != nil { formats += EbookConversion.calibreOnly.sortedLike(EbookConversion.formats) }
+            if tools.ebookConvert != nil { formats += EbookConversion.formatsForPDF }
         case .document where PandocConversion.markupExtensions.contains(ext):
             if tools.pandoc != nil {
                 formats = PandocConversion.formatsForMarkup
@@ -172,6 +172,8 @@ enum ConversionCatalog {
         case .document:
             formats = [.pdf, .docx, .txt, .md, .epub, .html, .rtf]
             if tools.pandoc != nil, PandocConversion.reader(for: url) != nil {
+                // Only Pandoc writes OpenDocument text well.
+                if PandocConversion.readers[ext] != nil { formats.append(.odt) }
                 formats += PandocConversion.markupFormats
             }
         case .spreadsheet:
@@ -187,6 +189,8 @@ enum ConversionCatalog {
                 // Ogg, Opus, WMA and friends can only be decoded by ffmpeg.
                 formats = hasFFmpeg ? [.mp3, .m4a, .wav, .aiff, .flac, .ogg, .opus, .wma] : []
             }
+            // Speech to text, once there's a way to read the sound.
+            if tools.canTranscribe, !formats.isEmpty { formats += Transcription.audioFormats }
         case .video:
             if MediaFormats.isAVFoundationReadable(url) {
                 // GIF is made natively when ffmpeg isn't installed.
@@ -195,9 +199,10 @@ enum ConversionCatalog {
             } else {
                 formats = hasFFmpeg ? [.mp4, .mov, .m4a, .gif, .mp3, .mkv, .webm, .avi, .wmv, .apng] : []
             }
-            // Silent videos have nothing to extract as audio.
+            if tools.canTranscribe, !formats.isEmpty { formats += Transcription.videoFormats }
+            // Silent videos have nothing to extract as audio, or to transcribe.
             if MediaProbe.hasAudioTrack(url.resolvingSymlinksInPath(), ffprobe: tools.ffprobe) == false {
-                formats.removeAll(where: \.isAudioOnly)
+                formats.removeAll { $0.isAudioOnly || Transcription.handles($0) }
             }
         case .subtitle:
             formats = SubtitleConversion.formats(for: url, tools: tools)
@@ -205,9 +210,9 @@ enum ConversionCatalog {
             formats = DataConversion.formats(forExtension: ext, tools: tools) + DatabaseConversion.formats(forExtension: ext, tools: tools)
                 + EdnConversion.formats(forExtension: ext, tools: tools)
         case .ebook:
-            // Without calibre a book is just a file, as before.
-            guard tools.ebookConvert != nil else { return archiveFormats }
-            formats = EbookConversion.formats
+            // Without a tool that reads books, a book is just a file, as before.
+            formats = EbookConversion.formats(forBook: url, tools: tools)
+            guard !formats.isEmpty else { return archiveFormats }
         case .archive:
             return [.extract]
         case .folder, .other:
@@ -218,10 +223,11 @@ enum ConversionCatalog {
             formats.append(iWork.outputFormat)
         }
         formats.removeAll { $0.matches(extension: ext) }
-        // A wheel with one too many (ODT, or Word with Pages): RST gives way,
-        // so ORG and PAGES keep their wedges.
-        if fitsTheWheel, formats.count > maxWedges - 1 {
-            formats.removeAll { $0 == .rst }
+        // A wheel with one too many (ODT, Word and Markdown with Pandoc):
+        // ADOC gives way. Word and RTF with Pandoc and Pages have one more:
+        // TYP gives way too. Shortcuts keeps both.
+        for format in [OutputFormat.adoc, .typ] where fitsTheWheel && formats.count > maxWedges - 1 {
+            formats.removeAll { $0 == format }
         }
         return wheel(formats, fitsTheWheel)
     }

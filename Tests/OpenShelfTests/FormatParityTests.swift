@@ -176,23 +176,23 @@ struct FormatCatalogTests {
         return tools
     }
 
-    /// The wheel's cut never drops a format silently; only RST gives way.
+    /// The wheel's cut never drops a format silently; only ADOC and TYP give way.
     @Test func wheelsStayWithinTwelveWedges() {
         for name in ["a.jpg", "a.gif", "a.pdf", "a.docx", "a.txt", "a.rtf", "a.odt", "a.md", "a.html", "a.epub", "a.tex", "a.mkv", "a.mov", "a.ogg", "a.aiff",
                      "a.csv", "a.xlsx", "a.xls", "a.json", "a.parquet", "a.pptx", "a.pages", "a.numbers", "a.key"] {
             let wheel = ConversionCatalog.formats(for: url(name), tools: everything)
             let full = ConversionCatalog.formats(for: url(name), tools: everything, fitsTheWheel: false)
             #expect(wheel.count <= ConversionCatalog.maxWedges, "\(name)")
-            #expect(Set(full).subtracting(wheel).isSubset(of: [.rst]), "\(name) loses \(Set(full).subtracting(wheel))")
+            #expect(Set(full).subtracting(wheel).isSubset(of: [.adoc, .typ]), "\(name) loses \(Set(full).subtracting(wheel))")
         }
     }
 
-    /// ODT with pandoc has one format too many; RST gives way so ORG stays.
+    /// ODT with pandoc has one format too many; ADOC gives way so RST and ORG stay.
     @Test func odtWheelKeepsOrg() {
         let pandoc = ExternalTools(ffmpeg: nil, cwebp: nil, pandoc: URL(fileURLWithPath: "/usr/bin/true"))
         let wheel = ConversionCatalog.formats(for: url("a.odt"), tools: pandoc)
-        #expect(wheel == [.pdf, .docx, .txt, .md, .epub, .html, .rtf, .tex, .typ, .adoc, .org, .zip])
-        #expect(ConversionCatalog.formats(for: url("a.odt"), tools: pandoc, fitsTheWheel: false).contains(.rst))
+        #expect(wheel == [.pdf, .docx, .txt, .md, .epub, .html, .rtf, .tex, .typ, .rst, .org, .zip])
+        #expect(ConversionCatalog.formats(for: url("a.odt"), tools: pandoc, fitsTheWheel: false).contains(.adoc))
     }
 }
 

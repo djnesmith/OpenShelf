@@ -1,9 +1,10 @@
 import Foundation
 
 /// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
-/// calibre's ebook-convert, pandoc with a program it can make PDFs with, yq,
-/// cjxl (JPEG XL), DuckDB, jet (EDN), commonforms (Make Fillable), the
-/// source-code formatters Pretty Print uses, and Pages, Numbers and Keynote.
+/// calibre's ebook-convert, pandoc with a program it can make PDFs with,
+/// whisper.cpp with a speech model, yq, cjxl (JPEG XL), DuckDB, jet (EDN),
+/// commonforms (Make Fillable), the source-code formatters Pretty Print uses,
+/// and Pages, Numbers and Keynote.
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
     var cwebp: URL?
@@ -21,6 +22,15 @@ struct ExternalTools: Equatable, Sendable {
     var formatters = Formatters()
     /// Which of Pages, Numbers and Keynote are installed, to save files as theirs.
     var iWorkApps: Set<IWorkFormat> = []
+    /// whisper.cpp's command-line program, for transcripts and subtitles.
+    var whisper: URL? = nil
+    /// The speech model whisper.cpp transcribes with (see `Transcription.preferredModel`).
+    var whisperModel: URL? = nil
+
+    /// whisper.cpp does nothing without a model, so both are needed.
+    var canTranscribe: Bool {
+        whisper != nil && whisperModel != nil
+    }
 
     /// Pretty Print's formatters (xmllint ships with macOS).
     struct Formatters: Equatable, Sendable {
@@ -93,6 +103,14 @@ struct ExternalTools: Equatable, Sendable {
                 .map { $0.appendingPathComponent(name) }
                 .first { FileManager.default.isExecutableFile(atPath: $0.path) }
         }.first
+        // Homebrew's whisper.cpp names it whisper-cli; builds before 1.7.4, whisper-cpp.
+        let whisper = find("whisper-cli", ignoredAs: "whisper") ?? find("whisper-cpp", ignoredAs: "whisper")
+        // calibre's command-line tools live inside its app; `brew install
+        // --cask calibre` also links them into Homebrew's bin.
+        let calibreApps = ignored.contains("calibre") ? [] : locations.calibreApps
+        let ebookConvert = calibreApps.map { $0.appendingPathComponent("Contents/MacOS/ebook-convert") }
+            .first { FileManager.default.isExecutableFile(atPath: $0.path) }
+            ?? find("ebook-convert", ignoredAs: "calibre")
         return ExternalTools(
             ffmpeg: find("ffmpeg", ignoredAs: "ffmpeg"),
             cwebp: find("cwebp", ignoredAs: "cwebp"),
@@ -100,9 +118,7 @@ struct ExternalTools: Equatable, Sendable {
             libreOffice: apps
                 .map { $0.appendingPathComponent("Contents/MacOS/soffice") }
                 .first { FileManager.default.isExecutableFile(atPath: $0.path) },
-            ebookConvert: (locations.calibreApps.map { $0.appendingPathComponent("Contents/MacOS/ebook-convert") }
-                + locations.commandDirectories.map { $0.appendingPathComponent("ebook-convert") })
-                .first { FileManager.default.isExecutableFile(atPath: $0.path) },
+            ebookConvert: ebookConvert,
             pandoc: pandoc,
             pdfEngine: pdfEngine,
             yq: find("yq", ignoredAs: "yq"),
@@ -129,15 +145,17 @@ struct ExternalTools: Equatable, Sendable {
                         Bundle(url: directory.appendingPathComponent(name))?.bundleIdentifier.map(app.bundleIdentifiers.contains) == true
                     }
                 }
-            })
+            }),
+            whisper: whisper,
+            whisperModel: whisper == nil ? nil : Transcription.preferredModel(in: locations.modelDirectories)
         )
     }
 
     /// Tools whose Homebrew, MacPorts and /Applications copies are ignored, to
     /// try OpenShelf as someone without them sees it, and to try installing
     /// them from Settings: `defaults write com.djnesmith.OpenShelf
-    /// IgnoredExternalTools -array ffmpeg cwebp libreoffice pandoc` ("ffmpeg"
-    /// covers ffprobe too; "iwork" hides Pages, Numbers and Keynote).
+    /// IgnoredExternalTools -array ffmpeg cwebp libreoffice pandoc whisper calibre`
+    /// ("ffmpeg" covers ffprobe too; "iwork" hides Pages, Numbers and Keynote).
     /// `defaults delete` the key to undo.
     static var ignoredTools: Set<String> {
         let names = UserDefaults.standard.stringArray(forKey: "IgnoredExternalTools") ?? []
@@ -154,6 +172,7 @@ struct ToolLocations: Sendable {
     /// Where OpenShelf installs tools itself (see `ToolInstallation`).
     var ownCommandDirectories: [URL] = []
     var ownLibreOfficeApps: [URL] = []
+    /// Where calibre.app is looked for.
     var calibreApps: [URL] = []
     /// Xcode's swift-format, which isn't on any PATH.
     var swiftFormat: [URL] = []
@@ -162,6 +181,8 @@ struct ToolLocations: Sendable {
     var commonforms: [URL] = []
     /// Where Pages, Numbers and Keynote are looked for.
     var applicationDirectories: [URL] = []
+    /// Where whisper.cpp's speech models are looked for.
+    var modelDirectories: [URL] = []
 
     /// Homebrew, MacPorts and the PATH come first: tools people installed
     /// themselves and keep up to date. OpenShelf's own copies (`ManagedTools`)
@@ -191,7 +212,8 @@ struct ToolLocations: Sendable {
             applicationDirectories: [
                 URL(fileURLWithPath: "/Applications"),
                 FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"),
-            ]
+            ],
+            modelDirectories: [ManagedTools.modelsDirectory]
         )
     }
 }
@@ -200,8 +222,17 @@ struct ToolLocations: Sendable {
 enum ManagedTools {
     /// ~/Library/Application Support/OpenShelf/Tools, for ffmpeg and ffprobe.
     static var directory: URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        support.appendingPathComponent("OpenShelf/Tools", isDirectory: true)
+    }
+
+    /// ~/Library/Application Support/OpenShelf/Models, where people put
+    /// whisper.cpp's speech models. OpenShelf never downloads one itself.
+    static var modelsDirectory: URL {
+        support.appendingPathComponent("OpenShelf/Models", isDirectory: true)
+    }
+
+    private static var support: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return support.appendingPathComponent("OpenShelf/Tools", isDirectory: true)
     }
 }

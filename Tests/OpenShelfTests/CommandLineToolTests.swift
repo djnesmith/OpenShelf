@@ -8,6 +8,7 @@ struct CommandLineToolTests {
     static let commandNames = [
         "ffmpeg", "ffprobe", "cwebp", "ebook-convert", "pandoc", "yq", "cjxl", "duckdb", "jet", "xelatex",
         "deno", "cljfmt", "ruff", "shfmt", "swift-format", "pg_format", "clang-format", "gofmt", "rustfmt", "commonforms",
+        "whisper-cli",
     ]
 
     /// Detects in a folder holding a stand-in for every tool.
@@ -20,7 +21,11 @@ struct CommandLineToolTests {
         for stub in Self.commandNames.map(bin.appendingPathComponent) + [soffice] {
             FileManager.default.createFile(atPath: stub.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
         }
-        let locations = ToolLocations(commandDirectories: [bin], libreOfficeApps: [soffice.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()])
+        let models = folder.appendingPathComponent("Models", isDirectory: true)
+        try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: models.appendingPathComponent("ggml-base.bin").path, contents: Data())
+        var locations = ToolLocations(commandDirectories: [bin], libreOfficeApps: [soffice.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()])
+        locations.modelDirectories = [models]
         return ExternalTools.detect(in: locations, ignoring: [])
     }
 
@@ -37,8 +42,9 @@ struct CommandLineToolTests {
             guard let label = field.label, label != "formatters", label != "iWorkApps" else { continue }
             let path = try #require(field.value as? URL?, "\(label) isn't a tool path")
             let found = try #require(path, "\(label) wasn't detected; add its command to commandNames")
-            // ffprobe comes with ffmpeg; Pandoc's row shows its typesetter.
-            if label == "ffprobe" || label == "pdfEngine" { continue }
+            // ffprobe comes with ffmpeg; Pandoc's row shows its typesetter,
+            // whisper.cpp's its speech model.
+            if label == "ffprobe" || label == "pdfEngine" || label == "whisperModel" { continue }
             #expect(listed.contains(found), "\(label) has no row in Settings → Extra Formats")
             checked += 1
         }
@@ -46,8 +52,8 @@ struct CommandLineToolTests {
     }
 
     @Test func collapsedRowCountsWhatsInstalled() throws {
-        #expect(CommandLineTool.title(tools: ExternalTools()) == "Command-Line Tools · 0 of 16 installed")
-        #expect(CommandLineTool.title(tools: try everythingInstalled()) == "Command-Line Tools · 16 of 16 installed")
+        #expect(CommandLineTool.title(tools: ExternalTools()) == "Command-Line Tools · 0 of 17 installed")
+        #expect(CommandLineTool.title(tools: try everythingInstalled()) == "Command-Line Tools · 17 of 17 installed")
     }
 
     /// Every row but commonforms installs with Homebrew; the rest say how they differ.
