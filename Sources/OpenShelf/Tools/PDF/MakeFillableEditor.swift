@@ -12,7 +12,7 @@ struct MakeFillableEditor: View {
     @State private var pageCount: Int?
     @State private var isScanned = false
     @State private var hasFields = false
-    @State private var isModelCached = MakeFillable.isModelCached()
+    @State private var downloadNote = Self.downloadNote()
     @State private var isWorking = false
     /// The run, stopped when the window closes so nothing is saved after "Close without saving".
     @State private var run: Task<Void, Never>?
@@ -45,8 +45,8 @@ struct MakeFillableEditor: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 8) {
-                    if !isModelCached {
-                        Label(MakeFillable.modelDownloadNote, systemImage: "arrow.down.circle")
+                    if let downloadNote {
+                        Label(downloadNote, systemImage: "arrow.down.circle")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     }
@@ -71,6 +71,12 @@ struct MakeFillableEditor: View {
         .onDisappear { run?.cancel() }
     }
 
+    static func downloadNote() -> String? {
+        if !MakeFillable.isModelCached() { return MakeFillable.modelDownloadNote }
+        if !MakeFillable.isModelCached(MakeFillable.largeModel) { return MakeFillable.largeModelDownloadNote }
+        return nil
+    }
+
     private func makeFillable() {
         isWorking = true
         let url = url
@@ -83,7 +89,7 @@ struct MakeFillableEditor: View {
                 isWorking = false
             } catch {
                 isWorking = false
-                isModelCached = MakeFillable.isModelCached()
+                downloadNote = Self.downloadNote()
                 actions.failed(error)
             }
         }

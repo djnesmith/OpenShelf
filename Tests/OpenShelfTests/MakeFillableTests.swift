@@ -95,6 +95,7 @@ struct MakeFillableTests {
         #expect(!MakeFillable.isModelCached(in: cache))
         FileManager.default.createFile(atPath: snapshot.appendingPathComponent("FFDNet-S.pt").path, contents: Data([0]))
         #expect(MakeFillable.isModelCached(in: cache))
+        #expect(!MakeFillable.isModelCached(MakeFillable.largeModel, in: cache))
     }
 
     @Test func aPageWithoutTextCountsAsScanned() throws {
@@ -121,15 +122,17 @@ struct MakeFillableTests {
         #expect(document.write(to: url))
     }
 
-    /// A stand-in commonforms that notes its arguments, then writes a PDF with
-    /// one field, or copies the input when it `findsFields` is false.
-    func stub(in folder: URL, exitCode: Int = 0, seconds: Int = 0, findsFields: Bool = true) throws -> (tools: ExternalTools, arguments: URL) {
+    /// A stand-in commonforms that adds a line of its arguments per run, then
+    /// writes a PDF with one field, or copies the input when `findsFields` is
+    /// false. With `onlyTheLargeModel`, only an FFDNet-L run finds the field.
+    func stub(in folder: URL, exitCode: Int = 0, seconds: Int = 0, findsFields: Bool = true, onlyTheLargeModel: Bool = false) throws -> (tools: ExternalTools, arguments: URL) {
         let arguments = folder.appendingPathComponent("arguments.txt")
         let script = folder.appendingPathComponent("commonforms")
         let found = try formPDF(named: "found-\(UUID().uuidString).pdf", in: folder)
         try addField(to: found)
         let result = findsFields ? "'\(found.path)'" : "\"$1\""
-        try "#!/bin/sh\necho \"$@\" > '\(arguments.path)'\nsleep \(seconds)\ncp \(result) \"$2\"\nexit \(exitCode)\n".write(to: script, atomically: true, encoding: .utf8)
+        let copy = onlyTheLargeModel ? "if [ \"$4\" = FFDNet-L ]; then cp \(result) \"$2\"; else cp \"$1\" \"$2\"; fi" : "cp \(result) \"$2\""
+        try "#!/bin/sh\necho \"$@\" >> '\(arguments.path)'\nsleep \(seconds)\n\(copy)\nexit \(exitCode)\n".write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
         return (ExternalTools(ffmpeg: nil, cwebp: nil, commonforms: script), arguments)
     }
@@ -163,6 +166,16 @@ struct MakeFillableTests {
         // The stub sleeps 5 s, so returning sooner means it was stopped, not waited for.
         #expect(Date().timeIntervalSince(start) < 4)
         #expect(try !FileManager.default.contentsOfDirectory(atPath: folder.path).contains { $0.contains(".fillable") })
+    }
+
+    @Test func triesTheLargeModelWhenTheSmallOneFindsNothing() async throws {
+        let folder = try workspace()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = try formPDF(named: "form.pdf", in: folder)
+        let (tools, arguments) = try stub(in: folder, onlyTheLargeModel: true)
+        #expect(try await MakeFillable.make(source, tools: tools)?.lastPathComponent == "form.fillable.pdf")
+        let models = try String(contentsOf: arguments, encoding: .utf8).split(separator: "\n").map { $0.split(separator: " ")[3] }
+        #expect(models == ["FFDNet-S", "FFDNet-L"])
     }
 
     @Test func noFieldsFoundSavesNothing() async throws {

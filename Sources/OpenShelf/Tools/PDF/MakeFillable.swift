@@ -11,10 +11,13 @@ import PDFKit
 /// pip-installs what it misses; huggingface_hub asks for a newer model each
 /// run and sends a saved login token. The environment turns all of that off.
 enum MakeFillable {
-    /// Not the CLI's default FFDNet-L: the small model found every field L did
-    /// on typed forms, more on image-only pages, and downloads 18 MB, not 49.
+    /// Tried first: it downloads 18 MB, not 49, and found more fields than L
+    /// on image-only pages. It can find nothing on a typed form L fills.
     static let model = "FFDNet-S"
+    /// The CLI's default, run only when the small model finds no fields.
+    static let largeModel = "FFDNet-L"
     static let modelDownloadNote = "Downloading the form model, 18 MB, first time only"
+    static let largeModelDownloadNote = "May download a larger form model, 49 MB, if the first finds nothing"
     static let scannedNote = "Scanned pages may miss most fields"
     /// Refused: commonforms finds the old fields' blanks again and stacks a
     /// same-named field on each one.
@@ -22,7 +25,7 @@ enum MakeFillable {
 
     /// - Parameter keepingExisting: The PDF has annotations. commonforms
     ///   otherwise deletes every one, links and comments included.
-    static func arguments(input: URL, output: URL, keepingExisting: Bool) -> [String] {
+    static func arguments(input: URL, output: URL, keepingExisting: Bool, model: String = MakeFillable.model) -> [String] {
         [input.path, output.path, "--model", model, "--use-signature-fields"]
             + (keepingExisting ? ["--keep-existing-fields"] : [])
     }
@@ -48,7 +51,7 @@ enum MakeFillable {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache/huggingface", isDirectory: true)
     }
 
-    static func isModelCached(in huggingFaceHome: URL = huggingFaceHome) -> Bool {
+    static func isModelCached(_ model: String = MakeFillable.model, in huggingFaceHome: URL = huggingFaceHome) -> Bool {
         let snapshots = huggingFaceHome.appendingPathComponent("hub/models--jbarrow--\(model)/snapshots", isDirectory: true)
         let revisions = (try? FileManager.default.contentsOfDirectory(at: snapshots, includingPropertiesForKeys: nil)) ?? []
         return revisions.contains { FileManager.default.fileExists(atPath: $0.appendingPathComponent("\(model).pt").path) }
@@ -90,19 +93,26 @@ enum MakeFillable {
         let input = folder.appendingPathComponent("input.pdf")
         let output = folder.appendingPathComponent("output.pdf")
         try FileManager.default.copyItem(at: source, to: input)
+        let keepingExisting = hasAnnotations(document)
 
-        do {
-            try await ProcessRunner.run(
-                executable, arguments(input: input, output: output, keepingExisting: hasAnnotations(document)),
-                currentDirectory: folder,
-                environment: environment(folder: folder, huggingFaceHome: huggingFaceHome, isModelCached: isModelCached(in: huggingFaceHome))
-            )
-        } catch let failure as ProcessFailure {
-            throw ConversionError.failed("“\(source.lastPathComponent)” couldn’t be made fillable: \(FailureMessage.sanitized(failure.message))")
+        func findsFields(with model: String) async throws -> Bool {
+            try? FileManager.default.removeItem(at: output)
+            do {
+                try await ProcessRunner.run(
+                    executable, arguments(input: input, output: output, keepingExisting: keepingExisting, model: model),
+                    currentDirectory: folder,
+                    environment: environment(folder: folder, huggingFaceHome: huggingFaceHome, isModelCached: isModelCached(model, in: huggingFaceHome))
+                )
+            } catch let failure as ProcessFailure {
+                throw ConversionError.failed("“\(source.lastPathComponent)” couldn’t be made fillable: \(FailureMessage.sanitized(failure.message))")
+            }
+            try Task.checkCancellation()
+            return PDFDocument(url: output).map { fieldCount($0) > 0 } ?? false
         }
 
-        try Task.checkCancellation()
-        guard let result = PDFDocument(url: output), fieldCount(result) > 0 else { return nil }
+        var found = try await findsFields(with: model)
+        if !found { found = try await findsFields(with: largeModel) }
+        guard found else { return nil }
         let destination = OutputNaming.uniqueURL(in: source.deletingLastPathComponent(), baseName: base, pathExtension: "pdf")
         try await PartialFile.write(destination) { try FileManager.default.copyItem(at: output, to: $0) }
         return destination
