@@ -357,10 +357,10 @@ A PDF Tools-wheel wedge, for one PDF at a time, that saves `name.fillable.pdf` n
 A PDF Tools-wheel wedge, for one or more PDFs, that shows a read-only report: for each file, the risky markers it has with counts, then SAFE, CHECK or NOT SAFE. With several files the worst verdict is on top. It never changes the PDF. The report ends with "This is a triage, not an antivirus."
 - NOT SAFE: /JS, /JavaScript, /Launch, /EmbeddedFile(s), /RichMedia or /XFA. CHECK: /AcroForm, /Encrypt, /JBIG2Decode, /ObjStm, /OpenAction or /AA (without JavaScript), a qpdf warning, or a file qpdf can't read. SAFE: none of these.
 - Command: `qpdf --json=2 --json-key=qpdf --json-key=encrypt --json-stream-data=none --warning-exit-0 file.pdf`. Only real dictionary keys and name values count, so "/JS" bytes inside stream data don't. qpdf (`brew install qpdf`) isn't bundled; the wedge shows only when it's installed, and Settings → Extra Formats lists it with "Copy Homebrew Command".
-- Known gap: a damaged file qpdf can't read is CHECK, even if it has JavaScript bytes.
-- Commits: this one
+- A file qpdf can't read: its raw bytes are searched for the NOT SAFE names as whole name tokens (/JS counts, /JSON doesn't). Any hit is NOT SAFE ("qpdf could not parse; raw bytes contain /JS /JavaScript (…)"); none is CHECK. Files qpdf reads never use the raw bytes.
+- Commits: e05a1f8, and this one (the raw-byte fallback)
 - Files: `Sources/OpenShelf/Tools/PDF/CheckSafety.swift`, `Tools/PDF/CheckSafetyEditor.swift`, `Tools/FileTool.swift`, `Tools/ToolLauncher.swift`, `Convert/ExternalTools.swift`, `Convert/CommandLineTool.swift`
-- Check: `swift test --filter CheckSafetyTests` (clean, /OpenAction only, JavaScript, embedded file, unreadable file, "/JS" bytes in a stream stay SAFE, the file is unchanged, worst verdict on top, wedge hidden without qpdf; the qpdf tests skip when it isn't installed) and `--filter CommandLineToolTests`. In the app: drag two PDFs to the Tools wheel, pick Check Safety, and check the report.
+- Check: `swift test --filter CheckSafetyTests` (clean, /OpenAction only, JavaScript, embedded file, unreadable file, JavaScript bytes in an unreadable file are NOT SAFE, whole-name matching, "/JS" bytes in a stream stay SAFE, the file is unchanged, worst verdict on top, wedge hidden without qpdf; the qpdf tests skip when it isn't installed) and `--filter CommandLineToolTests`. In the app: drag two PDFs to the Tools wheel, pick Check Safety, and check the report.
 
 ## Outside the repo
 

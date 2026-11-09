@@ -100,6 +100,23 @@ struct CheckSafetyTests {
         #expect(!result.reason.contains(folder.path))
     }
 
+    /// Nothing can show these bytes are only stream data, so they count.
+    @Test(.enabled(if: hasQPDF)) func javaScriptBytesInAFileQPDFCannotReadAreNotSafe() async throws {
+        let folder = try workspace()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("js-broken.pdf")
+        try Data("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>\nendobj\n".utf8).write(to: url)
+        let result = try await check(url)
+        #expect(result.verdict == .notSafe)
+        #expect(result.markers == ["/JS": 1, "/JavaScript": 1])
+        #expect(result.reason.hasPrefix("qpdf could not parse; raw bytes contain /JS /JavaScript ("))
+    }
+
+    @Test func rawBytesCountOnlyWholeNames() {
+        let counts = CheckSafety.rawDangerousNames(in: Data("/JSON /JS/XFA[/Launch] /RichMediaX /EmbeddedFiles".utf8))
+        #expect(counts == ["/JS": 1, "/XFA": 1, "/Launch": 1, "/EmbeddedFiles": 1])
+    }
+
     @Test(.enabled(if: hasQPDF)) func checkingNeverChangesThePDF() async throws {
         let folder = try workspace()
         defer { try? FileManager.default.removeItem(at: folder) }

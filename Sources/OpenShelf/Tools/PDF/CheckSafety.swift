@@ -54,14 +54,37 @@ enum CheckSafety {
         do {
             try await ProcessRunner.run(qpdf, arguments(file), standardOutputFile: output, onErrorLine: { errors.append($0) })
         } catch let failure as ProcessFailure {
-            return Result(file: file, markers: [:], verdict: .check, reason: "could not parse the file: \(shown(failure.message))")
+            return unparsed(file, error: shown(failure.message))
         }
         guard let parsed = try? markers(inQPDFJSON: Data(contentsOf: output)) else {
-            return Result(file: file, markers: [:], verdict: .check, reason: "could not parse the file: qpdf's report was unreadable")
+            return unparsed(file, error: "qpdf's report was unreadable")
         }
         let warning = errors.all.first { $0.hasPrefix("WARNING") }.map(shown)
         let (verdict, reason) = verdict(markers: parsed, warning: warning)
         return Result(file: file, markers: parsed, verdict: verdict, reason: reason)
+    }
+
+    /// A file qpdf can't read is NOT SAFE when its raw bytes hold a dangerous
+    /// name, since nothing can show it's only stream data; otherwise CHECK.
+    static func unparsed(_ file: URL, error: String) -> Result {
+        let raw = rawDangerousNames(in: (try? Data(contentsOf: file)) ?? Data())
+        if raw.isEmpty {
+            return Result(file: file, markers: [:], verdict: .check, reason: "could not parse the file: \(error)")
+        }
+        let names = raw.keys.sorted().joined(separator: " ")
+        return Result(file: file, markers: raw, verdict: .notSafe, reason: "qpdf could not parse; raw bytes contain \(names) (\(error))")
+    }
+
+    /// Counts the dangerous names as whole PDF name tokens: "/JS" counts, "/JSON" doesn't.
+    static func rawDangerousNames(in data: Data) -> [String: Int] {
+        let text = String(decoding: data, as: Unicode.ASCII.self)
+        let pattern = #"/(JS|JavaScript|Launch|EmbeddedFiles?|RichMedia|XFA)(?![^\s()<>\[\]{}/%])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [:] }
+        var counts: [String: Int] = [:]
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            if let range = Range(match.range, in: text) { counts[String(text[range]), default: 0] += 1 }
+        }
+        return counts
     }
 
     /// Counts the markers among every dictionary key and name value in the
