@@ -7,7 +7,7 @@ struct CommandLineToolTests {
     /// detection but not here leaves its field empty, and the test below fails.
     static let commandNames = [
         "ffmpeg", "ffprobe", "cwebp", "ebook-convert", "pandoc", "yq", "cjxl", "duckdb", "jet", "xelatex",
-        "deno", "cljfmt", "ruff", "shfmt", "swift-format", "pg_format", "clang-format", "gofmt", "rustfmt", "commonforms",
+        "deno", "cljfmt", "ruff", "shfmt", "swift-format", "pg_format", "clang-format", "gofmt", "rustfmt", "commonforms", "qpdf",
         "whisper-cli",
     ]
 
@@ -52,8 +52,8 @@ struct CommandLineToolTests {
     }
 
     @Test func collapsedRowCountsWhatsInstalled() throws {
-        #expect(CommandLineTool.title(tools: ExternalTools()) == "Command-Line Tools · 0 of 17 installed")
-        #expect(CommandLineTool.title(tools: try everythingInstalled()) == "Command-Line Tools · 17 of 17 installed")
+        #expect(CommandLineTool.title(tools: ExternalTools()) == "Command-Line Tools · 0 of 18 installed")
+        #expect(CommandLineTool.title(tools: try everythingInstalled()) == "Command-Line Tools · 18 of 18 installed")
     }
 
     /// Every row but commonforms installs with Homebrew; the rest say how they differ.

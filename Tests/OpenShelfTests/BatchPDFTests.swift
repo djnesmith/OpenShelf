@@ -136,7 +136,7 @@ struct BatchPDFTests {
 
     @Test func severalPDFsOfferPagesAndSplit() {
         let urls = ["a.pdf", "b.pdf", "c.pdf"].map { URL(fileURLWithPath: "/tmp/\($0)") }
-        let tools = FileTool.available(for: urls)
+        let tools = FileTool.available(for: urls, tools: ExternalTools())
         #expect(tools.contains(.organizePages))
         #expect(tools.contains(.splitPDF))
         #expect(WheelOrdering.tools(tools) == [.combinePDF, .organizePages, .splitPDF, .compressPDF, .pdfMetadata, .ocr])

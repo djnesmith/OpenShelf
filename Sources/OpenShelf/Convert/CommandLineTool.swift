@@ -22,10 +22,11 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
     case gofmt
     case rustfmt
     case commonforms
+    case qpdf
 
     var id: String { rawValue }
 
-    /// The collapsed Settings row: "Command-Line Tools · 15 of 17 installed".
+    /// The collapsed Settings row: "Command-Line Tools · 15 of 18 installed".
     static func title(tools: ExternalTools) -> String {
         let installed = allCases.filter { $0.isInstalled(in: tools) }.count
         return "Command-Line Tools · \(installed) of \(allCases.count) installed"
@@ -50,6 +51,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .gofmt: "gofmt"
         case .rustfmt: "rustfmt"
         case .commonforms: "commonforms"
+        case .qpdf: "qpdf"
         }
     }
 
@@ -73,6 +75,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .gofmt: "Pretty Print: Go"
         case .rustfmt: "Pretty Print: Rust"
         case .commonforms: "Make Fillable: turn plain PDFs into forms"
+        case .qpdf: "Check Safety: look for JavaScript and other active content in PDFs"
         }
     }
 
@@ -95,6 +98,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .gofmt: "brew install go"
         case .rustfmt: "brew install rust"
         case .commonforms: "uv tool install commonforms"
+        case .qpdf: "brew install qpdf"
         }
     }
 
@@ -136,6 +140,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .gofmt: tools.formatters.gofmt = placeholder
         case .rustfmt: tools.formatters.rustfmt = placeholder
         case .commonforms: tools.commonforms = placeholder
+        case .qpdf: tools.qpdf = placeholder
         }
         return tools
     }
@@ -159,6 +164,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .gofmt: tools.formatters.gofmt
         case .rustfmt: tools.formatters.rustfmt
         case .commonforms: tools.commonforms
+        case .qpdf: tools.qpdf
         }
     }
 
