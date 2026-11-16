@@ -3,7 +3,7 @@ import Foundation
 /// Optional tools found on this Mac: ffmpeg and ffprobe, cwebp, LibreOffice,
 /// calibre's ebook-convert, pandoc with a program it can make PDFs with,
 /// whisper.cpp with a speech model, yq, cjxl (JPEG XL), DuckDB, jet (EDN),
-/// commonforms (Make Fillable), qpdf (Check Safety), the source-code formatters Pretty Print uses,
+/// commonforms (Make Fillable), qpdf (Check Safety), aubio (BPM), the source-code formatters Pretty Print uses,
 /// and Pages, Numbers and Keynote.
 struct ExternalTools: Equatable, Sendable {
     var ffmpeg: URL?
@@ -20,6 +20,7 @@ struct ExternalTools: Equatable, Sendable {
     var jet: URL? = nil
     var commonforms: URL? = nil
     var qpdf: URL? = nil
+    var aubio: URL? = nil
     var formatters = Formatters()
     /// Which of Pages, Numbers and Keynote are installed, to save files as theirs.
     var iWorkApps: Set<IWorkFormat> = []
@@ -129,6 +130,7 @@ struct ExternalTools: Equatable, Sendable {
             commonforms: find("commonforms", ignoredAs: "commonforms")
                 ?? locations.commonforms.first { FileManager.default.isExecutableFile(atPath: $0.path) },
             qpdf: find("qpdf", ignoredAs: "qpdf"),
+            aubio: find("aubio", ignoredAs: "aubio"),
             formatters: Formatters(
                 deno: find("deno", ignoredAs: "deno"),
                 cljfmt: find("cljfmt", ignoredAs: "cljfmt"),

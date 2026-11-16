@@ -41,6 +41,7 @@ enum FileTool: CaseIterable, Hashable {
     case transcribe
     case fitSize
     case compressAudio
+    case bpm
     case pdfImages
     case frameRate
     case gifLoop
@@ -88,6 +89,7 @@ enum FileTool: CaseIterable, Hashable {
         case .transcribe: "Transcribe"
         case .fitSize: "Fit Size"
         case .compressAudio: "Compress"
+        case .bpm: "BPM"
         case .pdfImages: "Images"
         case .frameRate: "Frame Rate"
         case .gifLoop: "Loop"
@@ -137,6 +139,7 @@ enum FileTool: CaseIterable, Hashable {
         case .prettyPrint: "text.alignleft"
         case .transcribe: "captions.bubble"
         case .fitSize: "externaldrive.badge.checkmark"
+        case .bpm: "metronome"
         }
     }
 
@@ -219,7 +222,8 @@ enum FileTool: CaseIterable, Hashable {
                 + (hasFFmpeg ? [.reverse, .mediaMetadata, .normalize, .volume, .fitSize, .frameRate, .export] : [])
         }
         if kinds == [.audio] {
-            return merge + [.trim, .speed, .splitMedia, .compressAudio, .export, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : [])
+            let bpm: [FileTool] = tools.aubio != nil && urls.allSatisfy(BPM.reads) ? [.bpm] : []
+            return merge + [.trim, .speed, .splitMedia, .compressAudio, .export, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : []) + bpm
         }
         return kinds.isSubset(of: [.image, .pdf]) ? combine + [.ocr] : combine
     }

@@ -61,6 +61,16 @@ struct WheelOrderingTests {
         #expect(tools(urls("a.mp3", "b.m4a")) == [.mergeMedia, .trim, .speed, .splitMedia, .compressAudio, .export, .transcribe])
     }
 
+    /// BPM comes last, so Compress stays on the second page.
+    @Test func oneAudioFileWithFFmpegAndAubioKeepsCompressOnPageTwo() {
+        var installed = allTools
+        installed.aubio = URL(fileURLWithPath: "/usr/bin/true")
+        let wheel = WheelOrdering.tools(FileTool.available(for: urls("a.mp3"), tools: installed))
+        #expect(WheelPaging.pageCount(forItemCount: wheel.count) == 3)
+        #expect(Array(wheel.prefix(2 * WheelPaging.itemsPerPage)).contains(.compressAudio))
+        #expect(wheel.last == .bpm)
+    }
+
     // MARK: Convert
 
     @Test func imageFormatsLeaveOutTheSourceFormat() {

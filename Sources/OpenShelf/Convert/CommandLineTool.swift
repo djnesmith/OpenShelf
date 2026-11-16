@@ -23,10 +23,11 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
     case rustfmt
     case commonforms
     case qpdf
+    case aubio
 
     var id: String { rawValue }
 
-    /// The collapsed Settings row: "Command-Line Tools · 15 of 18 installed".
+    /// The collapsed Settings row: "Command-Line Tools · 15 of 19 installed".
     static func title(tools: ExternalTools) -> String {
         let installed = allCases.filter { $0.isInstalled(in: tools) }.count
         return "Command-Line Tools · \(installed) of \(allCases.count) installed"
@@ -52,6 +53,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .rustfmt: "rustfmt"
         case .commonforms: "commonforms"
         case .qpdf: "qpdf"
+        case .aubio: "aubio"
         }
     }
 
@@ -76,6 +78,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .rustfmt: "Pretty Print: Rust"
         case .commonforms: "Make Fillable: turn plain PDFs into forms"
         case .qpdf: "Check Safety: look for JavaScript and other active content in PDFs"
+        case .aubio: "BPM: the tempo of audio files"
         }
     }
 
@@ -99,6 +102,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .rustfmt: "brew install rust"
         case .commonforms: "uv tool install commonforms"
         case .qpdf: "brew install qpdf"
+        case .aubio: "brew install aubio"
         }
     }
 
@@ -141,6 +145,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .rustfmt: tools.formatters.rustfmt = placeholder
         case .commonforms: tools.commonforms = placeholder
         case .qpdf: tools.qpdf = placeholder
+        case .aubio: tools.aubio = placeholder
         }
         return tools
     }
@@ -165,6 +170,7 @@ enum CommandLineTool: String, CaseIterable, Identifiable, Sendable {
         case .rustfmt: tools.formatters.rustfmt
         case .commonforms: tools.commonforms
         case .qpdf: tools.qpdf
+        case .aubio: tools.aubio
         }
     }
 

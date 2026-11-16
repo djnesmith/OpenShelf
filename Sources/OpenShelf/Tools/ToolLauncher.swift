@@ -110,6 +110,8 @@ enum ToolLauncher {
             EditorWindowController.present(size: MediaTrimEditor.windowSize(for: urls.count), near: location, sourceShelfID: sourceShelfID) { MediaTrimEditor(urls: urls, actions: $0) }
         case .compressAudio:
             EditorWindowController.present(size: AudioCompressEditor.windowSize, near: location, sourceShelfID: sourceShelfID) { AudioCompressEditor(urls: urls, actions: $0) }
+        case .bpm:
+            EditorWindowController.present(size: BPMEditor.windowSize, near: location, sourceShelfID: sourceShelfID) { BPMEditor(urls: urls, actions: $0) }
         case .export:
             EditorWindowController.present(size: MediaExportEditor.windowSize, near: location, sourceShelfID: sourceShelfID) { MediaExportEditor(urls: urls, actions: $0) }
         case .frameRate:
