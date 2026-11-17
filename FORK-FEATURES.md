@@ -4,6 +4,7 @@ Read this before merging upstream. Every item must still work after the merge.
 
 What `djnesmith/OpenShelf` adds over `Manan-Santoki/OpenShelf`. The list comes from
 `git log upstream/main..djnesmith`. Each new feature adds a line here in the same commit.
+Planned features and the order to build them in are in `ROADMAP.md`.
 
 After any merge, run `swift test` (all tests must pass) and then `make app`. The checks
 below name the tests for each feature: `swift test --filter <name>`. "In the app" checks
