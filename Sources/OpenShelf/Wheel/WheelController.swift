@@ -91,6 +91,10 @@ final class WheelController {
         var taps: ModifierTapTracker
         /// The shelf `urls` came from, if any.
         var sourceShelfID: Shelf.ID?
+        /// Names the wheel in place of its kind (the text wheel and its sub-wheels).
+        var title: String? = nil
+        /// What the hub shows in place of the files' size.
+        var summary: String? = nil
     }
 
     var isInKeyboardMode: Bool { keyboardSession != nil }
@@ -292,6 +296,26 @@ final class WheelController {
         return true
     }
 
+    /// Opens a keyboard wheel of `items` that aren't for files: the text
+    /// wheel, or one of its sub-wheels, which replaces the wheel in place.
+    /// Keys, clicks and paging work as on a file wheel; Tab has nowhere to go.
+    /// - Parameter location: Where to open; nil keeps the wheel where it is.
+    func presentForKeyboard(items: [WheelItem], title: String, summary: String, hint: String, at location: NSPoint?) {
+        guard !items.isEmpty else { return }
+        endKeyboardMode(hidingWheel: location != nil)
+        keyboardSession = KeyboardSession(
+            urls: [],
+            itemsByKind: [.tools: items],
+            available: [.tools],
+            kind: .tools,
+            taps: ModifierTapTracker(alreadyHeld: NSEvent.modifierFlags),
+            title: title,
+            summary: summary
+        )
+        showKeyboardWheel(.tools, at: location)
+        takeKeyboard(hint: hint)
+    }
+
     /// After files were dropped on More or Back, keeps the wheel open on its
     /// new page as a keyboard wheel for those files, so a click or Return can
     /// finish what the drag started.
@@ -379,7 +403,8 @@ final class WheelController {
         keyboardSession = session
         present(items, at: location ?? NSPoint(x: panel.frame.midX, y: panel.frame.midY))
         updateSummary(for: session.urls)
-        model.wheelName = kind.shortTitle
+        if let summary = session.summary { model.dragSummary = summary }
+        model.wheelName = session.title ?? kind.shortTitle
         // Start on the first wedge so Return does something straight away.
         setHighlight(items.isEmpty ? nil : 0)
         // On switching to it with Tab or a tap; the hint the wheel opened

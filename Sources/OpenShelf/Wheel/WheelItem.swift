@@ -56,6 +56,8 @@ enum WheelCommand: Hashable {
     case action(FileAction)
     case convert(OutputFormat)
     case tool(FileTool)
+    /// A wedge on the text wheel, for text selected in another app.
+    case text(TextCommand)
 }
 
 /// One wedge on a wheel.

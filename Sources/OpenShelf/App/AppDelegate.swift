@@ -7,6 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let dragMonitor = DragMonitor(preferences: .shared)
     private var hasShownMoreFormatsHint = false
     private var emptyShortcutPresses = RepeatedEmptyPress()
+    private lazy var selectedText = SelectedTextController(wheel: wheel)
+    /// macOS's Accessibility prompt is asked for once per launch, not on every press.
+    private var hasRequestedAccessibility = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Keeps the app out of the Dock when launched without the bundle's LSUIElement (e.g. `swift run`).
@@ -31,6 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             folder.action.run(on: urls, sourceShelfID: shelf.id)
         }
         IntentShelves.manager = shelves
+        selectedText.addToShelf = { [weak self] urls in
+            guard let self else { return }
+            if shelves.hasShelves { shelves.addToRecentShelf(urls) } else { shelves.newShelf(with: urls) }
+        }
         wheel.itemsProvider = { [weak self] kind, urls in
             self?.items(for: kind, urls: urls) ?? []
         }
@@ -87,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isOpenShelfFrontmost: NSApp.isActive
         )
         guard case .shelf(let urls) = source else {
-            openWheelForFinderSelection()
+            openWheelForFrontmostApp()
             return
         }
         emptyShortcutPresses.reset()
@@ -98,6 +105,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             TourProgress.shared.record(.keyboardWheelOpened(urls))
         } else {
             ToastController.shared.show(Toast(systemImage: "nosign", title: "Nothing to do with these files"), near: location)
+        }
+    }
+
+    /// Finder's files exactly as before; in any other app, the text wheel for
+    /// its selected text.
+    private func openWheelForFrontmostApp() {
+        let location = NSEvent.mouseLocation
+        // OpenShelf's own windows (Settings, an editor) aren't a source of text.
+        guard let app = NSWorkspace.shared.frontmostApplication, app != NSRunningApplication.current else {
+            openWheelForFinderSelection()
+            return
+        }
+        Task {
+            let fallback = FallbackCopy()
+            let route = await HotkeyRoute.choose(
+                frontmostBundleID: app.bundleIdentifier,
+                isSecureInputOn: AccessibilityText.isSecureInputOn,
+                read: { AccessibilityText.read(pid: app.processIdentifier) },
+                copy: {
+                    let copied = await self.selectedText.copySelection()
+                    fallback.rich = copied?.rich
+                    return copied?.text
+                }
+            )
+            showRoute(route, rich: fallback.rich, app: app, at: location)
+        }
+    }
+
+    private func showRoute(_ route: HotkeyRoute, rich: RichText?, app: NSRunningApplication, at location: NSPoint) {
+        switch route {
+        case .finder:
+            openWheelForFinderSelection()
+        case .text(let text):
+            emptyShortcutPresses.reset()
+            selectedText.open(text, rich: rich, in: app, at: location)
+        case .secureInput:
+            ToastController.shared.show(Toast(systemImage: "lock", title: "Secure input is on", subtitle: "A password field or app is protecting the keyboard"), near: location, for: .seconds(3))
+        case .askForAccessibility:
+            if emptyShortcutPresses.record(at: .now) {
+                SettingsWindowController.shared.show()
+                return
+            }
+            ToastController.shared.show(
+                Toast(systemImage: "hand.raised", title: "Allow OpenShelf in Accessibility", subtitle: "To work on selected text · Privacy & Security"),
+                near: location, for: .seconds(5)
+            )
+            // Adds OpenShelf to the Accessibility list and, the first time
+            // ever, shows macOS's own prompt; the user switches it on there.
+            if !hasRequestedAccessibility {
+                hasRequestedAccessibility = true
+                AccessibilityText.requestTrust()
+            }
+        case .nothing:
+            openWheelForFinderSelection()
         }
     }
 
@@ -200,6 +261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ConversionRunner.shared.convert(urls, to: format, sourceShelfID: sourceShelfID)
         case .tool(let tool):
             ToolLauncher.open(tool, with: urls, sourceShelfID: sourceShelfID)
+        case .text(let command):
+            selectedText.perform(command, modifiers: modifiers)
         }
     }
 
@@ -234,4 +297,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             FileActions.openInTerminal(urls)
         }
     }
+}
+
+/// Carries the ⌘C fallback's formatted text out of the routing closure.
+@MainActor
+private final class FallbackCopy {
+    var rich: RichText?
 }

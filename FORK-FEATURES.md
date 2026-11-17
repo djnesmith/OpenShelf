@@ -375,6 +375,18 @@ An audio Tools-wheel wedge, for one or more files, that shows a small read-only 
 - Files: `Sources/OpenShelf/Tools/Media/BPM.swift`, `Tools/Media/BPMEditor.swift`, `Tools/FileTool.swift`, `Tools/ToolLauncher.swift`, `Convert/ExternalTools.swift`, `Convert/CommandLineTool.swift`
 - Check: `swift test --filter BPMTests` (aubio's real output lines, the exact command, several files in order, a failing file, aubio's error line over Python's, no tempo line, aubio missing, wedge only with aubio and only for the formats it reads; one test runs the real aubio on /System/Library/Sounds/Funk.aiff when it's installed) `--filter WheelOrderingTests` (BPM is last on a one-file audio wheel, so Compress stays on page 2) and `--filter CommandLineToolTests`. In the app: drag two songs to the Tools wheel, pick BPM, and compare with `aubio tempo` by hand.
 
+## Selected text
+
+### 50. Text wheel for selected text
+Select text in any app and press the wheel shortcut (⌃⌥Space): a Text wheel opens at the pointer. The chosen tool replaces the selection; ⌥ copies the result instead, ⇧ saves it as a file on a shelf. Finder (and shelf selections) work exactly as before: the shortcut only looks for text when Finder isn't in front.
+- Wheel: Undo (only when the selection is OpenShelf's last result in that app) · Trim · Clean Up · Re-indent (code and data) · Convert ▸ (JSON, YAML, EDN, XML, TOML, for data) · To Markdown (prose) · More ▸ (Dedent, Indent, Outdent, Tabs ↔ Spaces, Trim Lines, Straight Quotes). Sub-wheels replace the wheel in place and end in Back; every list fits the 7-wedge wheel.
+- Reading: Accessibility's selected text, each call capped at 0.25 s; apps that don't answer get ⌘C, and the clipboard is put back. Password fields and secure input are refused with a toast. Without Accessibility, the shortcut asks once per launch (macOS's prompt) and says where to turn it on.
+- Writing: the result is pasted (⌘V) so the app's own ⌘Z undoes it, marked `org.nspasteboard.TransientType` so clipboard managers skip it; the clipboard is restored 300 ms later unless something else wrote to it. If the selection changed meanwhile, the result is copied instead. The last 10 changes are kept in memory only.
+- Trim, Clean Up and the More tools are pure Swift, in memory. Re-indent uses Pretty Print's formatters (JSON falls back to Foundation without deno); Convert uses the data converters (yq, jet) and yq for TOML; To Markdown copies the formatted selection and converts its HTML or RTF.
+- Commits: this one
+- Files: `Sources/OpenShelf/Text/` (all), `App/AppDelegate.swift`, `Wheel/WheelController.swift` (`presentForKeyboard(items:title:summary:hint:at:)`), `Wheel/WheelItem.swift`
+- Check: `swift test --filter 'TextTransformsTests|TextSnifferTests|TextWheelTests|TextHistoryTests|HotkeyRouteTests|ClipboardRelayTests|TextConversionTests'`, and `OPENSHELF_TOOL_TESTS=1` for the real yq, jet, deno and pandoc runs. In the app: select text in TextEdit, press ⌃⌥Space, Trim, then ⌘Z; and with files selected in Finder, the shortcut still opens the file wheel.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.
