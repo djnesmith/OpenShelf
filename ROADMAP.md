@@ -510,6 +510,27 @@ item on a shelf.
 - Risk: credentials. It goes against decision 8 unless the storage is his own, so it is
   **opt-in only**.
 
+**H9. Remove the quarantine flag** (S-M)
+- Drop a downloaded app (or any file) that macOS marks as quarantined, and an Actions wedge
+  **Remove Quarantine** appears. The wedge only shows when the item actually carries the
+  `com.apple.quarantine` attribute.
+- Before anything changes, it shows the decoded quarantine record: which app downloaded the
+  item and when (the attribute is `flags;hex-time;agent;id`, so "Downloaded by Safari,
+  Oct 30"). The user confirms each item; it never runs on a batch without showing every item.
+- It removes the attribute from the item and from everything inside an app bundle (after an
+  unzip, nested items carry it too), with the native `removexattr` call. No external tool.
+- Why: since macOS 15 (to be checked against Apple's documentation), opening an unsigned app
+  means System Settings → Privacy & Security → Open Anyway and a password. Removing the flag
+  also stops App Translocation, where a quarantined app runs from a random read-only copy.
+- Builds on `FileAction` in `Wheel/WheelItem.swift` and the Actions wheel's filter in
+  `App/AppDelegate.swift` `items(for:urls:tools:)`. `FileActions.transfer` keeps quarantine on
+  copies on purpose, so this stays an explicit choice.
+- Permissions: none for items the user owns. Root-owned apps fail with a clear error, never
+  a silent no-op.
+- Risks: it turns off a macOS safety check, so it always confirms first. It does not fix a
+  bad or missing signature or notarization; an app whose signature is broken still won't open
+  and the confirm text says so.
+
 ### I. Automation and developer tools
 
 **I1. Run a Shortcut on an item** (S-M)
@@ -673,13 +694,17 @@ rules:
 ### Stage 7: more actions
 
 - **Goal:** everyday file actions on the Actions wheel.
-- **Delivers:** H1, H2, H3, H4, I1.
+- **Delivers:** H1, H2, H3, H4, H9, I1.
 - **Plumbing:** none shared with Stages 1-6.
 - **Tests:** checksum values against known vectors; `shortcuts run` arguments with
-  `FakeToolRunner`; the app list for Open With is sorted.
-- **What David sees:** Email, Messages, Open With, Checksum, Run Shortcut wedges.
+  `FakeToolRunner`; the app list for Open With is sorted; quarantine record decoding and
+  removal on a temporary bundle with `setxattr`-made flags, including a nested item, and
+  the wedge hidden when no flag is present.
+- **What David sees:** Email, Messages, Open With, Checksum, Run Shortcut, Remove Quarantine
+  wedges.
 - **Verify in the app:** Mail opens with the attachment; a real Shortcut runs and its output
-  lands on the shelf.
+  lands on the shelf; a freshly downloaded unsigned app opens after Remove Quarantine without
+  the Open Anyway step.
 
 ### Stage 8: images, colour and media
 
