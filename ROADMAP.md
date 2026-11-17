@@ -592,6 +592,22 @@ rules:
 
 ### Stage 1: select, press, fix it
 
+**Built** (FORK-FEATURES #50). Differences from the plan below:
+- Finder keeps its file wheel even when a Finder text field (renaming) has text selected, so
+  Finder works exactly as before.
+- To Markdown shows for prose and copies the formatted selection only when chosen, so the
+  clipboard isn't borrowed on every press. Accessibility gives plain text only.
+- Copy Original is ⌥ on the Undo wedge (⌥ copies everywhere), not a wedge of its own, and
+  Undo appears when the selection is OpenShelf's last result in that app. Re-selecting the
+  pasted range through Accessibility is not built.
+- Temporary files go in the system temporary folder and are removed after each tool; ⇧
+  results are saved in Application Support/OpenShelf/Text.
+- Re-indent picks the language from the content only; the app in front is not used yet.
+- Indent width is fixed at 4 (Settings later). ⌘C and ⌘V are posted as the QWERTY C and V
+  keys, so other keyboard layouts may need work.
+- Recent-first and favourites stay in Stage 2, as planned.
+- Still to check in the running app: everything under "Verify in the running app" below.
+
 - **Goal:** select text in any app, press ⌃⌥Space, pick a tool, and the text is replaced.
 - **Delivers:** B1-B6, C1, C2, C3, C4, C7 (sub-wheels; recent-first can wait for Stage 2).
 - **Text wheel page 1:** Trim · Clean up · Re-indent · Convert ▸ (JSON, YAML, EDN, XML, TOML)
