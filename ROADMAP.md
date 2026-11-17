@@ -606,6 +606,15 @@ rules:
 - Indent width is fixed at 4 (Settings later). ⌘C and ⌘V are posted as the QWERTY C and V
   keys, so other keyboard layouts may need work.
 - Recent-first and favourites stay in Stage 2, as planned.
+- Added after the first try: rules per app. In a terminal the result is copied, never
+  pasted (David), and ⌃ pastes it back for vim's insert mode (David: "hold to paste back
+  sounds good"). No keys are ever sent to a terminal: iTerm2 can map ⌘C to Ctrl-C. Terminal
+  text comes from a copy made in the last 60 s. GUI Emacs is read and replaced through
+  emacsclient, as one undo step. A failed read names the app.
+- Next, not built: inside herdr or an iTerm2 tab, find the foreground program (herdr's
+  `pane process-info`; iTerm2 needs an Automation prompt) and ask nvim through its own server
+  for the visual selection and to replace it. Vim's mode can't be seen from outside, so it
+  stays with ⌃ to paste. In Emacs insert state with no region, nothing happens yet.
 - Still to check in the running app: everything under "Verify in the running app" below.
 
 - **Goal:** select text in any app, press ⌃⌥Space, pick a tool, and the text is replaced.
