@@ -415,8 +415,8 @@ item on a shelf.
 - Risk: paywalls and pages built by JavaScript.
 
 **D4. Download media from a link** (M)
-- A video or audio link becomes a file on the shelf, through `yt-dlp` (found on OpenShelf's
-  search path when installed).
+- A video or audio link becomes a file on the shelf, through `yt-dlp`, added to `ExternalTools` and found the
+  way other tools are (Homebrew's folder first).
 - Risk: each site's terms.
 
 ### E. Images and colour
