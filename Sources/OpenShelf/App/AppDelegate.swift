@@ -65,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // background, so the first wheel knows whether to offer WebP.
         _ = ExternalTools.current
         dragMonitor.start()
+        ClipboardWatcher.shared.start()
         if Preferences.shared.restoresShelves {
             shelves.restoreSavedShelves()
         }
@@ -118,28 +119,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         Task {
-            let fallback = FallbackCopy()
-            let route = await HotkeyRoute.choose(
-                frontmostBundleID: app.bundleIdentifier,
-                isSecureInputOn: AccessibilityText.isSecureInputOn,
-                read: { AccessibilityText.read(pid: app.processIdentifier) },
-                copy: {
-                    let copied = await self.selectedText.copySelection()
-                    fallback.rich = copied?.rich
-                    return copied?.text
-                }
-            )
-            showRoute(route, rich: fallback.rich, app: app, at: location)
+            let route = await selectedText.route(in: app)
+            TextLog.route(route, app: app.bundleIdentifier)
+            showRoute(route, app: app, at: location)
         }
     }
 
-    private func showRoute(_ route: HotkeyRoute, rich: RichText?, app: NSRunningApplication, at location: NSPoint) {
+    private func showRoute(_ route: HotkeyRoute, app: NSRunningApplication, at location: NSPoint) {
         switch route {
         case .finder:
             openWheelForFinderSelection()
-        case .text(let text):
+        case .text(let text, let reader):
             emptyShortcutPresses.reset()
-            selectedText.open(text, rich: rich, in: app, at: location)
+            selectedText.open(text, from: reader, in: app, at: location)
         case .secureInput:
             ToastController.shared.show(Toast(systemImage: "lock", title: "Secure input is on", subtitle: "A password field or app is protecting the keyboard"), near: location, for: .seconds(3))
         case .askForAccessibility:
@@ -158,7 +150,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AccessibilityText.requestTrust()
             }
         case .nothing:
-            openWheelForFinderSelection()
+            if emptyShortcutPresses.record(at: .now) {
+                SettingsWindowController.shared.show()
+                return
+            }
+            let shortcut = Preferences.shared.openWheelShortcut
+            let strategy = TextAppStrategy.for(bundleID: app.bundleIdentifier)
+            ToastController.shared.show(HotkeyRoute.nothingSelectedToast(appName: app.localizedName, strategy: strategy, shortcut: shortcut), near: location, for: .seconds(3))
         }
     }
 
@@ -297,10 +295,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             FileActions.openInTerminal(urls)
         }
     }
-}
-
-/// Carries the ⌘C fallback's formatted text out of the routing closure.
-@MainActor
-private final class FallbackCopy {
-    var rich: RichText?
 }

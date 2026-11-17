@@ -10,6 +10,9 @@ final class SelectedTextController {
         /// The formatted version, when ⌘C already brought one (the fallback route).
         var rich: RichText?
         var app: NSRunningApplication
+        var strategy: TextAppStrategy
+        /// The reader that found the text, which decides how it is written back.
+        var source: TextReader
         var context: TextContext
         var location: NSPoint
     }
@@ -21,25 +24,60 @@ final class SelectedTextController {
     private(set) var history = TextHistory()
     private var session: Session?
 
-    init(wheel: WheelController, relay: ClipboardRelay = ClipboardRelay(pasteboard: SystemTextPasteboard(), keys: CGEventKeySender())) {
+    /// The formatted version from the last ⌘C read, for To Markdown.
+    private var lastRich: RichText?
+
+    init(wheel: WheelController, relay: ClipboardRelay? = nil) {
         self.wheel = wheel
+        var relay = relay ?? ClipboardRelay(pasteboard: SystemTextPasteboard(), keys: CGEventKeySender())
+        relay.willBorrow = { ClipboardWatcher.shared.willBorrow() }
+        relay.didRestore = { ClipboardWatcher.shared.didRestore() }
         self.relay = relay
     }
 
-    /// Opens the text wheel for `text`, selected in `app`.
-    func open(_ text: String, rich: RichText?, in app: NSRunningApplication, at location: NSPoint) {
-        let canUndo = history.undoable(for: text, in: app.bundleIdentifier) != nil
-        let context = TextContext(text: text, hasRichText: true, canUndo: canUndo)
-        session = Session(text: text, rich: rich, app: app, context: context, location: location)
-        show(group: nil, at: location)
+    /// Finds the text in `app` with its strategy's readers and opens the
+    /// wheel, or says why not.
+    func route(in app: NSRunningApplication) async -> HotkeyRoute {
+        lastRich = nil
+        let strategy = TextAppStrategy.for(bundleID: app.bundleIdentifier)
+        return await HotkeyRoute.choose(
+            frontmostBundleID: app.bundleIdentifier,
+            isSecureInputOn: AccessibilityText.isSecureInputOn,
+            strategy: strategy
+        ) { reader in
+            await self.read(reader, in: app)
+        }
     }
 
-    /// The ⌘C fallback for apps whose selection Accessibility can't read.
-    /// Waits for the shortcut's own keys to be let go first, so the app sees
-    /// ⌘C and not ⌃⌥⌘C.
-    func copySelection() async -> ClipboardRelay.Copied? {
-        await waitForModifierRelease()
-        return await relay.copySelection()
+    private func read(_ reader: TextReader, in app: NSRunningApplication) async -> SelectedTextRead {
+        switch reader {
+        case .accessibility:
+            return AccessibilityText.read(pid: app.processIdentifier)
+        case .copyShortcut:
+            guard AccessibilityText.isTrusted else { return .notPermitted }
+            // The shortcut's own keys go up first, so the app sees ⌘C, not ⌃⌥⌘C.
+            await waitForModifierRelease()
+            guard let copied = await relay.copySelection() else { return .unavailable }
+            lastRich = copied.rich
+            return .text(copied.text)
+        case .recentClipboard:
+            return ClipboardWatcher.shared.recentText().map(SelectedTextRead.text) ?? .unavailable
+        case .emacsClient:
+            switch await EmacsClient.read() {
+            case .region(let text): return .text(text)
+            case .noRegion: return .nothingSelected
+            default: return .unavailable
+            }
+        }
+    }
+
+    /// Opens the text wheel for `text`, found in `app` by `source`.
+    func open(_ text: String, from source: TextReader, in app: NSRunningApplication, at location: NSPoint) {
+        let canUndo = history.undoable(for: text, in: app.bundleIdentifier) != nil
+        let context = TextContext(text: text, hasRichText: source != .recentClipboard, canUndo: canUndo)
+        let strategy = TextAppStrategy.for(bundleID: app.bundleIdentifier)
+        session = Session(text: text, rich: lastRich, app: app, strategy: strategy, source: source, context: context, location: location)
+        show(group: nil, at: location)
     }
 
     private func show(group: TextGroup?, at location: NSPoint?) {
@@ -48,9 +86,9 @@ final class SelectedTextController {
         let count = session.text.count
         wheel.presentForKeyboard(
             items: items,
-            title: group?.title ?? "Text",
+            title: group?.title ?? TextWheel.title(for: session.text, from: session.source),
             summary: count == 1 ? "1 character" : "\(count) characters",
-            hint: "Return replaces · ⌥ copies · ⇧ to shelf",
+            hint: session.strategy.hint,
             at: location
         )
     }
@@ -67,13 +105,13 @@ final class SelectedTextController {
         case .undo:
             guard let entry = history.undoable(for: session.text, in: session.app.bundleIdentifier) else { return }
             history.remove(entry)
-            Task { await deliver(entry.original, fileExtension: "txt", modifiers: modifiers, recordsHistory: false) }
+            Task { await deliver(entry.original, done: "Original", fileExtension: "txt", modifiers: modifiers, recordsHistory: false) }
         case .tool(let tool):
             Task { await run(tool, on: session, modifiers: modifiers) }
         case .convert(let target):
             guard let source = session.context.dataFormat else { return }
             Task {
-                await produce(fileExtension: target.fileExtension, modifiers: modifiers) {
+                await produce(done: command.doneTitle, fileExtension: target.fileExtension, modifiers: modifiers) {
                     try await TextConversion.convert(session.text, from: source, to: target, tools: .current)
                 }
             }
@@ -81,21 +119,22 @@ final class SelectedTextController {
     }
 
     private func run(_ tool: TextTool, on session: Session, modifiers: NSEvent.ModifierFlags) async {
+        let done = TextCommand.tool(tool).doneTitle
         if let result = tool.apply(to: session.text) {
-            await deliver(result, fileExtension: "txt", modifiers: modifiers)
+            await deliver(result, done: done, fileExtension: "txt", modifiers: modifiers)
             return
         }
         switch tool {
         case .reindent:
             guard let ext = session.context.codeExtension else { return }
-            await produce(fileExtension: ext, modifiers: modifiers) {
+            await produce(done: done, fileExtension: ext, modifiers: modifiers) {
                 guard let result = try await TextConversion.reindent(session.text, fileExtension: ext, tools: .current) else {
                     throw TextToolMessage.alreadyTidy
                 }
                 return result
             }
         case .toMarkdown:
-            await produce(fileExtension: "md", modifiers: modifiers) {
+            await produce(done: done, fileExtension: "md", modifiers: modifiers) {
                 guard let rich = try await self.richText(for: session) else { throw TextToolMessage.noFormatting }
                 return try await TextConversion.toMarkdown(rich, tools: .current)
             }
@@ -112,10 +151,10 @@ final class SelectedTextController {
         return await relay.copySelection()?.rich
     }
 
-    private func produce(fileExtension: String, modifiers: NSEvent.ModifierFlags, _ work: @escaping () async throws -> String) async {
+    private func produce(done: String, fileExtension: String, modifiers: NSEvent.ModifierFlags, _ work: @escaping () async throws -> String) async {
         do {
             let result = try await work()
-            await deliver(result, fileExtension: fileExtension, modifiers: modifiers)
+            await deliver(result, done: done, fileExtension: fileExtension, modifiers: modifiers)
         } catch let message as TextToolMessage {
             ToastController.shared.show(message.toast)
         } catch {
@@ -123,14 +162,17 @@ final class SelectedTextController {
         }
     }
 
-    /// Puts `result` where the modifiers say: over the selection (the
-    /// default), on the clipboard (⌥), or in a file on a shelf (⇧).
-    private func deliver(_ result: String, fileExtension: String, modifiers: NSEvent.ModifierFlags, recordsHistory: Bool = true) async {
+    /// Puts `result` where the app and the modifiers say: over the selection,
+    /// on the clipboard (⌥, and always in a terminal), or in a file on a shelf (⇧).
+    private func deliver(_ result: String, done: String, fileExtension: String, modifiers: NSEvent.ModifierFlags, recordsHistory: Bool = true) async {
         guard let session else { return }
-        switch TextDelivery(modifiers: modifiers) {
+        switch TextDelivery(modifiers: modifiers, strategy: session.strategy) {
         case .copy:
             relay.pasteboard.writeText(result)
-            ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "Copied"))
+            if recordsHistory {
+                history.record(original: session.text, result: result, bundleID: session.app.bundleIdentifier)
+            }
+            ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "\(done) and copied"))
         case .shelf:
             do {
                 addToShelf([try TextFiles.save(result, fileExtension: fileExtension)])
@@ -140,6 +182,10 @@ final class SelectedTextController {
         case .replace:
             guard result != session.text else {
                 ToastController.shared.show(TextToolMessage.unchanged.toast)
+                return
+            }
+            if session.source == .emacsClient {
+                await replaceInEmacs(result, done: done, recordsHistory: recordsHistory)
                 return
             }
             guard await activate(session.app), selectionIsUnchanged(session) else {
@@ -152,6 +198,23 @@ final class SelectedTextController {
             if recordsHistory {
                 history.record(original: session.text, result: result, bundleID: session.app.bundleIdentifier)
             }
+        }
+        self.session = nil
+    }
+
+    /// Replaces the region through emacsclient, as one change Emacs can undo.
+    private func replaceInEmacs(_ result: String, done: String, recordsHistory: Bool) async {
+        guard let session else { return }
+        let outcome = await EmacsClient.replace(session.text, with: result)
+        TextLog.emacsWrite(outcome)
+        if outcome == .replaced {
+            if recordsHistory {
+                history.record(original: session.text, result: result, bundleID: session.app.bundleIdentifier)
+            }
+        } else {
+            relay.pasteboard.writeText(result)
+            let reason = outcome == .changed ? "The region changed in Emacs, so nothing was replaced" : "Emacs didn’t answer, so nothing was replaced"
+            ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "\(done) and copied instead", subtitle: reason), for: .seconds(3))
         }
         self.session = nil
     }
@@ -180,23 +243,6 @@ final class SelectedTextController {
         for _ in 0..<50 {
             if NSEvent.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty { return }
             try? await Task.sleep(for: .milliseconds(10))
-        }
-    }
-}
-
-/// Where a text tool's result goes, from the keys held when it was chosen.
-enum TextDelivery: Equatable {
-    case replace
-    case copy
-    case shelf
-
-    init(modifiers: NSEvent.ModifierFlags) {
-        if modifiers.contains(.option) {
-            self = .copy
-        } else if modifiers.contains(.shift) {
-            self = .shelf
-        } else {
-            self = .replace
         }
     }
 }

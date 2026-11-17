@@ -92,6 +92,30 @@ enum TextCommand: Hashable, Sendable {
     case undo
 }
 
+extension TextCommand {
+    /// The first words of the confirmation: "Trimmed and copied".
+    var doneTitle: String {
+        switch self {
+        case .tool(let tool):
+            switch tool {
+            case .trim: "Trimmed"
+            case .cleanUp: "Cleaned up"
+            case .reindent: "Re-indented"
+            case .toMarkdown: "Converted to Markdown"
+            case .dedent: "Dedented"
+            case .indent: "Indented"
+            case .outdent: "Outdented"
+            case .tabsSpaces: "Converted indentation"
+            case .trimLines: "Trimmed lines"
+            case .straightenQuotes: "Straightened quotes"
+            }
+        case .convert(let format): "Converted to \(format.title)"
+        case .undo: "Original"
+        case .open, .back: ""
+        }
+    }
+}
+
 /// What is known about a selection when its wheel is built.
 struct TextContext: Equatable {
     var dataFormat: DataTextFormat?
@@ -111,6 +135,15 @@ struct TextContext: Equatable {
 /// The wedges of the text wheel and its sub-wheels. A wheel shows 7 wedges
 /// before it pages, so each list here stays at 7 or fewer.
 enum TextWheel {
+    /// The wheel's name. Text taken from the clipboard shows its first line,
+    /// so it's clear what the tool will act on.
+    static func title(for text: String, from source: TextReader) -> String {
+        guard source == .recentClipboard else { return "Text" }
+        let firstLine = text.split(whereSeparator: \.isNewline).first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
+        let short = firstLine.count > 24 ? String(firstLine.prefix(23)) + "…" : firstLine
+        return "Copied: \(short)"
+    }
+
     static func items(for context: TextContext, group: TextGroup? = nil) -> [WheelItem] {
         switch group {
         case nil:

@@ -153,57 +153,63 @@ struct TextHistoryTests {
 
 @MainActor
 struct HotkeyRouteTests {
-    func route(
-        _ bundleID: String? = "com.apple.TextEdit",
-        secure: Bool = false,
-        read: SelectedTextRead,
-        copied: String? = nil
-    ) async -> HotkeyRoute {
-        await HotkeyRoute.choose(frontmostBundleID: bundleID, isSecureInputOn: secure, read: { read }, copy: { copied })
+    func route(_ bundleID: String? = "com.apple.TextEdit", secure: Bool = false, reads: [TextReader: SelectedTextRead]) async -> HotkeyRoute {
+        await HotkeyRoute.choose(frontmostBundleID: bundleID, isSecureInputOn: secure, strategy: .for(bundleID: bundleID)) { reads[$0] ?? .unavailable }
     }
 
-    @Test func finderAlwaysKeepsItsFileWheel() async {
-        #expect(await route("com.apple.finder", read: .text("renaming"), copied: "x") == .finder)
-        #expect(await route("com.apple.finder", secure: true, read: .notPermitted) == .finder)
+    @Test func finderKeepsItsFileWheel() async {
+        #expect(await route("com.apple.finder", reads: [.accessibility: .text("x")]) == .finder)
     }
 
-    @Test func finderNeverReadsTheSelection() async {
-        var didRead = false
-        _ = await HotkeyRoute.choose(frontmostBundleID: "com.apple.finder", isSecureInputOn: false, read: { didRead = true; return .unavailable }, copy: { nil })
-        #expect(!didRead)
+    @Test func firstReaderWithTextWins() async {
+        #expect(await route(reads: [.accessibility: .text("a"), .copyShortcut: .text("b")]) == .text("a", from: .accessibility))
+        #expect(await route(reads: [.accessibility: .nothingSelected, .copyShortcut: .text("b")]) == .text("b", from: .copyShortcut))
     }
 
-    @Test func selectedTextOpensTheTextWheel() async {
-        #expect(await route(read: .text("hello")) == .text("hello"))
+    @Test func terminalsNeverPressKeys() async {
+        var asked: [TextReader] = []
+        let chosen = await HotkeyRoute.choose(frontmostBundleID: "com.googlecode.iterm2", isSecureInputOn: false, strategy: .for(bundleID: "com.googlecode.iterm2")) { asked.append($0); return $0 == .recentClipboard ? .text("copied") : .nothingSelected }
+        #expect(chosen == .text("copied", from: .recentClipboard))
+        #expect(!asked.contains(.copyShortcut))
     }
 
-    @Test func accessibilityTextNeverTriesCopy() async {
-        var didCopy = false
-        let chosen = await HotkeyRoute.choose(frontmostBundleID: "x", isSecureInputOn: false, read: { .text("a") }, copy: { didCopy = true; return "b" })
-        #expect(chosen == .text("a"))
-        #expect(!didCopy)
+    @Test func emacsAsksEmacsFirst() async {
+        #expect(await route("org.gnu.Emacs", reads: [.emacsClient: .text("region"), .accessibility: .text("ax")]) == .text("region", from: .emacsClient))
     }
 
-    @Test func secureInputIsRefusedBeforeReading() async {
-        var didRead = false
-        let chosen = await HotkeyRoute.choose(frontmostBundleID: "x", isSecureInputOn: true, read: { didRead = true; return .text("pw") }, copy: { "pw" })
-        #expect(chosen == .secureInput)
-        #expect(!didRead)
-        #expect(await route(read: .secure) == .secureInput)
+    @Test func secureAndPermission() async {
+        #expect(await route(secure: true, reads: [.accessibility: .text("pw")]) == .secureInput)
+        #expect(await route(reads: [.accessibility: .notPermitted, .copyShortcut: .notPermitted]) == .askForAccessibility)
+        #expect(await route("com.googlecode.iterm2", reads: [.accessibility: .notPermitted, .recentClipboard: .text("c")]) == .text("c", from: .recentClipboard))
+        #expect(await route(reads: [:]) == .nothing)
     }
 
-    @Test func withoutAccessibilityItAsks() async {
-        #expect(await route(read: .notPermitted, copied: "x") == .askForAccessibility)
+    @Test func terminalDeliveryCopiesUnlessControl() {
+        #expect(TextDelivery(modifiers: [], strategy: .terminal) == .copy)
+        #expect(TextDelivery(modifiers: .option, strategy: .terminal) == .copy)
+        #expect(TextDelivery(modifiers: .control, strategy: .terminal) == .replace)
+        #expect(TextDelivery(modifiers: .shift, strategy: .terminal) == .shelf)
+        #expect(TextDelivery(modifiers: [], strategy: .guiEmacs) == .replace)
     }
 
-    @Test func emptySelectionIsNothing() async {
-        #expect(await route(read: .nothingSelected, copied: "x") == .nothing)
-        #expect(await route(read: .text("")) == .nothing)
+    @Test func clipboardFreshness() {
+        var f = ClipboardFreshness(changeCount: 5)
+        let t = Date(timeIntervalSince1970: 1000)
+        #expect(!f.isFresh(at: t))
+        f.observe(changeCount: 6, at: t)
+        #expect(f.isFresh(at: t.addingTimeInterval(60)))
+        #expect(!f.isFresh(at: t.addingTimeInterval(61)))
     }
 
-    @Test func unreadableAppsFallBackToCopy() async {
-        #expect(await route(read: .unavailable, copied: "from copy") == .text("from copy"))
-        #expect(await route(read: .unavailable, copied: nil) == .nothing)
-        #expect(await route(read: .unavailable, copied: "") == .nothing)
+    @Test func emacsQuotingAndAnswers() {
+        #expect(EmacsClient.lispString(#"/tmp/a"b\c"#) == #""/tmp/a\"b\\c""#)
+        #expect(EmacsClient.answer(in: ["\"region\""]) == "region")
+        #expect(EmacsClient.answer(in: ["noise"]) == nil)
+    }
+
+    @Test func nothingFoundNamesTheApp() {
+        let toast = HotkeyRoute.nothingSelectedToast(appName: "iTerm2", strategy: .terminal, shortcut: nil)
+        #expect(toast.title == "No selected text found in iTerm2")
+        #expect(toast.subtitle == "Select text, ⌘C, then the shortcut")
     }
 }

@@ -11,6 +11,10 @@ struct ClipboardRelay {
     let pasteboard: any TextPasteboard
     let keys: any TextKeySender
     var sleep: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    /// Told before the clipboard is borrowed and after it is put back, so
+    /// `ClipboardWatcher` doesn't take OpenShelf's own writes for a new copy.
+    var willBorrow: @MainActor () -> Void = {}
+    var didRestore: @MainActor () -> Void = {}
 
     /// How long to wait for an app to answer ⌘C.
     static let copyTimeout: Duration = .milliseconds(250)
@@ -27,6 +31,7 @@ struct ClipboardRelay {
     /// as it was. Nil when the app copied nothing in time (nothing selected,
     /// or no Copy), in which case the clipboard was never touched.
     func copySelection() async -> Copied? {
+        willBorrow()
         let before = pasteboard.changeCount
         let saved = pasteboard.snapshot()
         keys.press(.copy)
@@ -38,12 +43,14 @@ struct ClipboardRelay {
         }
         let copied = pasteboard.string().map { Copied(text: $0, rich: pasteboard.richText()) }
         pasteboard.restore(saved)
+        didRestore()
         return copied
     }
 
     /// Pastes `text` over the selection, then restores the clipboard, unless
     /// something else has written to it in the meantime.
     func paste(_ text: String) async {
+        willBorrow()
         let saved = pasteboard.snapshot()
         pasteboard.writeTransient(text)
         let ours = pasteboard.changeCount
@@ -51,5 +58,6 @@ struct ClipboardRelay {
         await sleep(Self.restoreDelay)
         guard pasteboard.changeCount == ours else { return }
         pasteboard.restore(saved)
+        didRestore()
     }
 }
