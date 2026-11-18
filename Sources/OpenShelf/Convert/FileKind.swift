@@ -79,14 +79,23 @@ enum FileKind: Hashable {
     }()
 
     static func kind(of type: UTType) -> FileKind {
-        if type.conforms(to: .pdf) { return .pdf }
-        if type.conforms(to: .spreadsheet) { return .spreadsheet }
-        if type.conforms(to: .presentation) { return .presentation }
-        if type.conforms(to: .image) { return .image }
-        if type.conforms(to: .movie) || type.conforms(to: .video) { return .video }
-        if type.conforms(to: .audio) { return .audio }
-        if type.conforms(to: .archive) || type.conforms(to: .zip) || type.conforms(to: .gzip) { return .archive }
-        if documentTypes.contains(where: { type.conforms(to: $0) }) { return .document }
+        kind { type.conforms(to: $0) }
+    }
+
+    /// The kind for a type that conforms to what `conforms` says, so the
+    /// order of the checks is tested without the types this Mac declares.
+    /// Documents come before archives: an app (LibreOffice) can declare
+    /// ODT, itself a zip, as conforming to zip, which would make every .odt
+    /// an archive with only Extract on its wheel.
+    static func kind(conformingTo conforms: (UTType) -> Bool) -> FileKind {
+        if conforms(.pdf) { return .pdf }
+        if conforms(.spreadsheet) { return .spreadsheet }
+        if conforms(.presentation) { return .presentation }
+        if conforms(.image) { return .image }
+        if conforms(.movie) || conforms(.video) { return .video }
+        if conforms(.audio) { return .audio }
+        if documentTypes.contains(where: conforms) { return .document }
+        if conforms(.archive) || conforms(.zip) || conforms(.gzip) { return .archive }
         return .other
     }
 

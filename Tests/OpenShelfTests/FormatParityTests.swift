@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Testing
+import UniformTypeIdentifiers
 @testable import OpenShelf
 
 struct DelimitedTextTests {
@@ -185,6 +186,20 @@ struct FormatCatalogTests {
             #expect(wheel.count <= ConversionCatalog.maxWedges, "\(name)")
             #expect(Set(full).subtracting(wheel).isSubset(of: [.adoc, .typ]), "\(name) loses \(Set(full).subtracting(wheel))")
         }
+    }
+
+    /// A type that is a document and also claims to be a zip (ODT, once
+    /// LibreOffice declares it so) is a document; a plain zip stays an archive.
+    /// The conformance is stubbed, so this holds whatever this Mac has installed.
+    @Test func documentsThatAreZipsStayDocuments() {
+        let odt = UTType("org.oasis-open.opendocument.text")!
+        #expect(FileKind.kind { $0 == odt || $0 == .zip || $0 == .archive } == .document)
+        #expect(FileKind.kind { $0 == .plainText || $0 == .gzip } == .document)
+        #expect(FileKind.kind { $0 == .zip || $0 == .archive } == .archive)
+        #expect(FileKind.kind { $0 == .gzip } == .archive)
+        #expect(FileKind.kind { _ in false } == .other)
+        // Kinds checked earlier still win over both.
+        #expect(FileKind.kind { $0 == .presentation || $0 == .zip || $0 == odt } == .presentation)
     }
 
     /// ODT with pandoc has one format too many; ADOC gives way so RST and ORG stay.
