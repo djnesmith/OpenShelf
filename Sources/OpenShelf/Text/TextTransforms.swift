@@ -113,11 +113,11 @@ enum TextTransforms {
         text.components(separatedBy: "\n").map(transform).joined(separator: "\n")
     }
 
-    private static func isBlank(_ line: String) -> Bool {
+    static func isBlank(_ line: String) -> Bool {
         line.allSatisfy { $0 == " " || $0 == "\t" || $0 == "\r" }
     }
 
-    private static func leadingWhitespace(_ line: String) -> String {
+    static func leadingWhitespace(_ line: String) -> String {
         String(line.prefix { $0 == " " || $0 == "\t" })
     }
 

@@ -69,7 +69,7 @@ struct TextWheelTests {
             TextContext(text: "prose", hasRichText: true, canUndo: true),
         ]
         for context in contexts {
-            for group in [nil, TextGroup.convert, .more] {
+            for group in [nil] + TextGroup.allCases.map(Optional.some) {
                 let items = TextWheel.items(for: context, group: group)
                 #expect(items.count <= WheelPaging.slotCount)
                 #expect(WheelPaging.pageCount(forItemCount: items.count) == 1)
@@ -80,14 +80,89 @@ struct TextWheelTests {
     @Test func convertOffersEveryOtherFormatThenBack() {
         let context = TextContext(text: "a: 1\nb: 2", hasRichText: false, canUndo: false)
         #expect(context.dataFormat == .yaml)
-        #expect(Self.commands(TextWheel.items(for: context, group: .convert)) == [.convert(.json), .convert(.edn), .convert(.xml), .convert(.toml), .back])
+        #expect(Self.commands(TextWheel.items(for: context, group: .convert)) == [.convert(.json), .convert(.edn), .convert(.xml), .convert(.toml), .back(nil)])
     }
 
-    @Test func moreHoldsTheLayoutToolsThenBack() {
+    @Test func moreLeadsToLinesCaseAndIndent() {
         let context = TextContext(text: "x", hasRichText: false, canUndo: false)
         #expect(Self.commands(TextWheel.items(for: context, group: .more)) == [
-            .tool(.dedent), .tool(.indent), .tool(.outdent), .tool(.tabsSpaces), .tool(.trimLines), .tool(.straightenQuotes), .back,
+            .open(.lines), .open(.textCase), .open(.indentation), .tool(.trimLines), .tool(.straightenQuotes), .back(nil),
         ])
+        #expect(Self.commands(TextWheel.items(for: context, group: .lines)) == [
+            .tool(.sortAZ), .tool(.removeDuplicates), .tool(.removeBlankLines), .open(.order), .open(.joinSplit), .open(.lists), .back(.more),
+        ])
+        #expect(Self.commands(TextWheel.items(for: context, group: .textCase)) == [
+            .tool(.upperCase), .tool(.lowerCase), .tool(.titleCase), .tool(.sentenceCase), .open(.codeCase), .back(.more),
+        ])
+    }
+
+    @Test func backReturnsToTheWheelThatOpenedTheGroup() {
+        // JSON, so Convert ▸ is on the first wheel too.
+        let context = TextContext(text: "{\"a\": 1}", hasRichText: false, canUndo: false)
+        var opened: [TextGroup: TextGroup?] = [:]
+        for parent in [nil] + TextGroup.allCases.map(Optional.some) {
+            for case .open(let child) in Self.commands(TextWheel.items(for: context, group: parent)) {
+                #expect(opened[child] == nil, "\(child) opens from two wheels")
+                opened[child] = parent
+            }
+        }
+        for group in TextGroup.allCases {
+            #expect(opened[group] == .some(group.parent), "\(group)")
+            #expect(Self.commands(TextWheel.items(for: context, group: group)).last == .back(group.parent))
+        }
+    }
+
+    /// Every tool is on exactly one wheel, so none is lost when groups move.
+    @Test func everyToolIsOnOneWheel() {
+        let context = TextContext(text: "{\"a\": 1}", hasRichText: true, canUndo: false)
+        var found: [TextTool] = []
+        for group in [nil] + TextGroup.allCases.map(Optional.some) {
+            for case .tool(let tool) in Self.commands(TextWheel.items(for: context, group: group)) { found.append(tool) }
+        }
+        // To Markdown is only offered for prose, which this JSON isn't.
+        #expect(found.sorted { "\($0)" < "\($1)" } == TextTool.allCases.filter { $0 != .toMarkdown }.sorted { "\($0)" < "\($1)" })
+    }
+
+    /// Each wedge runs its own tool: one input, every tool's answer.
+    @Test(arguments: [
+        (TextTool.sortAZ, "b\nA\nb\n", "A\nb\nb\n"),
+        (.sortNatural, "x10\nx9", "x9\nx10"),
+        (.sortByLength, "ccc\na", "a\nccc"),
+        (.reverseLines, "1\n2", "2\n1"),
+        (.removeDuplicates, "a\na", "a"),
+        (.removeBlankLines, "a\n\nb", "a\nb"),
+        (.numberLines, "a\nb", "1. a\n2. b"),
+        (.markdownList, "a", "- a"),
+        (.markdownTable, "a,b", "| a | b |\n| --- | --- |"),
+        (.joinWithCommas, "a\nb", "a, b"),
+        (.joinWithSpaces, "a\nb", "a b"),
+        (.splitAtCommas, "a, b", "a\nb"),
+        (.splitAtSpaces, "a b", "a\nb"),
+        (.quoteLines, "a", "\"a\""),
+        (.unquoteLines, "'a'", "a"),
+        (.addCommas, "a\nb", "a,\nb"),
+        (.upperCase, "Big deal", "BIG DEAL"),
+        (.lowerCase, "Big Deal", "big deal"),
+        (.titleCase, "big deal", "Big Deal"),
+        (.sentenceCase, "BIG DEAL", "Big deal"),
+        (.camelCase, "big deal", "bigDeal"),
+        (.pascalCase, "big deal", "BigDeal"),
+        (.snakeCase, "big deal", "big_deal"),
+        (.kebabCase, "big deal", "big-deal"),
+        (.constantCase, "big deal", "BIG_DEAL"),
+    ])
+    func eachToolRunsItsOwnTransform(tool: TextTool, text: String, expected: String) {
+        #expect(tool.apply(to: text) == expected)
+    }
+
+    @Test func everyWedgeHasASymbol() {
+        let context = TextContext(text: "x", hasRichText: false, canUndo: true)
+        for group in [nil] + TextGroup.allCases.map(Optional.some) {
+            // Convert's format wedges are words, with no symbol.
+            for item in TextWheel.items(for: context, group: group) where group != .convert {
+                #expect(NSImage(systemSymbolName: item.systemImage ?? "", accessibilityDescription: nil) != nil, "\(item.title)")
+            }
+        }
     }
 
     @Test func modifiersChooseWhereTheResultGoes() {

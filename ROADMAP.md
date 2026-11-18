@@ -662,6 +662,17 @@ rules:
 - **Tests:** table-driven for each tool; ordering and favourites persistence.
 - **What David sees:** More → Case ▸, Lines ▸, …; his last three tools first.
 - **Verify in the app:** two flicks reach any tool; Count and Hash show toasts.
+- **Built so far (first slice):** the Lines and Case groups, after David asked for sort
+  lines in Mail. More ▸ is now Lines ▸ · Case ▸ · Indent ▸ · Trim Lines · Straight Quotes.
+  Lines ▸ and Case ▸ have sub-wheels of their own (Order, Join & Split, Lists, Code Case) so
+  no wheel pages, and Back goes to the wheel a group opened from. Dedent, Indent, Outdent
+  and Tabs ↔ Spaces moved from More into Indent ▸ to make room. Sort A–Z, Remove
+  Duplicates, Remove Blank Lines and UPPER/lower/Title/Sentence are three picks (More, the
+  group, the tool); the Order, Join & Split, Lists and Code Case tools are four. The plan's
+  "two flicks reach any tool" is not met; search on the wheel is the proposed answer. Join, split, prefix and suffix use fixed
+  separators; typing your own needs a text field the wheel doesn't have.
+- **Left in Stage 2:** Cleanup, Encode and decode, Extract, Count, Hash, Dates, Wrap,
+  Markdown, Generate; recent first and favourites.
 
 ### Stage 3: text on the shelf
 

@@ -100,8 +100,8 @@ final class SelectedTextController {
         switch command {
         case .open(let group):
             show(group: group, at: nil)
-        case .back:
-            show(group: nil, at: nil)
+        case .back(let group):
+            show(group: group, at: nil)
         case .undo:
             guard let entry = history.undoable(for: session.text, in: session.app.bundleIdentifier) else { return }
             history.remove(entry)
