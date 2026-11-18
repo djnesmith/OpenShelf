@@ -95,6 +95,20 @@ struct ClipboardRelayTests {
         #expect(slept >= ClipboardRelay.copyTimeout)
     }
 
+    /// The watcher is told around each borrow, so it can tell our writes from the user's.
+    @Test func borrowsAreAnnounced() async {
+        let pasteboard = FakeTextPasteboard(text: "clip")
+        var events: [String] = []
+        var relay = relay(pasteboard, keys: FakeKeys(pasteboard) { shortcut, board in
+            if shortcut == .copy { board.appWrites("sel") }
+        })
+        relay.willBorrow = { events.append("borrow") }
+        relay.didRestore = { events.append("restored") }
+        _ = await relay.copySelection()
+        await relay.paste("result")
+        #expect(events == ["borrow", "restored", "borrow", "restored"])
+    }
+
     @Test func copyWaitsForASlowApp() async {
         let pasteboard = FakeTextPasteboard(text: "clip")
         var polls = 0

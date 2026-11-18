@@ -285,7 +285,63 @@ struct HotkeyRouteTests {
     @Test func nothingFoundNamesTheApp() {
         let toast = HotkeyRoute.nothingSelectedToast(appName: "Notes", strategy: .standard, shortcut: nil)
         #expect(toast.title == "No selected text found in Notes")
-        #expect(toast.subtitle == "Select text, or files in Finder")
+        #expect(toast.subtitle == "Select or copy text, or files in Finder")
+    }
+
+    /// Copied text is the last way in, after any selection, in every app.
+    @Test func copiedTextIsTheLastReaderEverywhere() {
+        for strategy in [TextAppStrategy.standard, .terminal, .guiEmacs] {
+            #expect(strategy.readers.last == .recentClipboard)
+        }
+        #expect(TextAppStrategy.standard.readers == [.accessibility, .copyShortcut, .recentClipboard])
+        #expect(TextAppStrategy.guiEmacs.readers == [.emacsClient, .accessibility, .copyShortcut, .recentClipboard])
+    }
+
+    @Test func aSelectionAlwaysWinsOverACopy() async {
+        let copy: SelectedTextRead = .text("copied")
+        #expect(await route(reads: [.accessibility: .text("sel"), .recentClipboard: copy]) == .text("sel", from: .accessibility))
+        #expect(await route(reads: [.accessibility: .nothingSelected, .copyShortcut: .text("sel"), .recentClipboard: copy]) == .text("sel", from: .copyShortcut))
+        #expect(await route("org.gnu.Emacs", reads: [.emacsClient: .text("region"), .recentClipboard: copy]) == .text("region", from: .emacsClient))
+    }
+
+    @Test func withNothingSelectedACopyOpensTheWheel() async {
+        let reads: [TextReader: SelectedTextRead] = [.accessibility: .nothingSelected, .copyShortcut: .unavailable, .recentClipboard: .text("copied")]
+        #expect(await route(reads: reads) == .text("copied", from: .recentClipboard))
+        #expect(await route("org.gnu.Emacs", reads: reads.merging([.emacsClient: .nothingSelected]) { $1 }) == .text("copied", from: .recentClipboard))
+        // No copy in the last minute: the toast, as before.
+        #expect(await route(reads: [.accessibility: .nothingSelected]) == .nothing)
+    }
+
+    @Test func secureFieldsStillStopBeforeTheClipboard() async {
+        #expect(await route(reads: [.accessibility: .secure, .recentClipboard: .text("copied")]) == .secureInput)
+        #expect(await route(secure: true, reads: [.recentClipboard: .text("copied")]) == .secureInput)
+    }
+
+    /// Copied text has no selection to replace: Return copies, ⌃ pastes at the cursor.
+    @Test func copiedTextIsOnlyCopiedUnlessControl() {
+        for strategy in [TextAppStrategy.standard, .guiEmacs] {
+            #expect(TextDelivery(modifiers: [], strategy: strategy, source: .recentClipboard) == .copy)
+            #expect(TextDelivery(modifiers: .control, strategy: strategy, source: .recentClipboard) == .replace)
+            #expect(TextDelivery(modifiers: .shift, strategy: strategy, source: .recentClipboard) == .shelf)
+            #expect(strategy.hint(for: .recentClipboard) == "Return copies · ⌃ pastes · ⇧ to shelf")
+        }
+        #expect(TextDelivery(modifiers: [], strategy: .standard, source: .copyShortcut) == .replace)
+        #expect(TextAppStrategy.standard.hint(for: .accessibility) == "Return replaces · ⌥ copies · ⇧ to shelf")
+        #expect(TextAppStrategy.terminal.hint(for: .accessibility) == "Return copies · ⌃ pastes · ⇧ to shelf")
+    }
+
+    /// OpenShelf's own ⌘C and the restore after it don't make an old copy look new.
+    @Test func ownBorrowKeepsTheCopysAge() {
+        let t = Date(timeIntervalSince1970: 1000)
+        var freshness = ClipboardFreshness(changeCount: 5)
+        freshness.observe(changeCount: 6, at: t)              // the user copies
+        var saved = freshness                                   // willBorrow
+        freshness.observe(changeCount: 7, at: t.addingTimeInterval(30))  // our ⌘C, seen mid-borrow
+        saved.adopt(changeCount: 8)                             // didRestore
+        freshness = saved
+        freshness.observe(changeCount: 8, at: t.addingTimeInterval(31))
+        #expect(freshness.isFresh(at: t.addingTimeInterval(60)))
+        #expect(!freshness.isFresh(at: t.addingTimeInterval(61)))
     }
 
     @Test func terminalsSayCopyFirst() {

@@ -690,6 +690,9 @@ rules:
   "two flicks reach any tool" is not met by flicks; typing a few letters now reaches any
   tool (C7 Search). Join, split, prefix and suffix use fixed
   separators; typing your own needs a text field the wheel doesn't have.
+- **Also built:** copied text as the last way in for every app (David, 2026-11-18: "also
+  the text changes should work in any text editing field or on copied text right?"):
+  selection first, then a copy from the last 60 s, copy-only, ⌃ pastes at the cursor.
 - **Left in Stage 2:** Cleanup, Encode and decode, Extract, Count, Hash, Dates, Wrap,
   Markdown, Generate; recent first and favourites.
 

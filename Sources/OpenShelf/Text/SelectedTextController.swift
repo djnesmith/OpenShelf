@@ -88,7 +88,7 @@ final class SelectedTextController {
             items: items,
             title: group?.title ?? TextWheel.title(for: session.text, from: session.source),
             summary: count == 1 ? "1 character" : "\(count) characters",
-            hint: session.strategy.hint,
+            hint: session.strategy.hint(for: session.source),
             at: location,
             searchCandidates: TextWheel.searchCandidates(for: session.context, from: group)
         )
@@ -167,7 +167,7 @@ final class SelectedTextController {
     /// on the clipboard (⌥, and always in a terminal), or in a file on a shelf (⇧).
     private func deliver(_ result: String, done: String, fileExtension: String, modifiers: NSEvent.ModifierFlags, recordsHistory: Bool = true) async {
         guard let session else { return }
-        switch TextDelivery(modifiers: modifiers, strategy: session.strategy) {
+        switch TextDelivery(modifiers: modifiers, strategy: session.strategy, source: session.source) {
         case .copy:
             relay.pasteboard.writeText(result)
             if recordsHistory {

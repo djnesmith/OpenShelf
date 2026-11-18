@@ -7,7 +7,9 @@ enum TextReader: Equatable, Sendable {
     /// ⌘C in the app, reading what it copied. Never used in terminals, where
     /// ⌘C can be mapped to Ctrl-C and would interrupt the running program.
     case copyShortcut
-    /// What the user copied in the last minute (in a terminal, select then ⌘C).
+    /// What the user copied in the last minute: in a terminal, select then
+    /// ⌘C; elsewhere, the last way in when nothing is selected. The result
+    /// is only copied, since there is no selection to put it over.
     case recentClipboard
     /// GUI Emacs, asked through emacsclient for its region.
     case emacsClient
@@ -35,9 +37,10 @@ struct TextAppStrategy: Equatable, Sendable {
     ]
     static let emacs: Set<String> = ["org.gnu.Emacs"]
 
-    static let standard = TextAppStrategy(readers: [.accessibility, .copyShortcut], writer: .paste)
+    // A selection always comes before the clipboard: recentClipboard is last.
+    static let standard = TextAppStrategy(readers: [.accessibility, .copyShortcut, .recentClipboard], writer: .paste)
     static let terminal = TextAppStrategy(readers: [.accessibility, .recentClipboard], writer: .copyOnly)
-    static let guiEmacs = TextAppStrategy(readers: [.emacsClient, .accessibility, .copyShortcut], writer: .emacsClient)
+    static let guiEmacs = TextAppStrategy(readers: [.emacsClient, .accessibility, .copyShortcut, .recentClipboard], writer: .emacsClient)
 
     static func `for`(bundleID: String?) -> TextAppStrategy {
         guard let bundleID else { return .standard }
@@ -48,33 +51,40 @@ struct TextAppStrategy: Equatable, Sendable {
 
     var isTerminal: Bool { writer == .copyOnly }
 
-    /// The label under the wheel.
-    var hint: String {
-        isTerminal ? "Return copies · ⌃ pastes · ⇧ to shelf" : "Return replaces · ⌥ copies · ⇧ to shelf"
+    /// Whether a result for text found by `source` is only copied: always in
+    /// a terminal, and for copied text anywhere, as nothing is selected.
+    func isCopyOnly(from source: TextReader) -> Bool {
+        isTerminal || source == .recentClipboard
+    }
+
+    /// The label under the wheel for text found by `source`.
+    func hint(for source: TextReader) -> String {
+        isCopyOnly(from: source) ? "Return copies · ⌃ pastes · ⇧ to shelf" : "Return replaces · ⌥ copies · ⇧ to shelf"
     }
 
     /// What to say when no route found any text.
     var nothingFoundHint: String {
         switch self {
         case .terminal: "OpenShelf can't see a terminal's selection"
-        case .guiEmacs: "Select a region first"
-        default: "Select text, or files in Finder"
+        case .guiEmacs: "Select a region, or copy text first"
+        default: "Select or copy text, or files in Finder"
         }
     }
 }
 
-/// Where a text tool's result goes, from the app and the keys held when it
-/// was chosen. In a terminal the result is only copied, unless ⌃ asks for a
-/// paste (for vim's insert mode, which only the user can know).
+/// Where a text tool's result goes, from the app, where the text came from
+/// and the keys held when it was chosen. In a terminal, and for copied text
+/// with nothing selected, the result is only copied, unless ⌃ asks for a
+/// paste (vim's insert mode, or the cursor's place in a text field).
 enum TextDelivery: Equatable {
     case replace
     case copy
     case shelf
 
-    init(modifiers: NSEvent.ModifierFlags, strategy: TextAppStrategy = .standard) {
+    init(modifiers: NSEvent.ModifierFlags, strategy: TextAppStrategy = .standard, source: TextReader = .accessibility) {
         if modifiers.contains(.shift) && !modifiers.contains(.option) {
             self = .shelf
-        } else if strategy.isTerminal {
+        } else if strategy.isCopyOnly(from: source) {
             self = modifiers.contains(.control) ? .replace : .copy
         } else {
             self = modifiers.contains(.option) ? .copy : .replace
