@@ -53,7 +53,7 @@ struct WheelView: View {
                 if let search = model.search {
                     SearchPill(query: search, result: model.searchResultLabel)
                 } else {
-                    LabelPill(text: model.hint ?? pillTitle, isActive: model.highlighted != nil && model.hint == nil)
+                    LabelPill(text: pillText, isActive: model.highlighted != nil && model.hint == nil)
                 }
             }
             .offset(y: -(geometry.outerRadius + rimWidth + 20))
@@ -67,9 +67,11 @@ struct WheelView: View {
         .animation(pageAnimation, value: model.page)
     }
 
-    /// Names the wheel too when it was opened from the keyboard.
-    private var pillTitle: String {
-        model.wheelName.map { "\($0) · \(currentLabel)" } ?? currentLabel
+    /// A hint, or the wedge with the wheel's name when it was opened from
+    /// the keyboard, cut to fit above the wheel.
+    private var pillText: String {
+        if let hint = model.hint { return PillText.shorten(hint, toFit: PillText.room, at: .tail) }
+        return PillText.label(name: model.wheelName, currentLabel)
     }
 
     /// The hovered wedge, or the files' size and, on a paged wheel, the page.
@@ -88,7 +90,7 @@ private struct LabelPill: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.system(size: PillText.fontSize, weight: .semibold))
             .lineLimit(1)
             .contentTransition(.interpolate)
             .foregroundStyle(isActive ? Color.white : Color.primary)
@@ -112,6 +114,7 @@ private struct SearchPill: View {
     let result: String?
 
     var body: some View {
+        let fitted = PillText.search(query: query.text, result: result)
         HStack(spacing: 5) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
@@ -120,19 +123,17 @@ private struct SearchPill: View {
                 Text("Search tools").foregroundStyle(.tertiary)
             } else {
                 // The end of a long query is what was just typed.
-                Text(query.text)
-                    .truncationMode(.head)
+                Text(fitted.query)
                     .padding(.horizontal, query.isAllSelected ? 2 : 0)
                     .background(query.isAllSelected ? Color.accentColor.opacity(0.35) : .clear, in: RoundedRectangle(cornerRadius: 3))
                 if !query.isAllSelected { caret }
             }
-            if let result {
+            if let result = fitted.result {
                 Text("· \(result)")
                     .foregroundStyle(.secondary)
-                    .truncationMode(.tail)
             }
         }
-        .font(.system(size: 12, weight: .semibold))
+        .font(.system(size: PillText.fontSize, weight: .semibold))
         .lineLimit(1)
         .padding(.horizontal, 12)
         .frame(height: 26)

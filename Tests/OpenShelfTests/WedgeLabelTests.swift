@@ -73,20 +73,16 @@ struct WedgeLabelTests {
         #expect(abs(Self.narrowest.labelWidth - 73.57) < 0.01)
     }
 
-    /// The search bar: the query (as long as the whole name it finds) then
-    /// "· Name · Lines › Order", in the pill's 12 pt semibold, inside its
-    /// maximum width less padding, magnifier and caret.
-    @Test func everySearchResultFitsTheSearchBar() {
-        // Padding, magnifier, caret and the three 5 pt gaps between them.
-        let room = WheelGeometry.panelSide - 16 - 24 - 16 - 1.5 - 3 * 5
+    /// The search bar with a query as long as the name it finds shows
+    /// "· Name · Lines › Order" in full, nothing cut.
+    @Test func everySearchResultFitsTheSearchBarUncut() {
         let text = Self.textContexts.flatMap { TextWheel.searchCandidates(for: $0) }
         let files = Self.fileItems.flatMap { item in WheelKind.allCases.map { WheelSearchCandidate(item: item, path: [$0.shortTitle]) } }
         #expect(text.count > 40)
-        let tooWide = (text + files).filter { Self.pillWidth($0.item.title.lowercased()) + Self.pillWidth("· \($0.label)") > room }.map(\.label)
-        #expect(tooWide == [])
-    }
-
-    static func pillWidth(_ text: String) -> CGFloat {
-        NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]).size().width
+        let cut = (text + files).filter {
+            let query = $0.item.title.lowercased()
+            return PillText.search(query: query, result: $0.label) != (query, $0.label)
+        }
+        #expect(cut.map(\.label) == [])
     }
 }
