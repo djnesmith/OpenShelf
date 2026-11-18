@@ -56,7 +56,7 @@ struct TextAppStrategy: Equatable, Sendable {
     /// What to say when no route found any text.
     var nothingFoundHint: String {
         switch self {
-        case .terminal: "Select text, ⌘C, then the shortcut"
+        case .terminal: "OpenShelf can't see a terminal's selection"
         case .guiEmacs: "Select a region first"
         default: "Select text, or files in Finder"
         }

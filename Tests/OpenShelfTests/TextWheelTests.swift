@@ -208,8 +208,16 @@ struct HotkeyRouteTests {
     }
 
     @Test func nothingFoundNamesTheApp() {
-        let toast = HotkeyRoute.nothingSelectedToast(appName: "iTerm2", strategy: .terminal, shortcut: nil)
-        #expect(toast.title == "No selected text found in iTerm2")
-        #expect(toast.subtitle == "Select text, ⌘C, then the shortcut")
+        let toast = HotkeyRoute.nothingSelectedToast(appName: "Notes", strategy: .standard, shortcut: nil)
+        #expect(toast.title == "No selected text found in Notes")
+        #expect(toast.subtitle == "Select text, or files in Finder")
+    }
+
+    @Test func terminalsSayCopyFirst() {
+        let toast = HotkeyRoute.nothingSelectedToast(appName: "iTerm2", strategy: .terminal, shortcut: .defaultOpenWheel)
+        #expect(toast.title == "Copy first: ⌘C, then ⌃⌥Space")
+        #expect(toast.subtitle == "OpenShelf can't see a terminal's selection")
+        let noShortcut = HotkeyRoute.nothingSelectedToast(appName: "iTerm2", strategy: .terminal, shortcut: nil)
+        #expect(noShortcut.title == "Copy first: ⌘C, then the shortcut")
     }
 }
