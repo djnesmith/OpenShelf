@@ -337,6 +337,22 @@ enum TextWheel {
     }
 }
 
+extension TextWheel {
+    /// Every tool reachable from `group`'s wheel, through its sub-wheels, for
+    /// search. Sub-wheel and Back wedges aren't results; their tools are.
+    static func searchCandidates(for context: TextContext, from group: TextGroup? = nil, path: [String] = []) -> [WheelSearchCandidate] {
+        items(for: context, group: group).flatMap { item -> [WheelSearchCandidate] in
+            guard case .text(let command) = item.command else { return [] }
+            switch command {
+            // More is only a way in; the path starts at the group under it.
+            case .open(let child): return searchCandidates(for: context, from: child, path: child == .more ? path : path + [child.title])
+            case .back: return []
+            case .tool, .convert, .undo: return [WheelSearchCandidate(item: item, path: path)]
+            }
+        }
+    }
+}
+
 extension WheelItem {
     static func text(_ command: TextCommand) -> WheelItem {
         switch command {

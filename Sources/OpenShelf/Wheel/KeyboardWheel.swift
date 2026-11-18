@@ -65,6 +65,9 @@ enum KeyboardWheelHint {
     /// Shown when Tab or a tap switches to a Convert wheel with options.
     static let options = "⌥Return for options"
 
+    /// Follows the opening hint: letters search every wedge the wheel leads to.
+    static let search = "Type to search · ⌘F"
+
     /// For a wheel that `canSwitch` to others with Tab, and whose wedges
     /// have options (see `OutputOptions`). The label has to fit above the
     /// wheel, so with options "Arrows choose" makes way.

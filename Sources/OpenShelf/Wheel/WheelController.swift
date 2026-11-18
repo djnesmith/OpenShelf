@@ -29,8 +29,22 @@ final class WheelModel {
     /// Whether ⌘ is held on a keyboard wheel, showing each wedge's number key.
     var showsBadges = false
     var isPresented = false
+    /// What has been typed to search the wheel; nil while not searching.
+    var search: WheelSearchQuery?
+    /// Each search result's label, with the wheels it sits under.
+    var searchLabels: [WheelCommand: String] = [:]
 
     var pageCount: Int { WheelPaging.pageCount(forItemCount: items.count) }
+
+    /// While searching: the highlighted match with the wheels it sits under,
+    /// or that nothing matches.
+    var searchResultLabel: String? {
+        guard search?.isEmpty == false else { return nil }
+        guard !items.isEmpty else { return "No tool matches" }
+        guard let highlighted else { return nil }
+        if let item = highlighted.item { return searchLabels[item.command] ?? item.title }
+        return highlighted.label
+    }
 
     var highlighted: WheelSlot? { highlightedSlot.flatMap { slots[safe: $0] } }
 
@@ -95,6 +109,28 @@ final class WheelController {
         var title: String? = nil
         /// What the hub shows in place of the files' size.
         var summary: String? = nil
+        /// Every wedge the wheel leads to, across pages and sub-wheels, for search.
+        var searchCandidates: [WheelSearchCandidate] = []
+        /// The wheel as it was before the search, to go back to.
+        var beforeSearch: (items: [WheelItem], page: Int, highlight: Int?)? = nil
+    }
+
+    /// Wedges run lately, newest first, so search can rank them first on ties.
+    /// Kept for this launch only.
+    private(set) var recentCommands: [WheelCommand] = []
+
+    private func noteUsed(_ item: WheelItem) {
+        // Opening a sub-wheel or going back isn't using a tool.
+        if case .text(.open) = item.command { return }
+        if case .text(.back) = item.command { return }
+        recentCommands.removeAll { $0 == item.command }
+        recentCommands.insert(item.command, at: 0)
+        if recentCommands.count > 20 { recentCommands.removeLast() }
+    }
+
+    /// The file wheels' wedges for search, each under its wheel's name.
+    private static func searchCandidates(_ itemsByKind: [WheelKind: [WheelItem]], available: [WheelKind]) -> [WheelSearchCandidate] {
+        available.flatMap { kind in (itemsByKind[kind] ?? []).map { WheelSearchCandidate(item: $0, path: [kind.shortTitle]) } }
     }
 
     var isInKeyboardMode: Bool { keyboardSession != nil }
@@ -165,11 +201,16 @@ final class WheelController {
     }
 
     /// Shows a short instruction in the wheel's label for a moment.
-    func showHint(_ text: String) {
+    /// `next`, if given, follows it for as long.
+    func showHint(_ text: String, then next: String? = nil) {
         guard model.isPresented, model.hint != text else { return }
         model.hint = text
         hintTask?.cancel()
         hintTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            self?.model.hint = next
+            guard next != nil else { return }
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
             self?.model.hint = nil
@@ -198,6 +239,7 @@ final class WheelController {
             return false
         }
         absorbNextDrop()
+        noteUsed(item)
         onDrop?(item, urls, NSEvent.modifierFlags, Shelf.activeDragSource?.id)
         return true
     }
@@ -289,7 +331,8 @@ final class WheelController {
             available: available,
             kind: first,
             taps: ModifierTapTracker(alreadyHeld: NSEvent.modifierFlags),
-            sourceShelfID: sourceShelfID
+            sourceShelfID: sourceShelfID,
+            searchCandidates: Self.searchCandidates(itemsByKind, available: available)
         )
         showKeyboardWheel(first, at: location)
         takeKeyboard(hint: KeyboardWheelHint.opening(canSwitch: available.count > 1, hasOptions: hasOptions(first)))
@@ -300,7 +343,11 @@ final class WheelController {
     /// wheel, or one of its sub-wheels, which replaces the wheel in place.
     /// Keys, clicks and paging work as on a file wheel; Tab has nowhere to go.
     /// - Parameter location: Where to open; nil keeps the wheel where it is.
-    func presentForKeyboard(items: [WheelItem], title: String, summary: String, hint: String, at location: NSPoint?) {
+    /// - Parameter searchCandidates: What typing searches; by default `items`.
+    func presentForKeyboard(
+        items: [WheelItem], title: String, summary: String, hint: String, at location: NSPoint?,
+        searchCandidates: [WheelSearchCandidate]? = nil
+    ) {
         guard !items.isEmpty else { return }
         endKeyboardMode(hidingWheel: location != nil)
         keyboardSession = KeyboardSession(
@@ -310,7 +357,8 @@ final class WheelController {
             kind: .tools,
             taps: ModifierTapTracker(alreadyHeld: NSEvent.modifierFlags),
             title: title,
-            summary: summary
+            summary: summary,
+            searchCandidates: searchCandidates ?? items.map { WheelSearchCandidate(item: $0) }
         )
         showKeyboardWheel(.tools, at: location)
         takeKeyboard(hint: hint)
@@ -341,7 +389,8 @@ final class WheelController {
             kind: kind,
             taps: ModifierTapTracker(alreadyHeld: NSEvent.modifierFlags),
             // The drag that dropped on More/Back is still in progress here.
-            sourceShelfID: Shelf.activeDragSource?.id
+            sourceShelfID: Shelf.activeDragSource?.id,
+            searchCandidates: Self.searchCandidates(itemsByKind, available: available)
         )
         updateSummary(for: urls)
         model.wheelName = kind.shortTitle
@@ -368,7 +417,7 @@ final class WheelController {
             }
         }
         model.showsBadges = NSEvent.modifierFlags.contains(.command)
-        showHint(hint)
+        showHint(hint, then: KeyboardWheelHint.search)
     }
 
     /// Leaves keyboard mode. A drag-triggered wheel calls this with
@@ -376,6 +425,8 @@ final class WheelController {
     func endKeyboardMode(hidingWheel: Bool = false) {
         guard keyboardSession != nil else { return }
         keyboardSession = nil
+        model.search = nil
+        model.searchLabels = [:]
         model.showsBadges = false
         dropView.isKeyboardMode = false
         panel.acceptsKeyboard = false
@@ -428,7 +479,8 @@ final class WheelController {
             model.showsBadges = event.modifierFlags.contains(.command)
             let tapped = session.taps.flagsChanged(event.modifierFlags)
             keyboardSession = session
-            if let tapped,
+            // While searching, ⇧ is for capitals, not for switching wheels.
+            if let tapped, model.search == nil,
                let kind = TriggerMatcher(triggers: Preferences.shared.triggers).wheel(for: tapped),
                session.available.contains(kind), kind != session.kind {
                 showKeyboardWheel(kind)
@@ -438,8 +490,14 @@ final class WheelController {
         session.taps.keyPressed()
         keyboardSession = session
         if event.modifierFlags.contains(.command) {
+            // ⌘F before the badges: F is never a badge (they are 0-9).
+            if Self.isFind(event) {
+                startSearch(selectingAll: true)
+                return true
+            }
             return runBadge(event.charactersIgnoringModifiers ?? "", modifiers: event.modifierFlags)
         }
+        if let handled = handleSearchKey(event) { return handled }
         switch Int(event.keyCode) {
         case kVK_RightArrow, kVK_DownArrow:
             step(.clockwise)
@@ -459,6 +517,96 @@ final class WheelController {
         return true
     }
 
+    // MARK: Search
+
+    /// ⌘F, by the character it types, so it follows the keyboard layout.
+    static func isFind(_ event: NSEvent) -> Bool {
+        event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "f"
+    }
+
+    /// Keys for the search: typing starts or extends it, Backspace and Esc
+    /// take it back. Nil lets the wheel handle the key (arrows, Return, Tab).
+    private func handleSearchKey(_ event: NSEvent) -> Bool? {
+        let typed = event.characters ?? ""
+        let isPlain = event.modifierFlags.isDisjoint(with: [.control, .option, .command])
+        guard model.search != nil else {
+            guard isPlain, WheelSearchQuery.accepts(typed, starting: true) else { return nil }
+            startSearch(selectingAll: false)
+            typeInSearch(typed)
+            return true
+        }
+        switch Int(event.keyCode) {
+        case kVK_Escape:
+            endSearch()
+            return true
+        case kVK_Delete:
+            model.search?.deleteBackward()
+            if model.search?.isEmpty ?? true { endSearch() } else { applySearch() }
+            return true
+        case kVK_Tab:
+            endSearch()
+            return nil
+        default:
+            guard isPlain, WheelSearchQuery.accepts(typed, starting: false) else { return nil }
+            typeInSearch(typed)
+            return true
+        }
+    }
+
+    /// Opens the search bar over the wheel, or with `selectingAll` selects
+    /// what it holds, so the next letter replaces it.
+    private func startSearch(selectingAll: Bool) {
+        guard var session = keyboardSession else { return }
+        if model.search == nil {
+            session.beforeSearch = (model.items, model.page, model.highlightedSlot)
+            keyboardSession = session
+            model.search = WheelSearchQuery()
+            hintTask?.cancel()
+            model.hint = nil
+        }
+        if selectingAll { model.search?.selectAll() }
+        applySearch()
+    }
+
+    private func typeInSearch(_ characters: String) {
+        model.search?.type(characters)
+        applySearch()
+    }
+
+    /// Shows the matches as the wedges, best first, the first highlighted.
+    /// With nothing typed yet the wheel stays as it was.
+    private func applySearch() {
+        guard let session = keyboardSession, let query = model.search else { return }
+        if query.isEmpty, let before = session.beforeSearch {
+            model.show(before.items)
+            model.showPage(before.page)
+            model.searchLabels = [:]
+        } else {
+            let results = WheelSearch.results(for: query.text, in: session.searchCandidates, recent: recentCommands)
+            model.show(results.map(\.item))
+            model.searchLabels = Dictionary(results.map { ($0.item.command, $0.label) }, uniquingKeysWith: { first, _ in first })
+        }
+        updateDropTargets()
+        setHighlight(model.items.isEmpty ? nil : 0)
+    }
+
+    /// Closes the search and puts the wheel back as it was.
+    private func endSearch() {
+        guard var session = keyboardSession, model.search != nil else { return }
+        model.search = nil
+        model.searchLabels = [:]
+        let before = session.beforeSearch
+        if let before {
+            model.show(before.items)
+            model.showPage(before.page)
+        }
+        session.beforeSearch = nil
+        keyboardSession = session
+        updateDropTargets()
+        setHighlight(before?.highlight ?? (model.items.isEmpty ? nil : 0))
+    }
+
     /// ⌘ and a wedge's number: runs it as Return would, or turns the page for 0.
     private func runBadge(_ key: String, modifiers: NSEvent.ModifierFlags) -> Bool {
         guard let slot = WheelBadges.slot(forKey: key, in: model.slots) else { return false }
@@ -475,6 +623,7 @@ final class WheelController {
             return
         }
         let modifiers = session.taps.chosen(modifiers ?? NSEvent.modifierFlags)
+        noteUsed(item)
         dismiss(after: .zero)
         onDrop?(item, session.urls, modifiers, session.sourceShelfID)
     }
@@ -571,6 +720,7 @@ final class WheelController {
             guard let self, let slot = model.slots[safe: wedge] else { return }
             switch slot {
             case .item(let item):
+                noteUsed(item)
                 dismiss(after: .zero)
                 onDrop?(item, urls, NSEvent.modifierFlags, Shelf.activeDragSource?.id)
             case .more, .back:

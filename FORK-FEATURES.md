@@ -400,6 +400,16 @@ More ▸ now holds Lines ▸ · Case ▸ · Indent ▸ · Trim Lines · Straight
 - Files: `Sources/OpenShelf/Text/LineTransforms.swift`, `CaseTransforms.swift`, `TextWheel.swift` (`TextGroup.wedges`, `parent`), `SelectedTextController.swift` (Back to the parent wheel)
 - Check: `swift test --filter 'LineTransformsTests|CaseTransformsTests|TextWheelTests'`. In the app: select three lines in Mail, ⌃⌥Space, More ▸, Lines ▸, Sort A–Z, then ⌘Z.
 
+### 52. Search on the wheel
+Type while a keyboard wheel is open (the ⌃⌥Space text wheel, Finder or a shelf, or a drag dropped on More) and a search bar replaces the label above it: the wedges become the tools that match, best first, from every wheel this one leads to, across pages and sub-wheels. The label names the highlighted match and where it lives ("Sort Natural · Lines › Order").
+- Keys: a letter or digit starts the search (⌃, ⌥ and ⌘ letters don't); ⌘F opens it too, and when it holds text selects it all so the next letter replaces it. Backspace to empty or Esc puts the wheel back as it was (same wedges, page and highlight); a second Esc closes it. While searching, a ⇧ or ⌃ tap doesn't switch wheels (⇧ is for capitals). Arrows, Return, ⌘+number, clicks and ⌥/⇧ on Return work on the matches as on any wheel. Tab leaves the search and switches wheels. "Type to search · ⌘F" follows the opening hint.
+- Matching (`Wheel/WheelSearch.swift`): every word of the query must appear, its letters in order, in the title or a keyword ("dedupe" finds Remove Duplicates, "csv" finds CSV → Table); word starts, runs and prefixes score higher; case and accents are ignored. Ties go to tools used lately (this launch only), then to the wheel's own order.
+- Running a match is the same as clicking its wedge, so paste-back, copy-only in terminals and the single undo are unchanged.
+- Not built: no typing method for accented letters (é needs ⌥e then e, which the wheel doesn't compose; the plain letter finds it); formats the 12-wedge Convert cap leaves out are not searched; recent tools are forgotten when OpenShelf quits.
+- Commits: this one
+- Files: `Sources/OpenShelf/Wheel/WheelSearch.swift`, `WheelController.swift` (`handleKey`, search state), `WheelView.swift` (`SearchPill`), `KeyboardWheel.swift` (hint), `Text/TextWheel.swift` (`searchCandidates`), `Text/SelectedTextController.swift`
+- Check: `swift test --filter 'WheelSearch|WheelBadge'`. In the app: select lines in Mail, ⌃⌥Space, type "sort", Return, then ⌘Z.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

@@ -123,15 +123,15 @@ The order, checked on every press of ⌃⌥Space:
 | 1 | A shelf has selected items | Wheel for those files (exists) |
 | 2 | Finder is in front with files selected | Wheel for those files (exists) |
 | 3 | Another app has selected text (Accessibility `kAXSelectedTextAttribute`) | Text wheel at the pointer |
-| 4 | The cursor is in a text field and nothing is selected | Snippets wheel (C8) |
+| 4 | The cursor is in a text field and nothing is selected | Snippets wheel (C8); now open, see C8 "To settle" |
 | 5 | Accessibility gave nothing | Try ⌘C; if the clipboard changes within ~200 ms, use that text as in 3, then restore the clipboard |
 | 6 | None of these | Today's toast; a second press within 2 s opens Settings (exists, `RepeatedEmptyPress`) |
 
 - The new branch goes where `openWheelForFinderSelection` today returns
   `.finderNotFrontmost`.
 - A text field inside Finder (renaming) counts as text.
-- An optional **second hotkey** opens the Snippets wheel even when text is selected, to
-  replace a selection with a date.
+- A **second hotkey** opens the Snippets wheel even when text is selected, to replace a
+  selection with a date (planned, David 2026-11-18; see C8).
 
 **B3. Read the selection** (L: Accessibility)
 - Accessibility first: the focused element's `kAXSelectedTextAttribute`. For Electron apps,
@@ -339,6 +339,13 @@ item on a shelf.
 - **Recent first:** the last 3 tools used take the first slots, building on
   `Wheel/WheelOrdering.swift`.
 - **Favourites:** Settings lets David choose page 1.
+- **Search (built, 2026-11-18):** David: "we need to add a search to it as well, so when it
+  is open there is a floating search bar over it that narrows down the numbers of pie
+  buttons", started by typing ("actually i like type to start"), and ⌘F "should still work
+  too ... it should select all the text in the search box". Typing a letter or digit on any
+  keyboard wheel (text or files) searches every tool that wheel leads to, across pages and
+  sub-wheels; the matches become the wedges. Recent tools win ties, kept for one launch
+  only until recent-first has a store. Not yet: formats the 12-wedge Convert cap hides.
 
 **C8. Snippets: dates, times and your own text** (M)
 - **Built-in, no setup:**
@@ -349,8 +356,12 @@ item on a shelf.
   - Unix time
   - ISO week (`2026-W47`)
   - Formats can be edited in Settings using standard date patterns.
-- **Custom snippets** live in one plain YAML file. Settings has "Choose File…", so it can live
-  in a synced folder; OpenShelf builds no sync of its own.
+- **Custom snippets: a folder of small plain text files** (David, 2026-11-18: "i don't want
+  it to be YAML", then "i like the many small files and it would have replacement variables
+  and where to put the cursor"). One snippet per file; the file name is the snippet's name
+  and subfolders are groups (▸ on the wheel). Settings has "Choose Folder…", so it can live
+  in a synced folder; OpenShelf builds no sync of its own. Each file may hold the
+  placeholders below and one `{cursor}` marker for where the cursor lands.
 - **Placeholders:**
   - `{date format="yyyy-MM-dd" offset="+3d"}`
   - `{time}`
@@ -359,10 +370,17 @@ item on a shelf.
   - `{cursor}`
   - `{uuid}`
   - `{epoch}`
+- **Its own wheel and hotkey (David, 2026-11-18):** "i like the idea of a new wheel and
+  hotkey for snippets". A second hotkey that opens the Snippets wheel directly is the
+  planned way in, no longer optional.
+- **To settle when C8 is built:** B2 step 4 sends "cursor, nothing selected" to Snippets,
+  but Stage 2 sends that case to text copied in the last 60 s (copy-only). Proposed: the
+  main hotkey goes selection, then recent copy, then a "nothing selected" toast that names
+  the Snippets hotkey; snippets come only from their own hotkey. That keeps one meaning
+  per hotkey and no 60-second timer deciding which wheel opens.
 - **Where they show up:**
-  - the Snippets wheel opens when the hotkey finds a cursor and no selection (B2, step 4);
+  - the Snippets hotkey;
   - favourites go on page 1, groups behind ▸;
-  - an optional second hotkey opens it directly;
   - pinned text items on a shelf (A4) are snippets too.
 - **How text goes in:** paste with clipboard restore (B4). Typing keystrokes is slower and
   unreliable for long text.
@@ -669,7 +687,8 @@ rules:
   and Tabs ↔ Spaces moved from More into Indent ▸ to make room. Sort A–Z, Remove
   Duplicates, Remove Blank Lines and UPPER/lower/Title/Sentence are three picks (More, the
   group, the tool); the Order, Join & Split, Lists and Code Case tools are four. The plan's
-  "two flicks reach any tool" is not met; search on the wheel is the proposed answer. Join, split, prefix and suffix use fixed
+  "two flicks reach any tool" is not met by flicks; typing a few letters now reaches any
+  tool (C7 Search). Join, split, prefix and suffix use fixed
   separators; typing your own needs a text field the wheel doesn't have.
 - **Left in Stage 2:** Cleanup, Encode and decode, Extract, Count, Hash, Dates, Wrap,
   Markdown, Generate; recent first and favourites.
@@ -691,12 +710,13 @@ rules:
 
 - **Goal:** insert dates, times and saved text anywhere.
 - **Delivers:** C8.
-- **Plumbing:** the snippets file reader, the placeholder engine, the cursor-only branch of
-  the hotkey (B2 step 4), an optional second hotkey.
+- **Plumbing:** the snippets folder reader (one text file per snippet, subfolders as groups),
+  the placeholder engine, the Snippets
+  wheel's own hotkey; whether the main hotkey also reaches it is open (C8 "To settle").
 - **Tests:**
   - placeholder expansion with a fixed clock and time zone (date offsets across month and
     year ends);
-  - a bad file reports its line;
+  - a bad placeholder reports its file and line; subfolders become groups;
   - `{cursor}` arrow counts.
 - **What David sees:** cursor in a field, ⌃⌥Space, flick ISO Date, and `2026-11-17` appears.
 - **Verify in the app:** `{cursor}` lands right in TextEdit, Safari and Slack.

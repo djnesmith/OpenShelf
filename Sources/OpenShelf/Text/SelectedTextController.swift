@@ -89,7 +89,8 @@ final class SelectedTextController {
             title: group?.title ?? TextWheel.title(for: session.text, from: session.source),
             summary: count == 1 ? "1 character" : "\(count) characters",
             hint: session.strategy.hint,
-            at: location
+            at: location,
+            searchCandidates: TextWheel.searchCandidates(for: session.context, from: group)
         )
     }
 

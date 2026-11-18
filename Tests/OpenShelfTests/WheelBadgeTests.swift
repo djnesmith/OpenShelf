@@ -92,7 +92,9 @@ struct WheelBadgeIntegrationTests {
         controller.onDrop = { _, _, _, _ in runs += 1 }
         #expect(controller.presentForKeyboard(urls: [URL(fileURLWithPath: "/tmp/a.jpg")], at: NSPoint(x: 400, y: 400)))
         defer { controller.endKeyboardMode(hidingWheel: true) }
-        #expect(!controller.handleKey(key("1", flags: [])))
+        // A plain number starts a search instead.
+        #expect(controller.handleKey(key("1", flags: [])))
+        #expect(controller.model.search?.text == "1")
         #expect(!controller.handleKey(key("q", flags: .command)))
         #expect(!controller.handleKey(key("9", flags: .command)))
         #expect(runs == 0)

@@ -49,8 +49,14 @@ struct WheelView: View {
 
             // The dragged file's thumbnail sits over the hub, so the label
             // floats above the rim where nothing covers it.
-            LabelPill(text: model.hint ?? pillTitle, isActive: model.highlighted != nil && model.hint == nil)
-                .offset(y: -(geometry.outerRadius + rimWidth + 20))
+            Group {
+                if let search = model.search {
+                    SearchPill(query: search, result: model.searchResultLabel)
+                } else {
+                    LabelPill(text: model.hint ?? pillTitle, isActive: model.highlighted != nil && model.hint == nil)
+                }
+            }
+            .offset(y: -(geometry.outerRadius + rimWidth + 20))
         }
         .frame(width: WheelGeometry.panelSide, height: WheelGeometry.panelSide)
         .scaleEffect(model.isPresented || reduceMotion ? 1 : 0.55)
@@ -96,6 +102,56 @@ private struct LabelPill: View {
             }
             .fixedSize()
             .accessibilityHidden(true)
+    }
+}
+
+/// The search bar that takes the label's place while typing: the query
+/// with a caret (or selected, after ⌘F), then the highlighted match.
+private struct SearchPill: View {
+    let query: WheelSearchQuery
+    let result: String?
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            if query.isEmpty {
+                caret
+                Text("Search tools").foregroundStyle(.tertiary)
+            } else {
+                // The end of a long query is what was just typed.
+                Text(query.text)
+                    .truncationMode(.head)
+                    .padding(.horizontal, query.isAllSelected ? 2 : 0)
+                    .background(query.isAllSelected ? Color.accentColor.opacity(0.35) : .clear, in: RoundedRectangle(cornerRadius: 3))
+                if !query.isAllSelected { caret }
+            }
+            if let result {
+                Text("· \(result)")
+                    .foregroundStyle(.secondary)
+                    .truncationMode(.tail)
+            }
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .lineLimit(1)
+        .padding(.horizontal, 12)
+        .frame(height: 26)
+        .frame(maxWidth: WheelGeometry.panelSide - 16)
+        .background {
+            Capsule()
+                .fill(.regularMaterial)
+                .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1.2))
+                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Search \(query.text)")
+    }
+
+    private var caret: some View {
+        Rectangle()
+            .fill(Color.accentColor)
+            .frame(width: 1.5, height: 14)
     }
 }
 
