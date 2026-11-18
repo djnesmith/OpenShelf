@@ -201,8 +201,7 @@ private struct PetalView: View {
             cornerRadius: 16
         )
         let isCrowded: Bool = geometry.wedgeCount > 8
-        // Narrow wedges are wider further out, so their labels sit a little outward.
-        let labelRadius: CGFloat = (geometry.innerRadius + geometry.outerRadius) / 2 + (isCrowded ? 9 : 3)
+        let labelRadius: CGFloat = geometry.labelRadius
         let labelX: CGFloat = sin(center) * labelRadius
         let labelY: CGFloat = -cos(center) * labelRadius
 
@@ -218,8 +217,8 @@ private struct PetalView: View {
             // A placeholder on a paged wheel's last page: there, but faint.
             .opacity(slot.isEmpty ? 0.3 : 1)
 
-            PetalLabel(slot: slot, isCrowded: isCrowded, page: page, pageCount: pageCount, isDwelling: isDwelling)
-                .frame(width: geometry.labelWidth(atRadius: labelRadius))
+            PetalLabel(slot: slot, isCrowded: isCrowded, width: geometry.labelWidth, page: page, pageCount: pageCount, isDwelling: isDwelling)
+                .frame(width: geometry.labelWidth)
                 .foregroundStyle(isHighlighted ? Color.white : Color.primary.opacity(0.85))
                 .offset(x: labelX, y: labelY)
                 // Fill the wheel so a turn swings the label around its centre.
@@ -282,6 +281,7 @@ private struct Turned: ViewModifier {
 private struct PetalLabel: View {
     let slot: WheelSlot
     let isCrowded: Bool
+    let width: CGFloat
     let page: Int
     let pageCount: Int
     let isDwelling: Bool
@@ -299,11 +299,13 @@ private struct PetalLabel: View {
                         .resizable()
                         .frame(width: isCrowded ? 18 : 22, height: isCrowded ? 18 : 22)
                 }
-                Text(item.title.uppercased())
-                    // Format names stand alone, so they get a larger label.
-                    .font(.system(size: item.systemImage != nil ? 9.5 : item.appIconPath != nil ? 11 : 13, weight: .bold))
-                    .tracking(0.4)
-                    .lineLimit(1)
+                let base = WedgeLabel.baseSize(for: item)
+                Text(WedgeLabel.text(item.title))
+                    .font(.system(size: WedgeLabel.fontSize(for: item.title, base: base, width: width) ?? base * WedgeLabel.minimumScale, weight: .bold))
+                    .tracking(WedgeLabel.tracking)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(WedgeLabel.lineLimit)
+                    // Only for a name WedgeLabelTests already flags.
                     .minimumScaleFactor(0.65)
             }
         case .more, .back:

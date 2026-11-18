@@ -21,6 +21,15 @@ struct WheelGeometry {
         sweep * CGFloat(index)
     }
 
+    /// How far out a wedge's label sits. Narrow wedges are wider further out,
+    /// so their labels sit a little outward.
+    var labelRadius: CGFloat {
+        (innerRadius + outerRadius) / 2 + (wedgeCount > 8 ? 9 : 3)
+    }
+
+    /// The width a wedge's label gets.
+    var labelWidth: CGFloat { labelWidth(atRadius: labelRadius) }
+
     /// How wide a wedge's label can be at `radius` without reaching its
     /// neighbours: the chord across the wedge there, less the gap between wedges.
     func labelWidth(atRadius radius: CGFloat, maximum: CGFloat = 74) -> CGFloat {
