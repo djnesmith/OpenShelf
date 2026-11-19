@@ -84,7 +84,9 @@ enum CodeTransforms {
                 replacement = UInt32(result[braced], radix: 16).flatMap(Unicode.Scalar.init).map { String(Character($0)) }
             } else if let run = Range(match.range(at: 3), in: result) {
                 let units = result[run].split(separator: "\\").compactMap { UInt16($0.dropFirst(), radix: 16) }
-                replacement = String(utf16CodeUnits: units, count: units.count)
+                let decoded = String(utf16CodeUnits: units, count: units.count)
+                // A lone half of a surrogate pair can't be read: leave it as written.
+                replacement = Array(decoded.utf16) == units ? decoded : nil
             }
             if let replacement { result.replaceSubrange(range, with: replacement) }
         }
@@ -96,8 +98,11 @@ enum CodeTransforms {
     /// A JWT's header and payload as indented JSON, a blank line between.
     /// The signature is not checked. Nil when the text isn't a JWT.
     static func readJWT(_ text: String) -> String? {
-        let parts = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ".", omittingEmptySubsequences: false)
-        guard parts.count == 3 || parts.count == 5 else { return nil }
+        // As copied from a request header: "Bearer eyJ…", maybe in quotes.
+        var token = text.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
+        if token.lowercased().hasPrefix("bearer ") { token = String(token.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
         let decoded = parts.prefix(2).compactMap { part -> String? in
             guard let data = base64Data(String(part)), let object = try? JSONSerialization.jsonObject(with: data),
                   let pretty = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return nil }

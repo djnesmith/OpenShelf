@@ -12,47 +12,64 @@ enum FixTransforms {
         looksLikeHTML(text) ? htmlToText(text) : decodeEntities(markdownToText(text))
     }
 
+    /// Only real HTML tag names count, so "x<y and y>z" stays prose.
     static func looksLikeHTML(_ text: String) -> Bool {
-        text.range(of: #"</?[a-zA-Z][a-zA-Z0-9]*(\s[^<>]*)?/?>"#, options: .regularExpression) != nil
+        let names = "html|head|body|p|div|span|a|b|i|u|em|strong|small|sub|sup|br|hr|li|ul|ol|dl|dt|dd|h[1-6]|table|thead|tbody|tr|td|th|img|pre|code|blockquote|section|article|header|footer|nav|main|aside|figure|figcaption|font|label|button|form|input|script|style|meta|link|title"
+        return text.range(of: "(?i)</?(" + names + ")(\\s[^<>]*)?/?>", options: .regularExpression) != nil
     }
 
     /// Tags go; block ends and <br> become line breaks; script and style go
     /// with their content; entities are decoded. Runs of blank lines become one.
     static func htmlToText(_ html: String) -> String {
-        var text = html
+        // Whitespace in HTML source means one space; breaks come from the tags.
+        var text = replace(html, #"\s+"#, with: " ")
         text = replace(text, #"(?is)<(script|style)\b[^>]*>.*?</\1\s*>"#, with: "")
         text = replace(text, #"(?is)<!--.*?-->"#, with: "")
         text = replace(text, #"(?i)<br\s*/?>"#, with: "\n")
         text = replace(text, #"(?i)<li\b[^>]*>"#, with: "\n• ")
         text = replace(text, #"(?i)</(p|div|h[1-6]|li|tr|blockquote|pre|ul|ol|table|section|article|header|footer)\s*>"#, with: "\n\n")
-        text = replace(text, #"<[^>]+>"#, with: "")
+        // A ">" inside a quoted attribute doesn't end the tag.
+        text = replace(text, #"<(?:[^>"']|"[^"]*"|'[^']*')+>"#, with: "")
         text = decodeEntities(text)
         text = replace(text, #"[ \t]+\n"#, with: "\n")
+        text = replace(text, #"\n[ \t]+"#, with: "\n")
         text = replace(text, #"\n{3,}"#, with: "\n\n")
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Headings, emphasis, inline code, links and images, quotes and fences
-    /// lose their marks; the words stay. List bullets stay, as text.
+    /// Headings, emphasis, links and images, quotes and fences lose their
+    /// marks; the words stay. Code (fenced or `inline`) is kept exactly, less
+    /// its marks. Underscores are never taken as emphasis: in identifiers and
+    /// links they are part of the word. List bullets stay, as text.
     static func markdownToText(_ markdown: String) -> String {
-        markdown.components(separatedBy: "\n").compactMap { line -> String? in
-            var line = line
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") { return nil }
-            line = replace(line, #"^(\s*)#{1,6}\s+"#, with: "$1")
-            line = replace(line, #"^(\s*)>\s?"#, with: "$1")
-            line = replace(line, #"!\[([^\]]*)\]\([^)]*\)"#, with: "$1")
-            line = replace(line, #"\[([^\]]+)\]\([^)]*\)"#, with: "$1")
-            line = replace(line, #"`([^`]*)`"#, with: "$1")
-            line = replace(line, #"(\*\*|__)(\S(?:.*?\S)?)\1"#, with: "$2")
-            line = replace(line, #"(?<![\w*])\*(\S(?:[^*]*?\S)?)\*(?![\w*])"#, with: "$1")
-            line = replace(line, #"(?<![\w_])_(\S(?:[^_]*?\S)?)_(?![\w_])"#, with: "$1")
-            line = replace(line, #"~~(\S(?:.*?\S)?)~~"#, with: "$1")
-            return line
+        var inFence = false
+        return markdown.components(separatedBy: "\n").compactMap { line -> String? in
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                inFence.toggle()
+                return nil
+            }
+            if inFence { return line }
+            var line = replace(line, #"^(\s*)#{1,6}\s+"#, with: "$1")
+            line = replace(line, #"^(\s*)>(\s|$)"#, with: "$1")
+            // Inline code is set aside, so the rules below don't touch it.
+            let parts = line.components(separatedBy: "`")
+            return parts.enumerated().map { index, part -> String in
+                guard index % 2 == 0 || index == parts.count - 1 && parts.count % 2 == 0 else { return part }
+                var part = part
+                part = replace(part, #"!\[([^\]]*)\]\((?:[^()\s]|\([^()]*\))*\)"#, with: "$1")
+                part = replace(part, #"\[([^\]]+)\]\((?:[^()\s]|\([^()]*\))*\)"#, with: "$1")
+                part = replace(part, #"(?<![\w*])\*\*(\S(?:.*?\S)?)\*\*(?![\w*])"#, with: "$1")
+                part = replace(part, #"(?<![\w*])\*(\S(?:[^*]*?\S)?)\*(?![\w*])"#, with: "$1")
+                part = replace(part, #"~~(\S(?:.*?\S)?)~~"#, with: "$1")
+                return part
+            }.joined()
         }.joined(separator: "\n")
     }
 
     static func decodeEntities(_ text: String) -> String {
-        let named = ["&nbsp;": " ", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&apos;": "'", "&ndash;": "–", "&mdash;": "—", "&hellip;": "…", "&rsquo;": "’", "&lsquo;": "‘", "&rdquo;": "”", "&ldquo;": "“"]
+        let named = ["&nbsp;": " ", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&apos;": "'", "&ndash;": "–", "&mdash;": "—", "&hellip;": "…", "&rsquo;": "’", "&lsquo;": "‘", "&rdquo;": "”", "&ldquo;": "“",
+                     "&copy;": "©", "&reg;": "®", "&trade;": "™", "&euro;": "€", "&pound;": "£", "&yen;": "¥", "&cent;": "¢", "&deg;": "°", "&times;": "×", "&divide;": "÷",
+                     "&plusmn;": "±", "&laquo;": "«", "&raquo;": "»", "&bull;": "•", "&middot;": "·", "&sect;": "§", "&para;": "¶", "&frac12;": "½", "&frac14;": "¼", "&frac34;": "¾"]
         var result = text
         for (entity, value) in named { result = result.replacingOccurrences(of: entity, with: value) }
         // Numeric entities, decimal and hex.
@@ -84,7 +101,11 @@ enum FixTransforms {
         var result = text
         for match in links.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
             guard let range = Range(match.range, in: result) else { continue }
-            result.replaceSubrange(range, with: cleanLink(String(result[range])))
+            // Punctuation that ends the sentence isn't part of the link.
+            var link = String(result[range])
+            let trailing = String(link.reversed().prefix { ".,;:!?".contains($0) }.reversed())
+            link.removeLast(trailing.count)
+            result.replaceSubrange(range, with: cleanLink(link) + trailing)
         }
         return result
     }
@@ -96,10 +117,12 @@ enum FixTransforms {
         let fragmentStart = afterQuery.firstIndex(of: "#")
         let queryText = fragmentStart.map { afterQuery[..<$0] } ?? afterQuery
         let fragment = fragmentStart.map { String(afterQuery[$0...]) } ?? ""
-        let kept = queryText.split(separator: "&", omittingEmptySubsequences: true).filter { pair in
-            !isTracking(String(pair.split(separator: "=", maxSplits: 1).first ?? ""))
+        // A link copied from HTML separates its parameters with "&amp;".
+        let separator = queryText.contains("&amp;") ? "&amp;" : "&"
+        let kept = queryText.components(separatedBy: separator).filter { pair in
+            !pair.isEmpty && !isTracking(String(pair.split(separator: "=", maxSplits: 1).first ?? ""))
         }
-        return String(base) + (kept.isEmpty ? "" : "?" + kept.joined(separator: "&")) + fragment
+        return String(base) + (kept.isEmpty ? "" : "?" + kept.joined(separator: separator)) + fragment
     }
 
     // MARK: - Fix Encoding
@@ -107,21 +130,37 @@ enum FixTransforms {
     /// Text written as UTF-8 and read as Windows-1252 ("cafÃ©", "itâ€™s")
     /// read again as UTF-8. Text that isn't mis-read comes back unchanged.
     static func fixEncoding(_ text: String) -> String {
-        guard text.contains(where: { "ÃÂâÅÆÐÑ".contains($0) }) else { return text }
-        // Each character back to the byte it was read from: Windows-1252, or
-        // Latin-1 for the five bytes Windows-1252 leaves undefined (0x81, 0x8D,
-        // 0x8F, 0x90, 0x9D; "”" read this way ends in U+009D).
+        // Word by word, so correct words ("café", an emoji) stay as they are.
+        var result = ""
+        var word = ""
+        for character in text {
+            if character.isWhitespace && character.isASCII {
+                result += readAgain(word) + String(character)
+                word = ""
+            } else {
+                word.append(character)
+            }
+        }
+        return result + readAgain(word)
+    }
+
+    /// One word back to the bytes it was read from (Windows-1252, or Latin-1
+    /// for the five bytes 1252 leaves undefined: "”" read this way ends in
+    /// U+009D), read as UTF-8. A word that doesn't come out as UTF-8 with
+    /// something beyond ASCII in it was never mis-read, and stays.
+    private static func readAgain(_ word: String) -> String {
         var bytes: [UInt8] = []
-        for scalar in text.unicodeScalars {
+        for scalar in word.unicodeScalars {
             if let byte = windows1252[scalar] {
                 bytes.append(byte)
             } else if scalar.value < 0x100 {
                 bytes.append(UInt8(scalar.value))
             } else {
-                return text
+                return word
             }
         }
-        return String(bytes: bytes, encoding: .utf8) ?? text
+        guard bytes.contains(where: { $0 >= 0x80 }), let fixed = String(bytes: bytes, encoding: .utf8) else { return word }
+        return fixed
     }
 
     /// Windows-1252's characters for 0x80-0x9F, by character.
@@ -139,6 +178,8 @@ enum FixTransforms {
     static func stripANSI(_ text: String) -> String {
         var result = replace(text, "\u{1B}\\][^\u{07}\u{1B}]*(\u{07}|\u{1B}\\\\)", with: "")
         result = replace(result, "\u{1B}\\[[0-?]*[ -/]*[@-~]", with: "")
+        // Character set choice ("\e(B", which `tput sgr0` writes), then the rest.
+        result = replace(result, "\u{1B}[()*+][0-9A-Za-z]", with: "")
         return replace(result, "\u{1B}[@-Z\\\\-_]", with: "")
     }
 

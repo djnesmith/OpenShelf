@@ -15,6 +15,8 @@ struct ExtractTransformsTests {
 
     @Test func numbers() {
         #expect(E.extract(.numbers, from: "Paid 1,234.50 then -7 and 3.14; v2 and abc123 aren't; 42.") == "1,234.50\n-7\n3.14\n42")
+        // Not parts of an IP, a version, a date, a time or "x-5"; repeats are kept.
+        #expect(E.extract(.numbers, from: "ip 192.168.1.1 v1.2.3 on 2024-03-15 at 10:30, x-5, 5, 5") == "5\n5")
     }
 
     @Test func phoneNumbers() {

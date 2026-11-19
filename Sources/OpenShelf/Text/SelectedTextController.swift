@@ -188,8 +188,8 @@ final class SelectedTextController {
         }
     }
 
-    /// Count shows a toast; a hash goes on the clipboard and shows a toast.
-    /// Neither changes the text.
+    /// Count shows a toast; a hash or a read JWT goes on the clipboard and
+    /// shows a toast. None of them changes the text.
     private func report(_ tool: TextTool, on session: Session) {
         if tool == .jwt {
             guard let decoded = CodeTransforms.readJWT(session.text) else {

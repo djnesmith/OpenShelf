@@ -32,6 +32,8 @@ struct CodeTransformsTests {
         #expect(C.decode("\\u{1F600} \\U0001F600", from: .unicode) == "😀 😀")
         // Numeric and named HTML entities.
         #expect(C.decode("&#233;&amp;&lt;", from: .html) == "é&<")
+        // A lone half of a surrogate pair stays as written.
+        #expect(C.decode("\\ud83d alone", from: .unicode) == "\\ud83d alone")
     }
 
     /// Text a decoder can't read comes back unchanged ("Nothing to change").
@@ -49,6 +51,11 @@ struct CodeTransformsTests {
         // Two parts that decode are still not a JWT.
         #expect(C.readJWT("\(header).\(payload)") == nil)
         #expect(C.readJWT("plain text") == nil)
+        // As copied from a request header.
+        #expect(C.readJWT("Bearer \(header).\(payload).sig") == read)
+        #expect(C.readJWT("\"\(header).\(payload).sig\"") == read)
+        // Five parts is an encrypted JWE, not readable here.
+        #expect(C.readJWT("\(header).\(payload).c.d.e") == nil)
     }
 
     @Test func generators() throws {

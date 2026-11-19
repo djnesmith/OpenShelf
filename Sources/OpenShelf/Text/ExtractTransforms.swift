@@ -10,7 +10,8 @@ enum ExtractTransforms {
     static func extract(_ kind: Kind, from text: String) -> String {
         let found = matches(kind, in: text)
         var seen = Set<String>()
-        let unique = found.filter { seen.insert($0).inserted }
+        // Numbers keep repeats: a column of amounts can hold the same one twice.
+        let unique = kind == .numbers ? found : found.filter { seen.insert($0).inserted }
         return unique.isEmpty ? text : unique.joined(separator: "\n")
     }
 
@@ -30,8 +31,9 @@ enum ExtractTransforms {
             let pattern = try! NSRegularExpression(pattern: #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#)
             return strings(pattern.matches(in: text, range: whole))
         case .numbers:
-            // Signed, with thousands separators and a decimal part; not digits inside words.
-            let pattern = try! NSRegularExpression(pattern: #"(?<![\w.])[-+]?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\w])|(?<![\w.])[-+]?\d+(?:\.\d+)?(?![\w])"#)
+            // Signed, with thousands separators and a decimal part. Not digits
+            // inside words ("v2"), or parts of an IP, a version, a date or a time.
+            let pattern = try! NSRegularExpression(pattern: #"(?<![\w.\-/:])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\w|[.\-/:]\d)"#)
             return strings(pattern.matches(in: text, range: whole))
         case .phoneNumbers:
             let detector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.phoneNumber.rawValue)
