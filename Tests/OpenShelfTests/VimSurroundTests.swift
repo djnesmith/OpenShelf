@@ -2,8 +2,7 @@ import Testing
 @testable import OpenShelf
 
 /// vim-surround's ds, cs, ys, yss and visual S. Expected results come from
-/// vim --clean with tpope/vim-surround loaded; "." on surround, which needs
-/// repeat.vim (not installed), follows repeat.vim's documented behavior.
+/// vim --clean with tpope/vim-surround loaded, and vim-repeat for ".".
 struct VimSurroundTests {
     @Test(arguments: [
         // ds: the target's marks go; an opening bracket also takes the blanks inside.
@@ -42,6 +41,7 @@ struct VimSurroundTests {
         ("|one two", "ys$)", "|(one two)"),
         ("x \"a|b\" y", "ysi\")", "x \"|(ab)\" y"),
         ("|x  ", "yss)", "|(x)  "),
+        ("|a\nb\nc", "2yss)", "|(a\nb)\nc"),
         // ys over lines puts the pair on lines of its own, without indenting.
         ("|a\nb", "ysj)", "|(\na\nb\n)"),
         ("  |a\n  b", "ysip]", "|  [\n  a\n  b\n  ]"),
@@ -63,6 +63,15 @@ struct VimSurroundTests {
     ])
     func dotRepeatsSurround(start: String, keys: String, expected: String) {
         #expect(VimTextObjectTests.run(start, keys) == expected)
+    }
+
+    /// A tag can end with Return, and Backspace takes back a letter.
+    @Test func tagsEndWithReturnAndTakeBackspace() {
+        for keys in [VimEngineTests.keys("ysiw") + [.char("<"), .char("p"), .enter], VimEngineTests.keys("ysiw") + [.char("<"), .char("p"), .char("x"), .backspace, .char(">")]] {
+            var engine = VimEngineTests.engine("a |b c")
+            _ = engine.handle(keys)
+            #expect(VimEngineTests.marked(engine) == "a |<p>b</p> c")
+        }
     }
 
     @Test func unknownLettersAndEmptyTagsAreNotReplacements() {

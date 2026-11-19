@@ -82,6 +82,22 @@ struct VimEngine {
     private var surroundPair = (open: "", close: "")
     /// 3ix<Esc> types "x" three times: the count of the insert command.
     private var insertCount = 1
+    /// The register a macro is being recorded into (q{a-z}), for the status line.
+    private(set) var recording: Character?
+    private var recordedKeys: [VimKey] = []
+    /// Insert mode was typed by the text view, so the recording needs the text added at Esc.
+    private var viewTyped = false
+    /// The last macro played, for @@.
+    private var lastMacro: Character?
+    /// A macro is playing; @a inside it queues its keys next, as vim's typeahead does.
+    private var playDepth = 0
+    private var macroBudget = 0
+    /// Keys still to play, last first.
+    private var macroQueue: [VimKey] = []
+    /// The last command failed (a motion went nowhere, a target wasn't found); a macro stops there.
+    private var failed = false
+    /// Keys a macro may play in all, recursion included.
+    static let macroKeyLimit = 100_000
 
     /// The largest count; 999999, as typed, times another 999999 stays far from overflow.
     static let maxCount = 999_999
@@ -115,6 +131,7 @@ struct VimEngine {
     /// Handles one key. Returns `.finish` or `.cancel` when the window should close.
     mutating func handle(_ key: VimKey) -> VimEffect? {
         message = nil
+        if recording != nil, playDepth == 0, !isRepeating { recordedKeys.append(key) }
         switch mode {
         case .insert: handleInsert(key); return nil
         case .commandLine: return handleCommandLine(key)
@@ -126,7 +143,10 @@ struct VimEngine {
             pending.append(key)
             switch parse(pending) {
             case .incomplete: return nil
-            case .invalid: pending = []; return nil
+            case .invalid:
+                pending = []
+                failed = true
+                return nil
             case .done(let command):
                 pending = []
                 return run(command)
@@ -143,6 +163,7 @@ struct VimEngine {
     /// Takes over text typed in the window while in insert mode, where the
     /// text view does the typing itself.
     mutating func syncInsert(text newText: String, cursor newCursor: Int) {
+        viewTyped = true
         // Pasted Windows line breaks become "\n", which is what vim's lines end in.
         text = Array(newText.replacingOccurrences(of: "\r\n", with: "\n"))
         cursor = min(max(newCursor, 0), text.count)
@@ -227,6 +248,7 @@ struct VimEngine {
     private mutating func beginInsert() {
         mode = .insert
         insertBaseline = text
+        viewTyped = false
     }
 
     private mutating func leaveInsert() {
@@ -240,6 +262,13 @@ struct VimEngine {
         insertCount = 1
         if let start = insertStartText, start == text { undoStack.removeLast() }
         insertStartText = nil
+        // The text view typed this insert, so the recording gets the text, before its Esc.
+        if recording != nil, viewTyped, playDepth == 0, !isRepeating {
+            let esc = recordedKeys.popLast()
+            recordedKeys += typedSinceInsert(single: repeats).map(VimKey.char)
+            if let esc { recordedKeys.append(esc) }
+        }
+        viewTyped = false
         // "." types again what was typed: the text between what stayed the same at either end.
         if let change = changeInProgress, !isRepeating {
             lastChange = (change.count, change.keys + typedSinceInsert(single: repeats).map(VimKey.char) + [.escape])
@@ -515,6 +544,12 @@ struct VimEngine {
         }
 
         switch c {
+        case "q" where recording != nil:
+            return .done(Command(count: nil, action: .simple("q")))
+        case "q", "@":
+            guard index < keys.count else { return .incomplete }
+            guard case .char(let name) = keys[index], name == "@" && c == "@" || name.isASCII && name.isLetter || (c == "@" && (name == "+" || name == "*")) else { return .invalid }
+            return .done(Command(count: count, action: .simple("\(c)\(name)")))
         case "x", "X", "s", "S", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".":
             return .done(Command(count: count, action: .simple(String(c))))
         case "r":
@@ -537,12 +572,23 @@ struct VimEngine {
         guard case .char(let c) = keys[index] else { return .invalid }
         index += 1
         if c == "<" || c == "t" {
+            // The tag ends at ">" or Return; Backspace takes back a letter.
             var tag = "<"
             while index < keys.count {
-                guard case .char(let k) = keys[index] else { return .invalid }
+                let key = keys[index]
                 index += 1
-                tag.append(k)
-                if k == ">" { return tag.count > 2 ? .done(tag) : .invalid }
+                switch key {
+                case .char(let k):
+                    tag.append(k)
+                    if k == ">" { return tag.count > 2 ? .done(tag) : .invalid }
+                case .enter:
+                    return tag.count > 1 ? .done(tag + ">") : .invalid
+                case .backspace:
+                    guard tag.count > 1 else { return .invalid }
+                    tag.removeLast()
+                default:
+                    return .invalid
+                }
             }
             return .incomplete
         }
@@ -629,12 +675,13 @@ struct VimEngine {
         activeRegister = command.register
         defer { activeRegister = nil }
         let wasVisual = inVisual
-        let before = text
+        failed = false
         let effect = perform(command)
         // Remember a change for "." (a repeat records itself again, count and all, as in vim);
         // changes made in visual mode are not repeated.
-        // A change that failed (ci" with no quotes) leaves the last one in place.
-        if !wasVisual, Self.isChange(command), text != before || mode == .insert {
+        // A change that failed (ci" with no quotes) leaves the last one in place;
+        // one that worked counts even when the text came out the same.
+        if !wasVisual, Self.isChange(command), !failed {
             let change = (command.count, (command.register.map { [VimKey.char("\""), .char($0)] } ?? []) + command.keys)
             if mode == .insert { changeInProgress = change } else { lastChange = change }
         }
@@ -671,14 +718,18 @@ struct VimEngine {
             } else if let motion {
                 operate(.surround, motion: Self.resolved(motion, count: command.count), count: command.count ?? 1)
             } else {
-                // yss: the line, without its indentation.
+                // yss: the line, without its indentation; a count takes more lines.
                 let start = firstNonBlank(lineStart(cursor))
-                wrap(start..<lineEnd(cursor), in: pair, trimming: true)
+                let last = min(lineIndex(cursor) + (command.count ?? 1) - 1, lineStarts.count - 1)
+                wrap(start..<lineEnd(lineStarts[last]), in: pair, trimming: true)
             }
             return nil
         case .motion(.textObject(let inner, let kind)):
             // In visual mode a text object selects its range.
-            guard inVisual, let (range, linewise) = textObject(inner: inner, kind, count: command.count ?? 1), !range.isEmpty else { return nil }
+            guard inVisual, let (range, linewise) = textObject(inner: inner, kind, count: command.count ?? 1), !range.isEmpty else {
+                failed = true
+                return nil
+            }
             if linewise {
                 anchor = lineStarts[range.lowerBound]
                 cursor = lineStarts[range.upperBound - 1]
@@ -716,7 +767,10 @@ struct VimEngine {
 
     /// Moves the cursor. Returns false when the motion found nowhere to go.
     private mutating func runMotion(_ motion: Motion, count: Int) -> Bool {
-        guard let target = target(of: motion, count: count, forOperator: false) else { return false }
+        guard let target = target(of: motion, count: count, forOperator: false) else {
+            failed = true
+            return false
+        }
         cursor = target.position
         switch motion {
         case .up, .down: break
@@ -772,11 +826,18 @@ struct VimEngine {
             mode = .commandLine
             commandLine = name
         case ".": repeatLastChange(count: count)
+        case "q":
+            stopRecording()
         case "ZZ": return .finish
         case "ZQ": return .cancel
         default:
             if name.hasPrefix("line"), let op = name.last.flatMap(Operator.init(rawValue:)) {
                 runLine(op, count: n)
+            } else if name.hasPrefix("q"), name.count == 2, let register = name.last {
+                recording = register
+                recordedKeys = []
+            } else if name.hasPrefix("@"), name.count == 2, let register = name.last {
+                play(register == "@" ? lastMacro : register, count: n)
             } else if name.hasPrefix("r"), name.count == 2, let target = name.last {
                 replaceCharacters(with: target, count: n)
             }
@@ -1031,7 +1092,10 @@ struct VimEngine {
 
     private mutating func operate(_ op: Operator, motion: Motion, count: Int) {
         if case .textObject(let inner, let kind) = motion {
-            guard let (range, linewise) = textObject(inner: inner, kind, count: count) else { return }
+            guard let (range, linewise) = textObject(inner: inner, kind, count: count) else {
+                failed = true
+                return
+            }
             if linewise {
                 guard !range.isEmpty else { return }
                 applyLines(op, range.lowerBound, range.upperBound - 1)
@@ -1059,7 +1123,10 @@ struct VimEngine {
             apply(op, from: start, to: Target(position: position, kind: .exclusive))
             return
         }
-        guard let target = target(of: motion, count: count, forOperator: true) else { return }
+        guard let target = target(of: motion, count: count, forOperator: true) else {
+            failed = true
+            return
+        }
         apply(op, from: start, to: target)
     }
 
@@ -1254,7 +1321,10 @@ struct VimEngine {
 
     private mutating func replaceCharacters(with replacement: Character, count: Int) {
         let end = lineEnd(cursor)
-        guard cursor + count <= end else { return }
+        guard cursor + count <= end else {
+            failed = true
+            return
+        }
         checkpoint()
         if replacement == "\r" || replacement == "\n" {
             text.replaceSubrange(cursor..<(cursor + count), with: ["\n"])
@@ -1548,7 +1618,10 @@ struct VimEngine {
     /// ds (no replacement) and cs. An opening bracket as the target also
     /// takes the blanks just inside the pair.
     private mutating func surround(_ target: Character, count: Int, with replacement: (open: String, close: String)?) {
-        guard var (open, close) = surroundParts(target, count: count) else { return }
+        guard var (open, close) = surroundParts(target, count: count) else {
+            failed = true
+            return
+        }
         if "([{<".contains(target) {
             var inner = open.upperBound
             while inner < close.lowerBound, text[inner] == " " || text[inner] == "\t" { inner += 1 }
@@ -1591,6 +1664,89 @@ struct VimEngine {
         cursor = start
         wantedColumn = nil
         clampCursor()
+    }
+
+    // MARK: - Macros
+
+    private mutating func stopRecording() {
+        guard let name = recording else { return }
+        recordedKeys.removeLast() // the q that stopped it
+        let text = String(recordedKeys.map(Self.character(for:)))
+        let lower = Character(name.lowercased())
+        let old = name.isUppercase ? registers[lower]?.text ?? "" : ""
+        registers[lower] = VimRegister(text: old + text, linewise: false)
+        recording = nil
+        recordedKeys = []
+    }
+
+    /// Plays register `name` as keys, `count` times. Keys queue up rather
+    /// than nest, so a recursive macro (qa…@aq) runs as long as it needs.
+    /// It stops at the first command that fails, as vim does, and after
+    /// `macroKeyLimit` keys in all.
+    private mutating func play(_ name: Character?, count: Int) {
+        guard let name else { failed = true; return }
+        let source: String? = name == "+" || name == "*" ? clipboard.read() : registers[Character(name.lowercased())]?.text
+        guard let source, !source.isEmpty else { failed = true; return }
+        lastMacro = name
+        let keys = source.map(Self.key(for:))
+        // More than the limit can never play, so a huge count needs no more keys than that.
+        let copies = min(count, Self.macroKeyLimit / keys.count + 1)
+        macroQueue += Array(Array(repeating: keys, count: copies).joined().reversed())
+        guard playDepth == 0 else { return }
+        playDepth = 1
+        macroBudget = Self.macroKeyLimit
+        defer {
+            playDepth = 0
+            macroQueue = []
+            pending = []
+        }
+        while let key = macroQueue.popLast() {
+            guard macroBudget > 0 else {
+                message = "Macro stopped after \(Self.macroKeyLimit) keys"
+                failed = true
+                return
+            }
+            macroBudget -= 1
+            failed = false
+            _ = handle(key)
+            if failed {
+                if mode == .insert { leaveInsert() }
+                return
+            }
+        }
+    }
+
+    /// Keys as a register holds them: Esc, Return and ⌃ keys as control characters.
+    static func character(for key: VimKey) -> Character {
+        switch key {
+        case .char(let c): c
+        case .ctrl(let c): Character(UnicodeScalar((c.asciiValue ?? 64) & 0x1f))
+        case .escape: "\u{1b}"
+        case .enter: "\r"
+        case .backspace: "\u{8}"
+        case .left: "\u{F702}"
+        case .right: "\u{F703}"
+        case .up: "\u{F700}"
+        case .down: "\u{F701}"
+        }
+    }
+
+    static func key(for character: Character) -> VimKey {
+        switch character {
+        case "\u{1b}": .escape
+        case "\r": .enter
+        case "\u{8}": .backspace
+        case "\u{F702}": .left
+        case "\u{F703}": .right
+        case "\u{F700}": .up
+        case "\u{F701}": .down
+        default:
+            if let value = character.asciiValue, value < 0x20, character != "\n", character != "\t" {
+                .ctrl(Character(UnicodeScalar(value | 0x60)))
+            } else {
+                .char(character)
+            }
+        }
     }
 
     // MARK: - Repeat

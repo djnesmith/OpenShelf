@@ -153,6 +153,9 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         } else {
             statusLeft?.stringValue = engine.modeName
         }
+        if let register = engine.recording, engine.mode != .commandLine {
+            statusLeft?.stringValue += " · recording @\(register)"
+        }
         statusRight?.stringValue = "⌘↩ puts it \(destination) · ⌘W cancels"
     }
 

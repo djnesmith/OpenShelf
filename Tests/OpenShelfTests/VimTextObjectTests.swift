@@ -112,6 +112,11 @@ struct VimTextObjectTests {
         ("|aaaa", "2ix<Esc>.", "xx|xxaaaa"),
         // A change that fails is not the last change.
         ("a|bc d", "x$ci\"<Esc>0.", "|c d"),
+        // A change that works counts even when the text comes out the same.
+        ("x|ab b", "xlrbl.", "xbb|b"),
+        ("x|12 3", "x~l.", "x2 |3"),
+        ("|xabc d", "xguiwl.", "|abc d"),
+        ("|xa\n\nb", "xj>>j.", "a\n\n    |b"),
         // A count repeats what an insert typed, and "." takes a new count.
         ("|ab", "3ix<Esc>", "xx|xab"),
         ("a|b", "2aXY<Esc>", "abXYX|Y"),
