@@ -242,27 +242,18 @@ struct TextHistoryTests {
 
 @MainActor
 struct HotkeyRouteTests {
-    func route(_ bundleID: String? = "com.apple.TextEdit", secure: Bool = false, reads: [TextReader: SelectedTextRead]) async -> HotkeyRoute {
-        await HotkeyRoute.choose(frontmostBundleID: bundleID, appHoldsSecureInput: secure, strategy: .for(bundleID: bundleID)) { reads[$0] ?? .unavailable }
+    func route(_ bundleID: String? = "com.apple.TextEdit", reads: [TextReader: SelectedTextRead]) async -> HotkeyRoute {
+        await HotkeyRoute.choose(frontmostBundleID: bundleID, strategy: .for(bundleID: bundleID)) { reads[$0] ?? .unavailable }
     }
 
-    /// Secure input is system-wide and often left on by another app
-    /// (loginwindow after unlocking, a browser's password field). Only the
-    /// app being read holding it, or a password field, refuses.
-    @Test func secureInputHeldElsewhereStillReads() async {
-        #expect(await route(secure: false, reads: [.accessibility: .text("mail")]) == .text("mail", from: .accessibility))
-        #expect(await route(secure: true, reads: [.accessibility: .text("mail")]) == .secureInput)
-        #expect(await route(secure: false, reads: [.accessibility: .secure]) == .secureInput)
-    }
-
-    /// Live: whoever holds secure input now holds it; any other pid doesn't.
-    @Test func onlyTheHolderOfSecureInputCounts() {
-        guard let holder = AccessibilityText.secureInputPID else {
-            #expect(!AccessibilityText.holdsSecureInput(ProcessInfo.processInfo.processIdentifier))
-            return
-        }
-        #expect(AccessibilityText.holdsSecureInput(holder))
-        #expect(!AccessibilityText.holdsSecureInput(holder + 1))
+    /// The system-wide secure-input flag is often left on (loginwindow after
+    /// unlocking), and the pid macOS reports for it follows the frontmost app,
+    /// so only a focused password field refuses. The routing has no flag to
+    /// pass at all; a read of normal text opens the wheel.
+    @Test func onlyAPasswordFieldRefuses() async {
+        #expect(await route(reads: [.accessibility: .text("mail")]) == .text("mail", from: .accessibility))
+        #expect(await route(reads: [.accessibility: .secure]) == .secureInput)
+        #expect(await route(reads: [.accessibility: .secure, .copyShortcut: .text("pw")]) == .secureInput)
     }
 
     @Test func finderKeepsItsFileWheel() async {
@@ -276,7 +267,7 @@ struct HotkeyRouteTests {
 
     @Test func terminalsNeverPressKeys() async {
         var asked: [TextReader] = []
-        let chosen = await HotkeyRoute.choose(frontmostBundleID: "com.googlecode.iterm2", appHoldsSecureInput: false, strategy: .for(bundleID: "com.googlecode.iterm2")) { asked.append($0); return $0 == .recentClipboard ? .text("copied") : .nothingSelected }
+        let chosen = await HotkeyRoute.choose(frontmostBundleID: "com.googlecode.iterm2", strategy: .for(bundleID: "com.googlecode.iterm2")) { asked.append($0); return $0 == .recentClipboard ? .text("copied") : .nothingSelected }
         #expect(chosen == .text("copied", from: .recentClipboard))
         #expect(!asked.contains(.copyShortcut))
     }
@@ -286,7 +277,7 @@ struct HotkeyRouteTests {
     }
 
     @Test func secureAndPermission() async {
-        #expect(await route(secure: true, reads: [.accessibility: .text("pw")]) == .secureInput)
+        #expect(await route(reads: [.accessibility: .secure]) == .secureInput)
         #expect(await route(reads: [.accessibility: .notPermitted, .copyShortcut: .notPermitted]) == .askForAccessibility)
         #expect(await route("com.googlecode.iterm2", reads: [.accessibility: .notPermitted, .recentClipboard: .text("c")]) == .text("c", from: .recentClipboard))
         #expect(await route(reads: [:]) == .nothing)
@@ -347,7 +338,6 @@ struct HotkeyRouteTests {
 
     @Test func secureFieldsStillStopBeforeTheClipboard() async {
         #expect(await route(reads: [.accessibility: .secure, .recentClipboard: .text("copied")]) == .secureInput)
-        #expect(await route(secure: true, reads: [.recentClipboard: .text("copied")]) == .secureInput)
     }
 
     /// Copied text has no selection to replace: Return copies, ⌃ pastes at the cursor.

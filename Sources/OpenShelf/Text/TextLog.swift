@@ -13,9 +13,16 @@ enum TextLog {
         case .finder: logger.info("shortcut in \(app, privacy: .public): Finder")
         case .text(let text, let reader): logger.info("shortcut in \(app, privacy: .public): \(text.count) characters via \(String(describing: reader), privacy: .public)")
         case .askForAccessibility: logger.info("shortcut in \(app, privacy: .public): Accessibility not allowed")
-        case .secureInput: logger.info("shortcut in \(app, privacy: .public): secure input")
+        // Notice, not info, so the system log keeps it for the next report.
+        case .secureInput:
+            let diagnostics = AccessibilityText.secureInputDiagnostics
+            logger.notice("shortcut in \(app, privacy: .public): refused, password field focused; \(diagnostics, privacy: .public)")
         case .nothing: logger.info("shortcut in \(app, privacy: .public): no text from \(readers, privacy: .public)")
         }
+    }
+
+    static func passwordField(pid: pid_t) {
+        logger.notice("focused element in pid \(pid, privacy: .public) is a password field (AXSecureTextField)")
     }
 
     static func emacsWrite(_ outcome: EmacsClient.Outcome) {

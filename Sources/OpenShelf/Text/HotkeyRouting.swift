@@ -5,7 +5,7 @@ enum SelectedTextRead: Equatable {
     case text(String)
     /// A text field has focus but nothing is selected in it, as far as this reader can tell.
     case nothingSelected
-    /// The focused field is a password field, or the app has secure input on.
+    /// The focused field is a password field.
     case secure
     /// Accessibility isn't allowed for OpenShelf yet (needed to read or to press ⌘C).
     case notPermitted
@@ -34,12 +34,10 @@ enum HotkeyRoute: Equatable {
     @MainActor
     static func choose(
         frontmostBundleID: String?,
-        appHoldsSecureInput: Bool,
         strategy: TextAppStrategy,
         read: (TextReader) async -> SelectedTextRead
     ) async -> HotkeyRoute {
         if frontmostBundleID == finderBundleID { return .finder }
-        if appHoldsSecureInput { return .secureInput }
         var needsAccessibility = false
         for reader in strategy.readers {
             switch await read(reader) {

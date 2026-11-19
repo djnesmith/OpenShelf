@@ -20,19 +20,16 @@ enum AccessibilityText {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    /// The app that has secure input on (a password field, Terminal's Secure
-    /// Keyboard Entry), if any. The flag is system-wide and is often left on
-    /// by an app in the background (loginwindow after unlocking, a browser's
-    /// password field), so only the app being read or written to counts.
-    static var secureInputPID: pid_t? {
-        guard IsSecureEventInputEnabled(),
-              let session = CGSessionCopyCurrentDictionary() as? [String: Any],
-              let pid = session["kCGSSessionSecureInputPID"] as? NSNumber else { return nil }
-        return pid.int32Value
+    /// The system-wide secure-input flag, and the pid the session reports
+    /// for it, for the log only. The flag is often left on (loginwindow after
+    /// unlocking), and the reported pid follows the frontmost app, so neither
+    /// says whether the focused field is a password field; the field's own
+    /// subrole does.
+    nonisolated static var secureInputDiagnostics: String {
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        let pid = (session?["kCGSSessionSecureInputPID"] as? NSNumber)?.int32Value
+        return "secure input flag \(IsSecureEventInputEnabled() ? "on" : "off"), reported pid \(pid.map(String.init) ?? "none")"
     }
-
-    /// Whether `pid` itself has secure input on.
-    static func holdsSecureInput(_ pid: pid_t) -> Bool { secureInputPID == pid }
 
     /// The selection in app `pid`'s focused element.
     static func read(pid: pid_t) -> SelectedTextRead {
@@ -43,7 +40,10 @@ enum AccessibilityText {
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
         guard let focused = element(app, kAXFocusedUIElementAttribute) else { return .unavailable }
         AXUIElementSetMessagingTimeout(focused, messagingTimeout)
-        if string(focused, kAXSubroleAttribute) == kAXSecureTextFieldSubrole { return .secure }
+        if string(focused, kAXSubroleAttribute) == kAXSecureTextFieldSubrole {
+            TextLog.passwordField(pid: pid)
+            return .secure
+        }
         var value: CFTypeRef?
         switch AXUIElementCopyAttributeValue(focused, kAXSelectedTextAttribute as CFString, &value) {
         case .success:
