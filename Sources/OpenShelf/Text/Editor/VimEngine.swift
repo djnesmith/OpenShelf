@@ -22,6 +22,11 @@ enum VimEffect: Equatable, Sendable {
     case finish, cancel
     /// `:set wrap` (true), `:set nowrap` (false), `:set wrap!` or `:set invwrap` (nil: toggle).
     case wrap(Bool?)
+    /// `:set number` / `nu` (true), `nonumber` / `nonu` (false), `number!` / `nu!` /
+    /// `invnumber` / `invnu` (nil: toggle).
+    case number(Bool?)
+    /// The same for `relativenumber` / `rnu`.
+    case relativeNumber(Bool?)
 }
 
 /// The system clipboard as the engine sees it, so tests need none.
@@ -335,6 +340,12 @@ struct VimEngine {
         case "set wrap": return .wrap(true)
         case "set nowrap": return .wrap(false)
         case "set wrap!", "set invwrap": return .wrap(nil)
+        case "set number", "set nu": return .number(true)
+        case "set nonumber", "set nonu": return .number(false)
+        case "set number!", "set nu!", "set invnumber", "set invnu": return .number(nil)
+        case "set relativenumber", "set rnu": return .relativeNumber(true)
+        case "set norelativenumber", "set nornu": return .relativeNumber(false)
+        case "set relativenumber!", "set rnu!", "set invrelativenumber", "set invrnu": return .relativeNumber(nil)
         case "q!": return .cancel
         case "q":
             if isChanged {

@@ -20,6 +20,8 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
     /// Where the wrap choice is remembered between windows, like the window size.
     private let defaults: UserDefaults
     static let wrapKey = "EditWindowWrapsLines"
+    static let lineNumbersKey = "EditWindowLineNumbers"
+    private var ruler: LineNumberRuler?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -27,6 +29,9 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
 
     /// Long lines wrap (the default) or scroll sideways.
     var wraps: Bool { defaults.object(forKey: Self.wrapKey) as? Bool ?? true }
+
+    /// Line numbers: relative by default (as vim's number with relativenumber); a choice is remembered.
+    var lineNumbers: LineNumbers { (defaults.string(forKey: Self.lineNumbersKey)).flatMap(LineNumbers.init) ?? .relative }
 
     var isOpen: Bool { panel?.isVisible == true }
 
@@ -108,6 +113,10 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         panel.onFinish = { [weak self] in self?.finish() }
         panel.onCancel = { [weak self] in self?.cancel() }
         panel.onToggleWrap = { [weak self] in self?.setWrap(nil) }
+        panel.onCycleLineNumbers = { [weak self] in
+            guard let self else { return }
+            self.setLineNumbers(self.lineNumbers.next)
+        }
 
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
@@ -125,6 +134,12 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
             case .finish: self?.finish()
             case .cancel: self?.cancel()
             case .wrap(let on): self?.setWrap(on)
+            case .number(let on):
+                guard let self else { return }
+                self.setLineNumbers(self.lineNumbers.settingNumber(on))
+            case .relativeNumber(let on):
+                guard let self else { return }
+                self.setLineNumbers(self.lineNumbers.settingRelative(on))
             }
         }
         textView.onChange = { [weak self] in self?.updateStatus() }
@@ -132,7 +147,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         let left = NSTextField(labelWithString: "")
         let right = NSTextField(labelWithString: "")
         for label in [left, right] {
-            label.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+            label.font = Self.statusFont
             label.textColor = .secondaryLabelColor
             label.lineBreakMode = .byTruncatingTail
         }
@@ -140,6 +155,10 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         right.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let status = NSStackView(views: [left, right])
         status.edgeInsets = NSEdgeInsets(top: 4, left: 10, bottom: 6, right: 10)
+
+        let ruler = LineNumberRuler(textView: textView)
+        scroll.verticalRulerView = ruler
+        scroll.hasVerticalRuler = true
 
         let stack = NSStackView(views: [scroll, status])
         stack.orientation = .vertical
@@ -160,7 +179,9 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         self.panel = panel
         self.textView = textView
         self.scroll = scroll
+        self.ruler = ruler
         applyWrap()
+        applyLineNumbers()
         statusLeft = left
         statusRight = right
         return panel
@@ -187,6 +208,23 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         updateStatus()
     }
 
+    /// Shows line numbers as `numbers`, remembers it, and says so.
+    func setLineNumbers(_ numbers: LineNumbers) {
+        defaults.set(numbers.rawValue, forKey: Self.lineNumbersKey)
+        applyLineNumbers()
+        updateStatus()
+    }
+
+    private func applyLineNumbers() {
+        ruler?.numbers = lineNumbers
+        scroll?.rulersVisible = lineNumbers != .off
+        scroll?.tile()
+        ruler?.refresh()
+    }
+
+    /// The gutter, for tests.
+    var lineNumberRuler: LineNumberRuler? { ruler }
+
     private func applyWrap() {
         guard let textView, let container = textView.textContainer else { return }
         let wraps = self.wraps
@@ -207,12 +245,24 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         }
         textView.sizeToFit()
         textView.scrollRangeToVisible(textView.selectedRange())
+        ruler?.refresh()
     }
 
     /// The bottom line's keys, most needed first: a narrow window cuts the end.
-    static func hints(destination: String, wraps: Bool) -> String {
-        "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: \(wraps ? "on" : "off") · the text goes \(destination)"
+    /// The line-number key sits beside the wrap key, and goes first when it doesn't fit.
+    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers? = nil) -> String {
+        let lines = lineNumbers.map { " · ⌥⌘L lines: \($0.rawValue)" } ?? ""
+        return "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: \(wraps ? "on" : "off")\(lines) · the text goes \(destination)"
     }
+
+    /// The hints with the line-number key when they fit in `width`, without it when not.
+    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers, fitting width: CGFloat, font: NSFont) -> String {
+        let full = hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers)
+        let size = (full as NSString).size(withAttributes: [.font: font])
+        return size.width <= width ? full : hints(destination: destination, wraps: wraps)
+    }
+
+    static let statusFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
 
     /// Whether long lines wrap in the text view itself, for tests.
     var textViewWraps: Bool { textView?.textContainer?.widthTracksTextView ?? true }
@@ -230,7 +280,16 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         if let register = engine.recording, engine.mode != .commandLine {
             statusLeft?.stringValue += " · recording @\(register)"
         }
-        statusRight?.stringValue = Self.hints(destination: destination, wraps: wraps)
+        // What the right side has: the window's width (the bar's, which may not be laid out
+        // yet) less the left text, the gap and the edges.
+        let room = (panel?.contentView?.bounds.width ?? 0) - (statusLeft?.fittingSize.width ?? 0) - 8 - 20
+        statusRight?.stringValue = Self.hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers, fitting: room, font: Self.statusFont)
+        // Relative numbers follow the cursor.
+        ruler?.refresh()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        updateStatus()
     }
 
     private func finish() {
@@ -265,6 +324,7 @@ final class EditorPanel: NSPanel {
     var onFinish: () -> Void = {}
     var onCancel: () -> Void = {}
     var onToggleWrap: () -> Void = {}
+    var onCycleLineNumbers: () -> Void = {}
 
     override var canBecomeKey: Bool { true }
 
@@ -277,6 +337,11 @@ final class EditorPanel: NSPanel {
         // ⌥⌘Z toggles wrapping: with ⌘ it never types, and it is no vim key.
         if flags == [.command, .option], event.charactersIgnoringModifiers?.lowercased() == "z" {
             onToggleWrap()
+            return true
+        }
+        // ⌥⌘L cycles line numbers, for the same reasons.
+        if flags == [.command, .option], event.charactersIgnoringModifiers?.lowercased() == "l" {
+            onCycleLineNumbers()
             return true
         }
         if flags == .command {

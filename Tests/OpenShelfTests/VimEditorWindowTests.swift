@@ -220,6 +220,131 @@ struct VimEditorWindowTests {
         #expect(view.engine.cursor == 0)
     }
 
+    /// Line numbers are relative by default; a stored choice wins, and the gutter shows unless off.
+    @Test func lineNumbersAreRelativeByDefaultAndRemembered() {
+        let defaults = Self.scratchDefaults()
+        let window = VimEditorWindow(defaults: defaults)
+        _ = window.makePanel()
+        #expect(window.lineNumbers == .relative)
+        #expect(window.panelTextView?.enclosingScrollView?.rulersVisible == true)
+        window.setLineNumbers(.off)
+        #expect(window.panelTextView?.enclosingScrollView?.rulersVisible == false)
+        let next = VimEditorWindow(defaults: defaults)
+        _ = next.makePanel()
+        #expect(next.lineNumbers == .off)
+        #expect(next.panelTextView?.enclosingScrollView?.rulersVisible == false)
+    }
+
+    /// ⌥⌘L cycles on, relative, off, on (so from the relative default: off, on, relative),
+    /// and never reaches vim: the text, a pending operator and a recording are as they were.
+    @Test func theLineNumberHotkeyCyclesAndLeavesVimAlone() {
+        let window = VimEditorWindow(defaults: Self.scratchDefaults())
+        let panel = window.makePanel()
+        window.load("one two")
+        let view = window.panelTextView!
+        for c in "qad" { view.keyDown(with: Self.key(String(c))) }
+        var seen: [LineNumbers] = []
+        for _ in 0..<3 {
+            #expect(panel.performKeyEquivalent(with: Self.key("l", keyCode: 37, modifiers: [.command, .option])))
+            seen.append(window.lineNumbers)
+        }
+        #expect(seen == [.off, .on, .relative])
+        #expect(view.engine.recording == "a")
+        for c in "wq" { view.keyDown(with: Self.key(String(c))) }
+        #expect(view.string == "two")
+        #expect(view.engine.registers["a"]?.text == "dw")
+    }
+
+    /// :set number, nonumber, number!, relativenumber and their short and inv forms.
+    @Test func setNumberOnTheCommandLine() {
+        let effects: [(String, VimEffect)] = [
+            ("set number", .number(true)), ("set nu", .number(true)), ("set nonumber", .number(false)), ("set nonu", .number(false)),
+            ("set nu!", .number(nil)), ("set number!", .number(nil)), ("set invnumber", .number(nil)), ("set invnu", .number(nil)),
+            ("set relativenumber", .relativeNumber(true)), ("set rnu", .relativeNumber(true)),
+            ("set norelativenumber", .relativeNumber(false)), ("set nornu", .relativeNumber(false)),
+            ("set rnu!", .relativeNumber(nil)), ("set invrnu", .relativeNumber(nil)), ("set invrelativenumber", .relativeNumber(nil)),
+        ]
+        for (command, effect) in effects {
+            var engine = VimEngine("a")
+            #expect(engine.handle(VimEngineTests.keys(":\(command)<CR>")) == effect, "\(command)")
+        }
+        // From each state: number on, off, toggled; relative on, off, toggled.
+        #expect(LineNumbers.allCases.map { $0.settingNumber(true) } == [.on, .relative, .on])
+        #expect(LineNumbers.allCases.map { $0.settingNumber(false) } == [.off, .off, .off])
+        #expect(LineNumbers.allCases.map { $0.settingNumber(nil) } == [.off, .off, .on])
+        #expect(LineNumbers.allCases.map { $0.settingRelative(true) } == [.relative, .relative, .relative])
+        #expect(LineNumbers.allCases.map { $0.settingRelative(false) } == [.on, .on, .off])
+        #expect(LineNumbers.allCases.map { $0.settingRelative(nil) } == [.relative, .on, .relative])
+        let window = VimEditorWindow(defaults: Self.scratchDefaults())
+        _ = window.makePanel()
+        window.load("abc")
+        for c in ":set nornu" { window.panelTextView?.keyDown(with: Self.key(String(c))) }
+        window.panelTextView?.keyDown(with: Self.key("\r", keyCode: 36))
+        #expect(window.lineNumbers == .on)
+    }
+
+    /// One number per real line, none on a wrapped line's further rows; relative numbers
+    /// count from the cursor's line, which shows its own; the numbers are not in the text.
+    @Test func theGutterNumbersRealLines() {
+        let window = VimEditorWindow(defaults: Self.scratchDefaults())
+        let panel = window.makePanel()
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let long = String(repeating: "word ", count: 60)
+        window.load("one\n\(long)\nthree\nfour\n")
+        let view = window.panelTextView!
+        let ruler = window.lineNumberRuler!
+        let everything = NSRect(x: 0, y: 0, width: 10_000, height: 10_000)
+        view.layoutManager!.ensureLayout(for: view.textContainer!)
+        for c in "jj" { view.keyDown(with: Self.key(String(c))) }
+        let wrapped = ruler.labels(in: everything)
+        // Five real lines, the last the empty one after the final line break.
+        #expect(wrapped.map(\.text) == ["2", "1", "3", "1", "2"])
+        #expect(wrapped.map(\.isCurrent) == [false, false, true, false, false])
+        let row = wrapped[0].height
+        #expect(wrapped[2].top - wrapped[1].top > row * 1.5)
+        #expect(wrapped == wrapped.sorted { $0.top < $1.top })
+        window.setWrap(false)
+        view.layoutManager!.ensureLayout(for: view.textContainer!)
+        let unwrapped = ruler.labels(in: everything)
+        #expect(abs((unwrapped[2].top - unwrapped[1].top) - row) < 0.5)
+        window.setLineNumbers(.on)
+        #expect(ruler.labels(in: everything).map(\.text) == ["1", "2", "3", "4", "5"])
+        window.setLineNumbers(.off)
+        #expect(ruler.labels(in: everything).isEmpty)
+        #expect(window.text == "one\n\(long)\nthree\nfour\n")
+        // Without a final line break there is no empty last line to number; an empty text has one line.
+        window.setLineNumbers(.on)
+        window.load("one\ntwo")
+        #expect(ruler.labels(in: everything).map(\.text) == ["1", "2"])
+        window.load("")
+        #expect(ruler.labels(in: everything).map(\.text) == ["1"])
+    }
+
+    /// The gutter is as wide as the largest line number needs.
+    @Test func theGutterFitsTheLineCount() {
+        let window = VimEditorWindow(defaults: Self.scratchDefaults())
+        _ = window.makePanel()
+        let ruler = window.lineNumberRuler!
+        window.load("a\nb")
+        let two = ruler.ruleThickness
+        window.load((1...1200).map(String.init).joined(separator: "\n"))
+        window.panelTextView?.keyDown(with: Self.key("j"))
+        #expect(ruler.ruleThickness > two)
+        #expect(ruler.ruleThickness == ruler.thickness(lines: 1200))
+    }
+
+    /// The bottom line shows the line-number key and state beside the wrap key, and
+    /// drops it first when the window is narrow.
+    @Test func bottomLineShowsTheLineNumberKey() {
+        let font = VimEditorWindow.statusFont
+        let wide = VimEditorWindow.hints(destination: "back into Mail", wraps: true, lineNumbers: .relative, fitting: 2000, font: font)
+        #expect(wide == "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: on · ⌥⌘L lines: relative · the text goes back into Mail")
+        let narrow = VimEditorWindow.hints(destination: "back into Mail", wraps: true, lineNumbers: .relative, fitting: 200, font: font)
+        #expect(!narrow.contains("⌥⌘L"))
+        #expect(narrow.contains("⌥⌘Z wrap: on"))
+        #expect(VimEditorWindow.hints(destination: "x", wraps: false, lineNumbers: .off).contains("⌥⌘L lines: off"))
+    }
+
     /// The bottom line always shows the wrap key and its state, after the keys
     /// needed most, so a narrow window cuts the least needed part first.
     @Test func bottomLineShowsTheWrapKeyAndState() {
