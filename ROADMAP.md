@@ -654,9 +654,10 @@ back at the right time."
   finding it: "that is what i need"): Mail takes the message out of the inbox and brings it back
   at that time. With that setting off, the fallback is Remind Me then Archive (⌃⌘A), his old
   routine, which he has seen work. The feature checks the setting and does the right one. No
-  mailbox or timer of OpenShelf's own.
+  mailbox or timer of OpenShelf's own. Confirmed on his Mac: he turned the setting on (2026-11-19:
+  "that setting works! that is a great setting"). Not to be built yet: still being discussed.
 - Presets: tomorrow morning (7am), this afternoon (2pm), tonight (5pm), in two days (7am:
-  David to confirm), this weekend (Saturday 7am), next week (Monday 7am). Free text ("fri 2pm",
+  David, 2026-11-19: "in two days should mean morning 7am"), this weekend (Saturday 7am), next week (Monday 7am). Free text ("fri 2pm",
   "in 3 hours", "dec 3 9am") in a one-line prompt that shows the date it understood before
   Return. Proposed rule for a preset whose time has passed today ("this afternoon" at 4pm): the
   next day at that time, shown in the prompt before it is used.
