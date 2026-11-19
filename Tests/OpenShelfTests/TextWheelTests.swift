@@ -256,6 +256,20 @@ struct HotkeyRouteTests {
         #expect(await route(reads: [.accessibility: .secure, .copyShortcut: .text("pw")]) == .secureInput)
     }
 
+    /// David's rule: only a real password input refuses. In a browser, 1Password
+    /// and the Passwords app it reads as Accessibility's AXSecureTextField.
+    @Test(arguments: ["com.apple.Safari", "com.google.Chrome", "com.1password.1password", "com.apple.Passwords"])
+    func passwordInputsInBrowsersAndPasswordManagersAreRefused(bundleID: String) async {
+        #expect(await route(bundleID, reads: [.accessibility: .secure, .copyShortcut: .text("pw"), .recentClipboard: .text("copied")]) == .secureInput)
+    }
+
+    /// Everything else reads, whatever the secure-input flag says: the routing
+    /// doesn't consult it at all.
+    @Test(arguments: ["com.apple.mail", "com.apple.news", "com.apple.MobileSMS", "com.apple.Safari"])
+    func everyOtherFieldReads(bundleID: String) async {
+        #expect(await route(bundleID, reads: [.accessibility: .text("words")]) == .text("words", from: .accessibility))
+    }
+
     @Test func finderKeepsItsFileWheel() async {
         #expect(await route("com.apple.finder", reads: [.accessibility: .text("x")]) == .finder)
     }

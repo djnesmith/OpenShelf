@@ -133,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             emptyShortcutPresses.reset()
             selectedText.open(text, from: reader, in: app, at: location)
         case .secureInput:
-            ToastController.shared.show(Toast(systemImage: "lock", title: "Secure input is on", subtitle: "A password field or app is protecting the keyboard"), near: location, for: .seconds(3))
+            ToastController.shared.show(Toast(systemImage: "lock", title: "Password field", subtitle: "OpenShelf doesn't read or change password fields"), near: location, for: .seconds(3))
         case .askForAccessibility:
             if emptyShortcutPresses.record(at: .now) {
                 SettingsWindowController.shared.show()

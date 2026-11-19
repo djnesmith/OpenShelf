@@ -45,4 +45,12 @@ struct EditWriteBackTests {
     func toolsNeverPasteIntoAPasswordField(now: SelectedTextRead, expected: Bool) {
         #expect(SelectedTextController.toolMayReplace(Self.session(.accessibility), now: now) == expected)
     }
+
+    /// A password field (browser, 1Password, Passwords) that has focus at paste
+    /// time never gets the text, from Edit or from a tool.
+    @Test(arguments: [TextReader.accessibility, .copyShortcut, .recentClipboard])
+    func noPasteIntoAPasswordField(source: TextReader) {
+        #expect(!SelectedTextController.canReplace(Self.session(source), now: .secure))
+        #expect(!SelectedTextController.toolMayReplace(Self.session(source), now: .secure))
+    }
 }

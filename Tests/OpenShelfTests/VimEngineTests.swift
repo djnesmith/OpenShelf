@@ -367,7 +367,9 @@ struct VimEngineTests {
         let text = (1...20_000).map { $0 % 50 == 0 ? "" : "line \($0)" }.joined(separator: "\n")
         var engine = VimEngine(text)
         let elapsed = ContinuousClock().measure { _ = engine.handle(Self.keys("}}G{")) }
-        #expect(elapsed < .milliseconds(500))
+        // About 0.1 s alone; the old quadratic version took 43 s. A wide bound,
+        // so the rest of the suite running alongside can't fail it.
+        #expect(elapsed < .seconds(3))
         #expect(engine.mode == .normal)
     }
 

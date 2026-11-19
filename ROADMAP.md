@@ -140,8 +140,11 @@ The order, checked on every press of ⌃⌥Space:
   RTF, which "To Markdown" needs, so use it for rich text even when Accessibility works.
 - Cap every Accessibility call with `AXUIElementSetMessagingTimeout` (about 0.25 s) so a hung
   app cannot freeze OpenShelf.
-- **Secure input:** if `IsSecureEventInputEnabled()` is on (a password field, a password
-  manager, Terminal's Secure Keyboard Entry), show a toast and do nothing.
+- **Password fields:** only a focused password field (Accessibility subrole
+  `AXSecureTextField`: a password input in a browser, 1Password, the Passwords app) is refused,
+  with a toast. Every other field and app is allowed, whatever the system-wide secure-input
+  flag says (David, 2026-11-19: "everything else should be ok"); it is often left on by
+  loginwindow, and the pid macOS reports for it follows the frontmost app.
 - What the user sees the first time: a toast, then System Settings → Privacy & Security →
   Accessibility. They switch OpenShelf on, and may need to relaunch it. macOS updates
   sometimes reset this switch.
