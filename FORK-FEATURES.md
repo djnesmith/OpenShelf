@@ -49,6 +49,15 @@ tools" Settings section was left out; whisper.cpp joined the fork's list instead
 verified: Word to PDF prints Quick Look's HTML preview in a WebKit view, which could fetch a
 picture a Word file links by web address.
 
+Upstream 1.10.0 added Developer ID signing and notarization (`scripts/sign.sh`,
+`scripts/notarize.sh`, `make notarize`), a Homebrew cask, a Sparkle feed on its `appcast`
+branch, and About OpenShelf in the menu-bar menu. The merge keeps About and the 1.10.0
+version number. It keeps the fork's Makefile, so builds still sign with the fork's identity
+and have no Sparkle (#1, #2); `sign.sh` and `notarize.sh` are in the tree but unused. The
+README is upstream's and describes upstream's releases: self-updating, notarized,
+installed with Homebrew. None of that applies to this fork. Don't `brew install` upstream's
+cask here: it installs to `/Applications/OpenShelf.app` too, over the fork's build.
+
 ## Security
 
 ### 1. No in-app updates

@@ -24,6 +24,7 @@ struct OpenShelfApp: App {
             Button("Take the Tour…") { TourWindowController.present() }
             Button("Settings…") { SettingsWindowController.shared.show() }
                 .keyboardShortcut(",")
+            Button("About OpenShelf") { AboutPanel.show() }
             Divider()
             Button("Quit OpenShelf") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
