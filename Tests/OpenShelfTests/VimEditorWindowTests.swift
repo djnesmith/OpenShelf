@@ -379,16 +379,34 @@ struct VimEditorWindowTests {
         #expect(ruler.ruleThickness == ruler.thickness(lines: 1200))
     }
 
-    /// The bottom line shows the line-number key and state beside the wrap key, and
-    /// drops it first when the window is narrow.
+    /// The bottom line shows the line-number key and state beside the wrap key. A narrow
+    /// window leaves out where the text goes first, then the line-number key.
     @Test func bottomLineShowsTheLineNumberKey() {
-        let font = VimEditorWindow.statusFont
-        let wide = VimEditorWindow.hints(destination: "back into Mail", wraps: true, lineNumbers: .relative, fitting: 2000, font: font)
-        #expect(wide == "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: on · ⌥⌘L lines: relative · the text goes back into Mail")
-        let narrow = VimEditorWindow.hints(destination: "back into Mail", wraps: true, lineNumbers: .relative, fitting: 200, font: font)
-        #expect(!narrow.contains("⌥⌘L"))
-        #expect(narrow.contains("⌥⌘Z wrap: on"))
+        func fit(_ width: CGFloat) -> String {
+            VimEditorWindow.hints(destination: "back into Mail", wraps: true, lineNumbers: .relative, fitting: width).string
+        }
+        #expect(fit(2000) == "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: on · ⌥⌘L lines: relative · the text goes back into Mail")
+        let full = VimEditorWindow.hints(destination: "back into Mail", wraps: true, lineNumbers: .relative, fitting: 2000).size().width
+        let noDestination = VimEditorWindow.styled(VimEditorWindow.hints(destination: nil, wraps: true, lineNumbers: .relative), failure: nil).size().width
+        #expect(fit((full + noDestination) / 2) == "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: on · ⌥⌘L lines: relative")
+        #expect(fit(200) == "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: on")
         #expect(VimEditorWindow.hints(destination: "x", wraps: false, lineNumbers: .off).contains("⌥⌘L lines: off"))
+    }
+
+    /// The keys are brighter than the words, in a bolder font, with space between a
+    /// shortcut's glyphs; a failed command's reason is in italics.
+    @Test func bottomLineKeysStandOut() {
+        let text = VimEditorWindow.styled(VimEditorWindow.hints(destination: "x", wraps: true, failure: "d3j: no line below"), failure: "d3j: no line below")
+        let string = text.string as NSString
+        func attributes(of piece: String) -> [NSAttributedString.Key: Any] {
+            text.attributes(at: string.range(of: piece).location, effectiveRange: nil)
+        }
+        #expect(attributes(of: "⌥⌘Z")[.foregroundColor] as? NSColor == .labelColor)
+        #expect(attributes(of: "⌥⌘Z")[.font] as? NSFont == VimEditorWindow.keyFont)
+        #expect((attributes(of: "⌥⌘Z")[.kern] as? CGFloat ?? 0) > 0)
+        #expect(attributes(of: "wrap")[.foregroundColor] as? NSColor == .secondaryLabelColor)
+        #expect(attributes(of: "d3j: no")[.font] as? NSFont != VimEditorWindow.statusFont)
+        #expect(NSFontManager.shared.traits(of: attributes(of: "d3j: no")[.font] as! NSFont).contains(.italicFontMask))
     }
 
     /// The bottom line always shows the wrap key and its state, after the keys

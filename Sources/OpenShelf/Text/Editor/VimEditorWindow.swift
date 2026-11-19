@@ -147,7 +147,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         let left = NSTextField(labelWithString: "")
         let right = NSTextField(labelWithString: "")
         for label in [left, right] {
-            label.font = Self.statusFont
+            label.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
             label.textColor = .secondaryLabelColor
             label.lineBreakMode = .byTruncatingTail
         }
@@ -248,23 +248,65 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         ruler?.refresh()
     }
 
-    /// The bottom line's keys, most needed first: a narrow window cuts the end.
-    /// The line-number key sits beside the wrap key, and goes first when it doesn't fit.
+    /// The bottom line's keys, most needed first. The line-number key sits beside the wrap key.
     /// A command that did nothing (`failure`) is said right after the wrap key, until the next key.
-    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers? = nil, failure: String? = nil) -> String {
+    /// A nil `destination` leaves out where the text goes.
+    static func hints(destination: String?, wraps: Bool, lineNumbers: LineNumbers? = nil, failure: String? = nil) -> String {
         let failed = failure.map { " · \($0)" } ?? ""
         let lines = lineNumbers.map { " · ⌥⌘L lines: \($0.rawValue)" } ?? ""
-        return "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: \(wraps ? "on" : "off")\(failed)\(lines) · the text goes \(destination)"
+        let goes = destination.map { " · the text goes \($0)" } ?? ""
+        return "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: \(wraps ? "on" : "off")\(failed)\(lines)\(goes)"
     }
 
-    /// The hints with the line-number key when they fit in `width`, without it when not.
-    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers, failure: String? = nil, fitting width: CGFloat, font: NSFont) -> String {
-        let full = hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers, failure: failure)
-        let size = (full as NSString).size(withAttributes: [.font: font])
-        return size.width <= width ? full : hints(destination: destination, wraps: wraps, failure: failure)
+    /// The hints that fit in `width`: a narrow window leaves out where the text goes first
+    /// (David, 2026-11-19), then the line-number key; past that the end is cut.
+    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers, failure: String? = nil, fitting width: CGFloat) -> NSAttributedString {
+        let tries = [
+            hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers, failure: failure),
+            hints(destination: nil, wraps: wraps, lineNumbers: lineNumbers, failure: failure),
+            hints(destination: nil, wraps: wraps, failure: failure),
+        ]
+        let styled = tries.map { styled($0, failure: failure) }
+        return styled.first { $0.size().width <= width } ?? styled[styled.count - 1]
     }
 
-    static let statusFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+    /// The bottom line's look (David, 2026-11-19: the keys were "hard to make out" and "too
+    /// close together"): keys bright and in the system font, which draws ⌘ ⌥ ⇧ ↩ clearer than
+    /// the monospaced one, with a little space between their glyphs; the words quieter; wide
+    /// gaps between items; a failed command's reason in italics.
+    static func styled(_ hints: String, failure: String?) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .right
+        paragraph.lineBreakMode = .byTruncatingTail
+        let text = NSMutableAttributedString(string: hints, attributes: [
+            .font: statusFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph,
+        ])
+        let whole = hints as NSString
+        for match in keyPattern.matches(in: hints, range: NSRange(location: 0, length: whole.length)) {
+            text.addAttributes([.font: keyFont, .foregroundColor: NSColor.labelColor], range: match.range)
+            // Space between a shortcut's glyphs, not after its last one.
+            text.addAttribute(.kern, value: 2, range: NSRange(location: match.range.location, length: max(match.range.length - 1, 0)))
+        }
+        var search = NSRange(location: 0, length: whole.length)
+        while case let found = whole.range(of: " · ", range: search), found.location != NSNotFound {
+            text.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: NSRange(location: found.location + 1, length: 1))
+            text.addAttribute(.kern, value: 5, range: NSRange(location: found.location, length: 2))
+            search = NSRange(location: found.upperBound, length: whole.length - found.upperBound)
+        }
+        if let failure {
+            let found = whole.range(of: failure)
+            if found.location != NSNotFound {
+                let italic = NSFontManager.shared.convert(statusFont, toHaveTrait: .italicFontMask)
+                text.addAttribute(.font, value: italic, range: found)
+            }
+        }
+        return text
+    }
+
+    /// A shortcut: modifier glyphs and the key after them.
+    static let keyPattern = try! NSRegularExpression(pattern: "[⌃⌥⇧⌘]+[↩A-Za-z]?")
+    static let statusFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+    static let keyFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
 
     /// The bottom line's right side, for tests.
     var bottomLineHints: String { statusRight?.stringValue ?? "" }
@@ -288,7 +330,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         // What the right side has: the window's width (the bar's, which may not be laid out
         // yet) less the left text, the gap and the edges.
         let room = (panel?.contentView?.bounds.width ?? 0) - (statusLeft?.fittingSize.width ?? 0) - 8 - 20
-        statusRight?.stringValue = Self.hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers, failure: engine.failureHint, fitting: room, font: Self.statusFont)
+        statusRight?.attributedStringValue = Self.hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers, failure: engine.failureHint, fitting: room)
         // Relative numbers follow the cursor.
         ruler?.refresh()
     }
