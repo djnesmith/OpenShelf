@@ -8,7 +8,9 @@ runs the same sequences through VimEngine and expects vim's text and cursor:
     swift test --filter VimCompare
 
 Each sequence is 1 to 4 commands, mostly counted operators (d3j, 2d3w, c2iw,
-y2ap, d2%, v3jd, x., ...), from a random place in one of a few texts. Each
+y2ap, d2%, v3jd, x., ...), from a random place in one of a few ASCII texts
+(columns are vim's byte columns). Macros are not covered: `normal!` ignores q;
+VimCountTests checks counted macros against vim's feedkeys results. Each
 command runs on its own, as vim's `normal!` does. `u` is left out: vim's
 script mode joins all of a sequence's changes into one undo step. Known
 difference: "." does not repeat a visual change here (vim does), so sequences
@@ -52,7 +54,12 @@ call cursor({line + 1}, {column + 1})
 {body}call writefile([json_encode(getline(1, '$')), line('.'), col('.')], "{out}")
 qa!
 """)
+    # A result left from the case before must never pass for this one's.
+    if os.path.exists(out):
+        os.remove(out)
     subprocess.run(["vim", "--clean", "-es", "-S", script], capture_output=True, stdin=subprocess.DEVNULL, timeout=10)
+    if not os.path.exists(out):
+        sys.exit(f"vim wrote no result for {commands} on {lines!r}")
     got, l, c = open(out).read().split("\n")[:3]
     got = json.loads(got)
     return "\n".join(got), sum(len(x) + 1 for x in got[:int(l) - 1]) + int(c) - 1

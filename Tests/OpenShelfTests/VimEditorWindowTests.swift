@@ -320,6 +320,38 @@ struct VimEditorWindowTests {
         #expect(ruler.labels(in: everything).map(\.text) == ["1"])
     }
 
+    /// Typing in insert mode keeps the gutter up to date: it widens for a new digit and
+    /// counts from the caret's line. In visual mode it counts from the selection's moving
+    /// end, as vim does. A pasted U+2028 is not a line to vim, so it gets no number.
+    @Test func theGutterFollowsInsertAndVisualMode() {
+        let window = VimEditorWindow(defaults: Self.scratchDefaults())
+        let panel = window.makePanel()
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let view = window.panelTextView!
+        let ruler = window.lineNumberRuler!
+        let everything = NSRect(x: 0, y: 0, width: 10_000, height: 100_000)
+        window.load((1...99).map(String.init).joined(separator: "\n"))
+        let narrow = ruler.ruleThickness
+        for c in "GA" { view.keyDown(with: Self.key(String(c))) }
+        view.insertText("\nx", replacementRange: view.selectedRange())
+        #expect(ruler.ruleThickness == ruler.thickness(lines: 100))
+        #expect(ruler.ruleThickness > narrow)
+        #expect(ruler.labels(in: everything).last == ruler.labels(in: everything).first { $0.isCurrent })
+        #expect(ruler.labels(in: everything).last?.text == "100")
+
+        window.load("a\nb\nc\nd\ne")
+        for c in "vjj" { view.keyDown(with: Self.key(String(c))) }
+        view.layoutManager!.ensureLayout(for: view.textContainer!)
+        #expect(ruler.labels(in: everything).map(\.text) == ["2", "1", "3", "1", "2"])
+
+        view.keyDown(with: Self.key("\u{1b}", keyCode: 53))
+        window.load("a\nb")
+        for c in "A" { view.keyDown(with: Self.key(String(c))) }
+        view.insertText("1\u{2028}2", replacementRange: view.selectedRange())
+        view.layoutManager!.ensureLayout(for: view.textContainer!)
+        #expect(ruler.labels(in: everything).count == 2)
+    }
+
     /// The gutter is as wide as the largest line number needs.
     @Test func theGutterFitsTheLineCount() {
         let window = VimEditorWindow(defaults: Self.scratchDefaults())

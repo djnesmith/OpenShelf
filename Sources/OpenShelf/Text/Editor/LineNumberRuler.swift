@@ -72,12 +72,36 @@ final class LineNumberRuler: NSRulerView {
         return ceil(CGFloat(max(String(lines).count, 2)) * digit + 2 * Self.padding)
     }
 
-    /// Redraws, and widens or narrows to the line count.
+    /// Redraws, and widens or narrows to the line count. Runs on every key, so it counts
+    /// on the text view's own string, and not at all with the numbers off.
     func refresh() {
-        let lines = (textView?.string ?? "").reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
-        let wanted = thickness(lines: lines)
-        if abs(ruleThickness - wanted) > 0.5 { ruleThickness = wanted }
         needsDisplay = true
+        guard numbers != .off, let textView else { return }
+        let text = textView.string as NSString
+        let wanted = thickness(lines: Self.lineBreaks(in: text, before: text.length) + 1)
+        if abs(ruleThickness - wanted) > 0.5 { ruleThickness = wanted }
+    }
+
+    /// How many "\n" come before `location`: vim's line index. Only "\n" counts, as in the
+    /// engine; NSString's own line ranges would also split at U+2028 and the like.
+    static func lineBreaks(in text: NSString, before location: Int) -> Int {
+        var count = 0
+        var position = 0
+        while position < location {
+            let found = text.range(of: "\n", options: .literal, range: NSRange(location: position, length: location - position))
+            guard found.location != NSNotFound else { break }
+            count += 1
+            position = found.upperBound
+        }
+        return count
+    }
+
+    /// The cursor, where relative numbers count from: vim's cursor (the moving end of a
+    /// visual selection), or the caret while typing.
+    private var cursorLocation: Int {
+        guard let textView else { return 0 }
+        if let vim = textView as? VimTextView, vim.engine.mode != .insert { return vim.cursorUTF16Location }
+        return textView.selectedRange().location
     }
 
     /// One label: the text shown, where its line's first row is (in the text
@@ -95,21 +119,12 @@ final class LineNumberRuler: NSRulerView {
         let text = textView.string as NSString
         let origin = textView.textContainerOrigin
         let glyphs = layout.glyphRange(forBoundingRect: rect.offsetBy(dx: -origin.x, dy: -origin.y), in: container)
-        let first = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil).location
-        func lineIndex(_ location: Int) -> Int {
-            var count = 0
-            var position = 0
-            while position < location {
-                let found = text.range(of: "\n", options: .literal, range: NSRange(location: position, length: location - position))
-                guard found.location != NSNotFound else { break }
-                count += 1
-                position = found.upperBound
-            }
-            return count
-        }
-        let current = lineIndex(min(textView.selectedRange().location, text.length))
-        var start = text.lineRange(for: NSRange(location: min(first, text.length), length: 0)).location
-        var line = lineIndex(start)
+        let first = min(layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil).location, text.length)
+        let current = Self.lineBreaks(in: text, before: min(cursorLocation, text.length))
+        // The start of the line the first visible row belongs to.
+        let before = text.range(of: "\n", options: [.literal, .backwards], range: NSRange(location: 0, length: first))
+        var start = before.location == NSNotFound ? 0 : before.upperBound
+        var line = Self.lineBreaks(in: text, before: start)
         var labels: [Label] = []
         while start <= text.length {
             let row: NSRect
@@ -125,9 +140,9 @@ final class LineNumberRuler: NSRulerView {
             let shown = numbers == .relative && line != current ? abs(line - current) : line + 1
             labels.append(Label(text: String(shown), top: top, height: row.height, isCurrent: line == current))
             guard start < text.length else { break }
-            let next = NSMaxRange(text.lineRange(for: NSRange(location: start, length: 0)))
-            if next == start { break }
-            start = next
+            let found = text.range(of: "\n", options: .literal, range: NSRange(location: start, length: text.length - start))
+            guard found.location != NSNotFound else { break }
+            start = found.upperBound
             line += 1
         }
         return labels

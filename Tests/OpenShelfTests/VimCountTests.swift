@@ -30,6 +30,12 @@ struct VimCountTests {
         ("a\n|b\nc\nd\ne\nf\ng\nh", "v3jd", "a\n|\nf\ng\nh"),
         ("a\n|b\nc\nd\ne\nf\ng\nh", "d2j .", "a\n|h"),
         ("a\n|b\nc\nd\ne\nf\ng\nh", "dj 3.", "a\n|h"),
+        // counts inside a recorded macro (vim's results through feedkeys: normal! ignores q)
+        ("|a b c d e f g h i j k l", "qad2wq@a", "|e f g h i j k l"),
+        ("|a b c d e f g h i j k l m n o p q", "qa2d3wq2@a", "|"),
+        ("|a\nb\nc\nd\ne\nf\ng\nh\ni\nj", "qad3jq@a", "|i\nj"),
+        ("|a\nb\nc\nd\ne\nf\ng\nh", "qa3ddq.", "|g\nh"),
+        ("|a b c d e f g h i j k l", "qad2wq3@a", "|i j k l"),
         // counted paragraph motions and objects past the text fail
         ("|a\n\nb", "d3}", "|a\n\nb"),
         ("a\n\n|b", "d3{", "a\n\n|b"),

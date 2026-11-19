@@ -431,6 +431,7 @@ final class VimTextView: NSTextView {
     /// Clicks move vim's cursor too.
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        if !isRendering, engine.mode == .insert { onChange() }
         guard !isRendering, !stillSelecting, engine.mode != .insert, let first = ranges.first?.rangeValue else { return }
         engine.click(at: characterIndex(utf16: first.location))
         render()
@@ -464,6 +465,16 @@ final class VimTextView: NSTextView {
         scrollRangeToVisible(range)
         needsDisplay = true
         onChange()
+    }
+
+    /// vim's cursor as an offset in the view's text.
+    var cursorUTF16Location: Int { utf16Offset(of: engine.cursor) }
+
+    /// Typing in insert mode changes the text without vim; the window still follows it
+    /// (the line numbers' width and the cursor's line).
+    override func didChangeText() {
+        super.didChangeText()
+        if !isRendering { onChange() }
     }
 
     private func utf16Offset(of index: Int) -> Int {
