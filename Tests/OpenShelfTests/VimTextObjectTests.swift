@@ -117,6 +117,8 @@ struct VimTextObjectTests {
         ("x|12 3", "x~l.", "x2 |3"),
         ("|xabc d", "xguiwl.", "|abc d"),
         ("|xa\n\nb", "xj>>j.", "a\n\n    |b"),
+        // A no-op on the last line is not a change: "." still repeats x.
+        ("|xabc def", "xG2ddgg0.", "|bc def"),
         // A count repeats what an insert typed, and "." takes a new count.
         ("|ab", "3ix<Esc>", "xx|xab"),
         ("a|b", "2aXY<Esc>", "abXYX|Y"),

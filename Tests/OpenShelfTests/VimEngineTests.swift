@@ -307,6 +307,13 @@ struct VimEngineTests {
         #expect(changed.handle(Self.keys(":<BS>ZQ")) == .cancel)
     }
 
+    /// "." of a change that fails stops, so what it typed doesn't run as commands.
+    @Test func repeatStopsWhenTheChangeFails() {
+        var engine = Self.engine("say \"|a\"\nfoo bar")
+        _ = engine.handle(Self.keys("ci\"xdd<Esc>j0."))
+        #expect(engine.string == "say \"xdd\"\nfoo bar")
+    }
+
     @Test func searchSaysWhenNothingMatches() {
         var engine = Self.engine("|abc")
         _ = engine.handle(Self.keys("n"))

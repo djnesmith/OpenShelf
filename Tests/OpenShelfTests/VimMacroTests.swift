@@ -50,6 +50,46 @@ struct VimMacroTests {
         #expect(VimEngineTests.marked(Self.run("|a\nb\nc\nd", "qaqqajdd@aq@a")) == "a\n|c")
     }
 
+    /// A motion that can't move is an error, so these stop where vim's do.
+    @Test func motionsThatCantMoveStopTheMacro() {
+        // Each is recursive (qaq clears a first), so only an error ends it.
+        let append = Self.run("|abc\nnext\nz", "qaqqaa-<Esc>l@aq@a")
+        #expect(append.string == "a-b-c-\nnext\nz")
+        #expect(append.message == nil)
+        let join = Self.run("|a\nb\nc\nd", "qaqqaJ@aq@a")
+        #expect(join.string == "a b c d")
+        #expect(join.message == nil)
+        #expect(Self.run("|abcd", "$qaqqaXh@aq@a").string == "bd")
+    }
+
+    /// q inside a playing macro is ignored, as in vim; it used to crash.
+    @Test func qInsideAMacroIsIgnored() {
+        var engine = VimEngineTests.engine("|qbxq abc")
+        _ = engine.handle(VimEngineTests.keys("\"ayW@a"))
+        #expect(engine.recording == nil)
+        #expect(engine.registers["b"] == nil)
+    }
+
+    @Test func qInVisualModeStopsRecording() {
+        let engine = Self.run("|abc", "qaxvq")
+        #expect(engine.recording == nil)
+        #expect(engine.registers["a"]?.text == "xv")
+    }
+
+    /// One u takes back everything a macro did.
+    @Test func undoTakesBackTheWholeMacro() {
+        #expect(Self.run("|abcd", "qaxxqu@au").string == "bcd")
+        #expect(Self.run("|abcdefgh", "qaxxqu3@au").string == "bcdefgh")
+    }
+
+    /// A macro can't close the window: it stops instead.
+    @Test func aMacroCantCloseTheWindow() {
+        var engine = VimEngineTests.engine("|xZZx abc")
+        let effect = engine.handle(VimEngineTests.keys("\"ayiw0dW@a"))
+        #expect(effect == nil)
+        #expect(engine.message == "Macro stopped: it would have closed the window")
+    }
+
     @Test func runawayMacrosAreStopped() {
         var deep = VimEngineTests.engine("|a")
         _ = deep.handle(VimEngineTests.keys("qaq" + "qa0@aq@a"))

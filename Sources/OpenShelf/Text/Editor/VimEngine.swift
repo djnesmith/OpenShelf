@@ -96,6 +96,8 @@ struct VimEngine {
     private var macroQueue: [VimKey] = []
     /// The last command failed (a motion went nowhere, a target wasn't found); a macro stops there.
     private var failed = false
+    /// How many old undo states have been dropped, so a macro's own can be found.
+    private var undoTrimmed = 0
     /// Keys a macro may play in all, recursion included.
     static let macroKeyLimit = 100_000
 
@@ -307,7 +309,11 @@ struct VimEngine {
         let body = String(line.dropFirst())
         if prefix == "/" || prefix == "?" {
             let pattern = body.isEmpty ? lastSearch?.pattern ?? "" : body
-            guard !pattern.isEmpty else { return nil }
+            guard !pattern.isEmpty else {
+                message = "E35: No previous regular expression"
+                failed = true
+                return nil
+            }
             lastSearch = (pattern, prefix == "/", false)
             _ = runMotion(.searchNext(reverse: false), count: 1)
             return nil
@@ -319,6 +325,7 @@ struct VimEngine {
         case "q":
             if isChanged {
                 message = "E37: No write since last change (add ! to override)"
+                failed = true
                 return nil
             }
             return .cancel
@@ -328,6 +335,7 @@ struct VimEngine {
                 wantedColumn = nil
             } else if !command.isEmpty {
                 message = "E492: Not an editor command: \(command)"
+                failed = true
             }
             return nil
         }
@@ -539,6 +547,7 @@ struct VimEngine {
             case "u": return .done(Command(count: count, action: .operate(.lower, nil)))
             case "U": return .done(Command(count: count, action: .operate(.upper, nil)))
             case "o", "v", "V", "J", "p", "P": return .done(Command(count: count, action: .simple(String(c))))
+            case "q" where recording != nil: return .done(Command(count: nil, action: .simple("q")))
             default: return .invalid
             }
         }
@@ -771,6 +780,7 @@ struct VimEngine {
             failed = true
             return false
         }
+        let before = cursor
         cursor = target.position
         switch motion {
         case .up, .down: break
@@ -778,6 +788,16 @@ struct VimEngine {
         default: wantedColumn = nil
         }
         clampCursor()
+        // h at the start of a line, l at its end, w at the end of the text and
+        // b at its start go nowhere; vim counts that as an error, which stops a macro.
+        switch motion {
+        case .left, .right, .wordForward, .wordBackward:
+            if cursor == before {
+                failed = true
+                return false
+            }
+        default: break
+        }
         return true
     }
 
@@ -786,6 +806,7 @@ struct VimEngine {
         if inVisual {
             switch name {
             case "escape": mode = .normal
+            case "q": if playDepth == 0 { stopRecording() }
             case "o": swap(&anchor, &cursor)
             case "J":
                 let (low, high) = (min(anchor, cursor), max(anchor, cursor))
@@ -827,13 +848,15 @@ struct VimEngine {
             commandLine = name
         case ".": repeatLastChange(count: count)
         case "q":
-            stopRecording()
+            // vim: "The 'q' command is disabled while executing a register".
+            if playDepth == 0 { stopRecording() }
         case "ZZ": return .finish
         case "ZQ": return .cancel
         default:
             if name.hasPrefix("line"), let op = name.last.flatMap(Operator.init(rawValue:)) {
                 runLine(op, count: n)
             } else if name.hasPrefix("q"), name.count == 2, let register = name.last {
+                guard playDepth == 0 else { return nil }
                 recording = register
                 recordedKeys = []
             } else if name.hasPrefix("@"), name.count == 2, let register = name.last {
@@ -1167,7 +1190,10 @@ struct VimEngine {
     /// dd, cc, yy, >>, <<, g~~, guu, gUU on `count` lines.
     private mutating func runLine(_ op: Operator, count: Int) {
         let line = lineIndex(cursor)
-        guard count == 1 || line + 1 < lineStarts.count else { return }
+        guard count == 1 || line + 1 < lineStarts.count else {
+            failed = true
+            return
+        }
         let last = min(line + count - 1, lineStarts.count - 1)
         applyLines(op, line, last)
     }
@@ -1278,7 +1304,10 @@ struct VimEngine {
 
     private mutating func join(count: Int) {
         let line = lineIndex(cursor)
-        guard line + 1 < lineStarts.count else { return }
+        guard line + 1 < lineStarts.count else {
+            failed = true
+            return
+        }
         checkpoint()
         for _ in 0..<(count - 1) {
             let end = lineEnd(cursor)
@@ -1297,7 +1326,11 @@ struct VimEngine {
 
     private mutating func put(after: Bool, count: Int) {
         let register = fetch()
-        guard !register.text.isEmpty else { return }
+        guard !register.text.isEmpty else {
+            message = "E353: Nothing in register"
+            failed = true
+            return
+        }
         checkpoint()
         let pasted = Array(String(repeating: register.text, count: count))
         if register.linewise {
@@ -1337,7 +1370,10 @@ struct VimEngine {
 
     private mutating func toggleCaseUnderCursor(count: Int) {
         let end = min(cursor + count, lineEnd(cursor))
-        guard end > cursor else { return }
+        guard end > cursor else {
+            failed = true
+            return
+        }
         checkpoint()
         for i in cursor..<end {
             let c = text[i]
@@ -1670,7 +1706,7 @@ struct VimEngine {
 
     private mutating func stopRecording() {
         guard let name = recording else { return }
-        recordedKeys.removeLast() // the q that stopped it
+        if !recordedKeys.isEmpty { recordedKeys.removeLast() } // the q that stopped it
         let text = String(recordedKeys.map(Self.character(for:)))
         let lower = Character(name.lowercased())
         let old = name.isUppercase ? registers[lower]?.text ?? "" : ""
@@ -1695,10 +1731,16 @@ struct VimEngine {
         guard playDepth == 0 else { return }
         playDepth = 1
         macroBudget = Self.macroKeyLimit
+        // One undo takes back the whole macro, as in vim.
+        let undoBase = undoStack.count, trimmedBefore = undoTrimmed
         defer {
             playDepth = 0
             macroQueue = []
             pending = []
+            let first = undoBase - (undoTrimmed - trimmedBefore)
+            if first >= 0, undoStack.count > first + 1 { undoStack.removeSubrange((first + 1)...) }
+            // Typing in the window after a macro that ended in insert mode is the person's, not the macro's.
+            if mode == .insert { insertBaseline = text }
         }
         while let key = macroQueue.popLast() {
             guard macroBudget > 0 else {
@@ -1708,7 +1750,11 @@ struct VimEngine {
             }
             macroBudget -= 1
             failed = false
-            _ = handle(key)
+            if handle(key) != nil {
+                // A macro can't close the window.
+                message = "Macro stopped: it would have closed the window"
+                return
+            }
             if failed {
                 if mode == .insert { leaveInsert() }
                 return
@@ -1757,7 +1803,15 @@ struct VimEngine {
         let digits = (count ?? change.count).map { VimKey.keys(String($0)) } ?? []
         isRepeating = true
         defer { isRepeating = false }
-        for key in digits + change.keys { _ = handle(key) }
+        // A change that fails part way stops, so its typed keys don't run as commands.
+        for key in digits + change.keys {
+            failed = false
+            _ = handle(key)
+            if failed {
+                if mode == .insert { leaveInsert() }
+                return
+            }
+        }
     }
 
     // MARK: - Registers
@@ -1842,7 +1896,10 @@ struct VimEngine {
     /// where undo leaves the cursor, as vim does.
     private mutating func checkpoint(at position: Int? = nil) {
         undoStack.append((string, position ?? cursor))
-        if undoStack.count > Self.undoLimit { undoStack.removeFirst() }
+        if undoStack.count > Self.undoLimit {
+            undoStack.removeFirst()
+            undoTrimmed += 1
+        }
         redoStack = []
     }
 
