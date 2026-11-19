@@ -497,6 +497,42 @@ post it back as normal")
 - Risk: reading the current network name needs Location permission on recent macOS, and the
   password needs typing or Keychain access.
 
+**E6. Clean an image: hidden data and marked areas, with a report** (M, more with a model)
+David, 2026-11-19: "should remove non-hidden and hidden ones that the same time, it should report
+back what it removed". One tool that does two passes and then lists what it removed, e.g.
+"Removed: EXIF (camera, lens), GPS location, IPTC caption and creator, XMP, Content Credentials
+(C2PA) manifest, embedded thumbnail; filled 1 marked area (bottom right, 220×60 px)". The copy
+is "<name> Clean.<ext>" beside the original (never overwritten), same format, quality kept; the
+report is in the result panel and can be copied.
+- Hidden pass: every metadata container goes (EXIF, GPS, TIFF, IPTC, XMP, MakerNotes, embedded
+  thumbnails and previews, JPEG APP11 JUMBF boxes that hold C2PA, PNG tEXt/iTXt/zTXt and caBX
+  chunks, HEIC and AVIF item properties; the ICC profile only if asked). Checked 2026-11-19 with
+  files made for the test: re-encoding the pixels drops all of these in JPEG and PNG, and a
+  lossless JPEG copy drops APP11 too, but a lossless PNG copy (`CGImageDestinationCopyImageSource`,
+  what Metadata › Clean uses when it keeps orientation and profile) KEEPS the caBX (C2PA) and tEXt
+  chunks, and ImageIO's property check can't see them. So this tool re-encodes, or rewrites PNG
+  chunks itself, and checks the bytes, not only ImageIO's properties. The report never claims
+  more than it did: "pixel-embedded marks, if any, are untouched" (a SynthID-style mark lives in
+  the pixels and no metadata pass removes it).
+- Visible pass: the user marks the area, as in Redact, and the tool fills it to blend with what is
+  around it instead of a box. No automatic "find any watermark" detection: it cleans the areas
+  the user points at on his own images, like a retouch tool. Fill options to compare:
+  - No dependency: diffusion from the edges (Core Image, or a Laplace fill with Accelerate) is
+    fine on flat or smooth backgrounds and smears on detail; a small PatchMatch-style
+    content-aware fill in Swift or Metal copies nearby texture, good on repeating backgrounds
+    (sky, grass, fabric), weaker on structure (edges, text, faces). A few hundred lines; no model.
+  - A Core ML inpainting model such as LaMa (Apache-2.0; about 200 MB as published, roughly half
+    that as a Core ML half-precision conversion; not measured here): much better on detailed
+    backgrounds, on device, but a large new dependency that needs David's yes.
+  - A public system API: none found. Vision and Core Image have no inpainting filter, and Photos'
+    Clean Up isn't offered to other apps (as far as checked; to confirm against the current SDK
+    when built).
+- Could ship first: the hidden pass and the report, plus the marked-area fill with the
+  no-dependency method. A model is a second step, if the simple fill isn't good enough.
+- Tests without a screen: per-format fixtures made in the test, with the container list before
+  and after; the report's text; the fill on synthetic images (a flat field with a stamp: the
+  stamp's pixels are gone and the area matches its surround within a tolerance).
+
 ### F. Audio, video and the screen
 
 **F1. Waveform image** (S)
