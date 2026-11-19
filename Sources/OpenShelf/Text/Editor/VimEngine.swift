@@ -22,6 +22,12 @@ enum VimEffect: Equatable, Sendable {
     case finish, cancel
 }
 
+/// The system clipboard as the engine sees it, so tests need none.
+struct VimClipboard {
+    var read: () -> String? = { nil }
+    var write: (String) -> Void = { _ in }
+}
+
 /// Text taken by a yank or delete. Linewise text pastes as whole lines.
 struct VimRegister: Equatable, Sendable {
     var text: String
@@ -46,6 +52,10 @@ struct VimEngine {
     private(set) var message: String?
     /// The unnamed register.
     private(set) var register = VimRegister(text: "", linewise: false)
+    /// Registers "a to "z and "0 (the last yank).
+    private(set) var registers: [Character: VimRegister] = [:]
+    /// The system clipboard behind "+ and "*; the window connects it.
+    var clipboard = VimClipboard()
 
     private let original: [Character]
     private var pending: [VimKey] = []
@@ -58,6 +68,18 @@ struct VimEngine {
     private var lastSearch: (pattern: String, forward: Bool, wholeWord: Bool)?
     /// The text when insert mode began, to drop an insert that changed nothing.
     private var insertStartText: [Character]?
+    /// The text once insert mode began, after any automatic text (o's line
+    /// break, cc's indentation), to work out what was typed for ".".
+    private var insertBaseline: [Character] = []
+    /// The register named for the command being run ("a, "+, "_).
+    private var activeRegister: Character?
+    /// The last change, as keys, for "." to run again.
+    private var lastChange: (count: Int?, keys: [VimKey])?
+    /// A change that went into insert mode; its typing is added on Esc.
+    private var changeInProgress: (count: Int?, keys: [VimKey])?
+    private var isRepeating = false
+    /// 3ix<Esc> types "x" three times: the count of the insert command.
+    private var insertCount = 1
 
     /// The largest count; 999999, as typed, times another 999999 stays far from overflow.
     static let maxCount = 999_999
@@ -186,12 +208,40 @@ struct VimEngine {
         checkpoint(at: position)
         insertStartText = text
         cursor = position
+        beginInsert()
+    }
+
+    /// What was typed since insert mode began: the text between what stayed
+    /// the same at either end. With `single`, the count's repeats are left out.
+    private func typedSinceInsert(single count: Int? = nil) -> [Character] {
+        let prefix = zip(insertBaseline, text).prefix { $0 == $1 }.count
+        let room = min(insertBaseline.count, text.count) - prefix
+        let suffix = zip(insertBaseline.reversed(), text.reversed()).prefix { $0 == $1 }.count
+        let typed = Array(text[prefix..<(text.count - min(suffix, room))])
+        guard let count, count > 1, typed.count % count == 0 else { return typed }
+        return Array(typed.prefix(typed.count / count))
+    }
+
+    private mutating func beginInsert() {
         mode = .insert
+        insertBaseline = text
     }
 
     private mutating func leaveInsert() {
+        if insertCount > 1 {
+            let typed = typedSinceInsert()
+            let more = Array(repeating: typed, count: insertCount - 1).flatMap { $0 }
+            text.insert(contentsOf: more, at: cursor)
+            cursor += more.count
+        }
+        insertCount = 1
         if let start = insertStartText, start == text { undoStack.removeLast() }
         insertStartText = nil
+        // "." types again what was typed: the text between what stayed the same at either end.
+        if let change = changeInProgress, !isRepeating {
+            lastChange = (change.count, change.keys + typedSinceInsert(single: change.count).map(VimKey.char) + [.escape])
+        }
+        changeInProgress = nil
         mode = .normal
         if cursor > lineStart(cursor) { cursor -= 1 }
         clampCursor()
@@ -265,6 +315,8 @@ struct VimEngine {
         case paragraphForward, paragraphBackward
         case searchNext(reverse: Bool)
         case searchWord(forward: Bool)
+        /// iw, a", i(, ap…: a range around the cursor, after an operator or in visual mode.
+        case textObject(inner: Bool, Character)
     }
 
     enum Operator: Character {
@@ -275,6 +327,14 @@ struct VimEngine {
     struct Command {
         var count: Int?
         var action: Action
+        var register: Character?
+        /// The keys after the count and register, for ".".
+        var keys: [VimKey] = []
+
+        init(count: Int?, action: Action) {
+            self.count = count
+            self.action = action
+        }
     }
 
     enum Action {
@@ -290,19 +350,45 @@ struct VimEngine {
 
     private var inVisual: Bool { mode == .visual || mode == .visualLine }
 
+    /// A count and a register ("a, "+) may come before a command, in either order.
     private func parse(_ keys: [VimKey]) -> Parse {
         var index = 0
-        func next() -> VimKey? { index < keys.count ? keys[index] : nil }
-        func readCount() -> Int? {
-            var digits = ""
-            while case .char(let c)? = next(), c.isASCII, c.isNumber, !(digits.isEmpty && c == "0") {
-                // Digits past the cap are read but dropped, so no count overflows.
-                if digits.count < 6 { digits.append(c) }
-                index += 1
-            }
-            return Int(digits)
+        var count = Self.readCount(keys, &index)
+        var register: Character?
+        if index < keys.count, keys[index] == .char("\"") {
+            index += 1
+            guard index < keys.count else { return .incomplete }
+            guard case .char(let name) = keys[index], Self.isRegisterName(name) else { return .invalid }
+            index += 1
+            register = name
+            if let more = Self.readCount(keys, &index) { count = min((count ?? 1) * more, Self.maxCount) }
         }
-        let count = readCount()
+        let body = index
+        let result = parseCommand(keys, from: index, count: count)
+        guard case .done(var command) = result else { return result }
+        command.register = register
+        command.keys = Array(keys[body...])
+        return .done(command)
+    }
+
+    /// Digits past the cap are read but dropped, so no count overflows.
+    private static func readCount(_ keys: [VimKey], _ index: inout Int) -> Int? {
+        var digits = ""
+        while index < keys.count, case .char(let c) = keys[index], c.isASCII, c.isNumber, !(digits.isEmpty && c == "0") {
+            if digits.count < 6 { digits.append(c) }
+            index += 1
+        }
+        return Int(digits)
+    }
+
+    static func isRegisterName(_ name: Character) -> Bool {
+        name.isASCII && (name.isLetter || ["\"", "0", "+", "*", "_"].contains(name))
+    }
+
+    private func parseCommand(_ keys: [VimKey], from start: Int, count: Int?) -> Parse {
+        var index = start
+        func next() -> VimKey? { index < keys.count ? keys[index] : nil }
+        func readCount() -> Int? { Self.readCount(keys, &index) }
         guard let key = next() else { return .incomplete }
         index += 1
 
@@ -346,7 +432,7 @@ struct VimEngine {
                 }
                 return .done(Command(count: total, action: .simple("line\(op.rawValue)")))
             }
-            switch parseMotion(keys, &index) {
+            switch parseMotion(keys, &index, textObjects: true) {
             case .incomplete: return .incomplete
             case .invalid: return .invalid
             case .done(let motion): return .done(Command(count: total, action: .operate(op, motion)))
@@ -354,7 +440,7 @@ struct VimEngine {
         }
 
         index -= 1
-        switch parseMotion(keys, &index) {
+        switch parseMotion(keys, &index, textObjects: inVisual) {
         case .incomplete: return .incomplete
         case .done(let motion): return .done(Command(count: count, action: .motion(motion)))
         case .invalid: break
@@ -368,13 +454,13 @@ struct VimEngine {
             case "~": return .done(Command(count: count, action: .operate(.toggleCase, nil)))
             case "u": return .done(Command(count: count, action: .operate(.lower, nil)))
             case "U": return .done(Command(count: count, action: .operate(.upper, nil)))
-            case "o", "v", "V", "J": return .done(Command(count: count, action: .simple(String(c))))
+            case "o", "v", "V", "J", "p", "P": return .done(Command(count: count, action: .simple(String(c))))
             default: return .invalid
             }
         }
 
         switch c {
-        case "x", "X", "s", "S", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?":
+        case "x", "X", "s", "S", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".":
             return .done(Command(count: count, action: .simple(String(c))))
         case "r":
             guard case .char(let target)? = next() else { return next() == nil ? .incomplete : .invalid }
@@ -392,7 +478,7 @@ struct VimEngine {
         case done(Motion)
     }
 
-    private func parseMotion(_ keys: [VimKey], _ index: inout Int) -> MotionParse {
+    private func parseMotion(_ keys: [VimKey], _ index: inout Int, textObjects: Bool = false) -> MotionParse {
         guard index < keys.count else { return .incomplete }
         guard case .char(let c) = keys[index] else {
             switch keys[index] {
@@ -425,6 +511,11 @@ struct VimEngine {
         case "N": return .done(.searchNext(reverse: true))
         case "*": return .done(.searchWord(forward: true))
         case "#": return .done(.searchWord(forward: false))
+        case "i" where textObjects, "a" where textObjects:
+            guard index < keys.count else { return .incomplete }
+            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>".contains(kind) else { return .invalid }
+            index += 1
+            return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
             guard index < keys.count else { return .incomplete }
             guard case .char(let target) = keys[index] else { return .invalid }
@@ -444,7 +535,43 @@ struct VimEngine {
     // MARK: - Running commands
 
     private mutating func run(_ command: Command) -> VimEffect? {
+        activeRegister = command.register
+        defer { activeRegister = nil }
+        let wasVisual = inVisual
+        let effect = perform(command)
+        // Remember a change for "." (a repeat records itself again, count and all, as in vim);
+        // changes made in visual mode are not repeated.
+        if !wasVisual, Self.isChange(command) {
+            let change = (command.count, (command.register.map { [VimKey.char("\""), .char($0)] } ?? []) + command.keys)
+            if mode == .insert { changeInProgress = change } else { lastChange = change }
+        }
+        return effect
+    }
+
+    private static func isChange(_ command: Command) -> Bool {
         switch command.action {
+        case .motion: false
+        case .operate(let op, _): op != .yank
+        case .simple(let name):
+            ["x", "X", "s", "S", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~"].contains(name)
+                || (name.hasPrefix("line") && name != "liney") || (name.hasPrefix("r") && name.count == 2)
+        }
+    }
+
+    private mutating func perform(_ command: Command) -> VimEffect? {
+        switch command.action {
+        case .motion(.textObject(let inner, let kind)):
+            // In visual mode a text object selects its range.
+            guard inVisual, let (range, linewise) = textObject(inner: inner, kind, count: command.count ?? 1), !range.isEmpty else { return nil }
+            if linewise {
+                anchor = lineStarts[range.lowerBound]
+                cursor = lineStarts[range.upperBound - 1]
+                mode = .visualLine
+            } else {
+                anchor = range.lowerBound
+                cursor = range.upperBound - 1
+            }
+            return nil
         case .motion(let motion):
             _ = runMotion(Self.resolved(motion, count: command.count), count: command.count ?? 1)
             return nil
@@ -498,6 +625,8 @@ struct VimEngine {
             case "v", "V":
                 let wanted: VimMode = name == "v" ? .visual : .visualLine
                 mode = mode == wanted ? .normal : wanted
+            case "p", "P":
+                replaceSelection()
             default: break
             }
             clampCursor()
@@ -514,10 +643,8 @@ struct VimEngine {
         case "Y": operate(.yank, motion: .lineEnd, count: n)
         case "J": join(count: max(n, 2))
         case "o", "O": openLine(below: name == "o")
-        case "i": enterInsert(at: cursor)
-        case "a": enterInsert(at: min(cursor + (lineIsEmpty(cursor) ? 0 : 1), lineEnd(cursor)))
-        case "A": enterInsert(at: lineEnd(cursor))
-        case "I": enterInsert(at: firstNonBlank(lineStart(cursor)))
+        case "i", "a", "A", "I": insertCount = min(n, 10_000)
+            enterInsert(at: name == "i" ? cursor : name == "a" ? min(cursor + (lineIsEmpty(cursor) ? 0 : 1), lineEnd(cursor)) : name == "A" ? lineEnd(cursor) : firstNonBlank(lineStart(cursor)))
         case "p", "P": put(after: name == "p", count: n)
         case "u": undo(count: n)
         case "redo": redo(count: n)
@@ -528,6 +655,7 @@ struct VimEngine {
         case ":", "/", "?":
             mode = .commandLine
             commandLine = name
+        case ".": repeatLastChange(count: count)
         case "ZZ": return .finish
         case "ZQ": return .cancel
         default:
@@ -646,6 +774,8 @@ struct VimEngine {
                 position = found
             }
             return Target(position: position, kind: .exclusive)
+        case .textObject:
+            return nil
         case .searchWord(let forward):
             guard let word = wordUnderCursor() else {
                 message = "E348: No string under cursor"
@@ -784,6 +914,18 @@ struct VimEngine {
     // MARK: - Operators
 
     private mutating func operate(_ op: Operator, motion: Motion, count: Int) {
+        if case .textObject(let inner, let kind) = motion {
+            guard let (range, linewise) = textObject(inner: inner, kind, count: count) else { return }
+            if linewise {
+                guard !range.isEmpty else { return }
+                applyLines(op, range.lowerBound, range.upperBound - 1)
+            } else if op == .indent || op == .outdent {
+                applyLines(op, lineIndex(range.lowerBound), lineIndex(max(range.upperBound - 1, range.lowerBound)))
+            } else if !range.isEmpty || op == .change {
+                apply(op, to: range)
+            }
+            return
+        }
         let start = cursor
         if case .wordForward(let big) = motion {
             // cw on a word changes to its end, not up to the next word.
@@ -855,11 +997,11 @@ struct VimEngine {
         let taken = String(text[start..<bodyEnd]) + "\n"
         switch op {
         case .yank:
-            register = VimRegister(text: taken, linewise: true)
+            store(VimRegister(text: taken, linewise: true), yank: op == .yank)
             // yy and yj leave the cursor; yk takes it up to the first line.
             if lineIndex(cursor) != first { cursor = start + min(cursor - lineStart(cursor), max(bodyEnd - start, 0)) }
         case .delete:
-            register = VimRegister(text: taken, linewise: true)
+            store(VimRegister(text: taken, linewise: true), yank: op == .yank)
             checkpoint(at: start)
             if last + 1 < starts.count {
                 text.removeSubrange(start..<starts[last + 1])
@@ -869,13 +1011,13 @@ struct VimEngine {
             }
             cursor = firstNonBlank(lineStarts[min(first, lineStarts.count - 1)])
         case .change:
-            register = VimRegister(text: taken, linewise: true)
+            store(VimRegister(text: taken, linewise: true), yank: op == .yank)
             checkpoint(at: start)
             // cc keeps one line, emptied but for its indentation.
             let indent = Array(text[start..<firstNonBlank(start)])
             text.replaceSubrange(start..<bodyEnd, with: indent)
             cursor = start + indent.count
-            mode = .insert
+            beginInsert()
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: start)
@@ -894,16 +1036,16 @@ struct VimEngine {
         let taken = String(text[range])
         switch op {
         case .yank:
-            register = VimRegister(text: taken, linewise: false)
+            store(VimRegister(text: taken, linewise: false), yank: true)
             cursor = range.lowerBound
         case .delete, .change:
             // C on an empty line takes nothing, and keeps what was taken before.
-            if !range.isEmpty { register = VimRegister(text: taken, linewise: false) }
+            if !range.isEmpty { store(VimRegister(text: taken, linewise: false), yank: false) }
             checkpoint(at: range.lowerBound)
             text.removeSubrange(range)
             cursor = range.lowerBound
             if op == .change {
-                mode = .insert
+                beginInsert()
                 return
             }
         case .indent, .outdent, .upper, .lower, .toggleCase:
@@ -942,6 +1084,7 @@ struct VimEngine {
             text.insert(contentsOf: indent + ["\n"], at: start)
             cursor = start + indent.count
         }
+        insertBaseline = text
     }
 
     private mutating func join(count: Int) {
@@ -964,6 +1107,7 @@ struct VimEngine {
     }
 
     private mutating func put(after: Bool, count: Int) {
+        let register = fetch()
         guard !register.text.isEmpty else { return }
         checkpoint()
         let pasted = Array(String(repeating: register.text, count: count))
@@ -1009,6 +1153,288 @@ struct VimEngine {
             if swapped.count == 1 { text[i] = Character(swapped) }
         }
         cursor = min(end, max(lineEnd(cursor) - 1, lineStart(cursor)))
+    }
+
+    // MARK: - Text objects
+
+    /// The range a text object covers: characters, or for whole lines
+    /// (ip, ap, i{ around lines) the line numbers.
+    private func textObject(inner: Bool, _ kind: Character, count: Int) -> (Range<Int>, Bool)? {
+        guard !text.isEmpty else { return nil }
+        switch kind {
+        case "w", "W": return wordObject(inner: inner, big: kind == "W", count: count).map { ($0, false) }
+        case "\"", "'", "`": return quoteObject(inner: inner, quote: kind).map { ($0, false) }
+        case "(", ")", "b": return bracketObject(inner: inner, open: "(", close: ")", count: count)
+        case "[", "]": return bracketObject(inner: inner, open: "[", close: "]", count: count)
+        case "{", "}", "B": return bracketObject(inner: inner, open: "{", close: "}", count: count)
+        case "<", ">": return bracketObject(inner: inner, open: "<", close: ">", count: count)
+        case "p": return paragraphObject(inner: inner, count: count).map { ($0, true) }
+        case "t": return tagObject(inner: inner, count: count).map { ($0, false) }
+        default: return nil
+        }
+    }
+
+    /// iw is the run of word, punctuation or blank characters under the
+    /// cursor; aw adds the blanks after it (or before, at a line's end).
+    private func wordObject(inner: Bool, big: Bool, count: Int) -> Range<Int>? {
+        let n = text.count
+        // On an empty line iw is nothing, so ciw still types there.
+        guard cursor < n, text[cursor] != "\n" else { return inner ? cursor..<cursor : nil }
+        func kind(_ i: Int) -> Int { text[i] == "\n" ? 3 : characterClass(i, big: big) }
+        func runEnd(from i: Int) -> Int {
+            var end = i
+            while end + 1 < n, kind(end + 1) == kind(i) { end += 1 }
+            return end
+        }
+        var start = cursor
+        while start > 0, kind(start - 1) == kind(cursor) { start -= 1 }
+        var end = runEnd(from: cursor)
+        if inner {
+            for _ in 1..<max(count, 1) where end + 1 < n && kind(end + 1) != 3 { end = runEnd(from: end + 1) }
+            return start..<end + 1
+        }
+        for index in 0..<max(count, 1) {
+            if index > 0 {
+                guard end + 1 < n, kind(end + 1) != 3 else { break }
+                end = runEnd(from: end + 1)
+            }
+            if kind(end) == 0 {
+                // On blanks: they and the word after them.
+                if end + 1 < n, kind(end + 1) != 3 { end = runEnd(from: end + 1) }
+            } else if end + 1 < n, kind(end + 1) == 0 {
+                end = runEnd(from: end + 1)
+            } else if index == 0 {
+                // No blanks after the word: take the ones before it instead.
+                while start > 0, kind(start - 1) == 0 { start -= 1 }
+            }
+        }
+        return start..<end + 1
+    }
+
+    /// i" is between the quotes around the cursor on its line (or the next
+    /// quoted text after it); a" takes the quotes and the blanks after them.
+    private func quoteObject(inner: Bool, quote: Character) -> Range<Int>? {
+        let start = lineStart(cursor), end = lineEnd(cursor)
+        let quotes = (start..<end).filter { text[$0] == quote && ($0 == start || text[$0 - 1] != "\\") }
+        var pair: (Int, Int)?
+        if let at = quotes.firstIndex(of: cursor) {
+            // On a quote, counting from the line's start says whether it opens or closes.
+            pair = at % 2 == 0 ? (at + 1 < quotes.count ? (quotes[at], quotes[at + 1]) : nil) : (quotes[at - 1], quotes[at])
+        } else if let before = quotes.last(where: { $0 < cursor }), let after = quotes.first(where: { $0 > cursor }) {
+            pair = (before, after)
+        } else if let after = quotes.firstIndex(where: { $0 > cursor }), after + 1 < quotes.count {
+            // Before the first quote: the first quoted text on the line.
+            pair = (quotes[after], quotes[after + 1])
+        }
+        guard let (open, close) = pair else { return nil }
+        if inner { return (open + 1)..<close }
+        var high = close + 1
+        while high < end, text[high] == " " || text[high] == "\t" { high += 1 }
+        var low = open
+        if high == close + 1 { while low > start, text[low - 1] == " " || text[low - 1] == "\t" { low -= 1 } }
+        return low..<high
+    }
+
+    /// i( is inside the brackets around the cursor; a( takes the brackets
+    /// too. A count reaches further out. When the brackets sit on their own
+    /// lines, i( is the lines between them.
+    private func bracketObject(inner: Bool, open: Character, close: Character, count: Int) -> (Range<Int>, Bool)? {
+        // On an opening bracket, that pair; anywhere else (a closing one
+        // included) the nearest open bracket before the cursor that encloses it.
+        var openAt = cursor < text.count && text[cursor] == open ? cursor : enclosingOpen(open, close, before: cursor)
+        // Not inside a pair: the next pair after the cursor, as vim and Neovim do.
+        if openAt == nil, count <= 1 { openAt = (cursor..<text.count).first { text[$0] == open } }
+        for _ in 1..<max(count, 1) {
+            guard let current = openAt else { break }
+            openAt = enclosingOpen(open, close, before: current)
+        }
+        guard let start = openAt, let end = matchingClose(open, close, from: start) else { return nil }
+        if !inner { return (start..<end + 1, false) }
+        if start + 1 < text.count, text[start + 1] == "\n", isInIndent(end) {
+            let first = lineIndex(start) + 1, last = lineIndex(end) - 1
+            guard first <= last else { return (start + 1..<start + 1, false) }
+            return (first..<last + 1, true)
+        }
+        return (start + 1..<end, false)
+    }
+
+    private func enclosingOpen(_ open: Character, _ close: Character, before position: Int) -> Int? {
+        var depth = 0
+        var i = position - 1
+        while i >= 0 {
+            if text[i] == close { depth += 1 } else if text[i] == open {
+                if depth == 0 { return i }
+                depth -= 1
+            }
+            i -= 1
+        }
+        return nil
+    }
+
+    private func matchingClose(_ open: Character, _ close: Character, from start: Int) -> Int? {
+        var depth = 0
+        for i in start..<text.count {
+            if text[i] == open { depth += 1 } else if text[i] == close {
+                depth -= 1
+                if depth == 0 { return i }
+            }
+        }
+        return nil
+    }
+
+    /// it is between the tags around the cursor (<a>…</a>); at takes the
+    /// tags too. A count reaches further out. Self-closing tags are skipped.
+    private func tagObject(inner: Bool, count: Int) -> Range<Int>? {
+        var found = 0
+        var i = min(cursor, text.count - 1)
+        // The cursor may be inside a tag; start from that tag's "<".
+        if let open = (0...i).last(where: { text[$0] == "<" }), !text[open..<i].contains(">") { i = open }
+        while i >= 0 {
+            if let tag = openingTag(at: i), let close = closingTag(tag.name, from: tag.end + 1), close.end >= cursor {
+                found += 1
+                if found == max(count, 1) { return inner ? (tag.end + 1)..<close.start : i..<(close.end + 1) }
+            }
+            i -= 1
+        }
+        return nil
+    }
+
+    /// The tag starting at `start` if it is an opening tag: its name and where its ">" is.
+    private func openingTag(at start: Int) -> (name: String, end: Int)? {
+        guard text[start] == "<", start + 1 < text.count, text[start + 1].isLetter else { return nil }
+        var j = start + 1
+        while j < text.count, text[j].isLetter || text[j].isNumber || "-:_.".contains(text[j]) { j += 1 }
+        guard let end = (j..<text.count).first(where: { text[$0] == ">" }), text[end - 1] != "/" else { return nil }
+        return (String(text[(start + 1)..<j]), end)
+    }
+
+    /// The "</name>" that closes a tag opened before `from`, skipping nested ones of the same name.
+    private func closingTag(_ name: String, from: Int) -> (start: Int, end: Int)? {
+        let closing = Array("</" + name)
+        var depth = 0
+        var i = from
+        while i < text.count {
+            if text[i] == "<" {
+                if i + closing.count < text.count, Array(text[i..<(i + closing.count)]) == closing, text[i + closing.count] == ">" || text[i + closing.count].isWhitespace {
+                    guard depth > 0 else { return (i, (i..<text.count).first { text[$0] == ">" } ?? i) }
+                    depth -= 1
+                } else if let tag = openingTag(at: i), tag.name == name {
+                    depth += 1
+                }
+            }
+            i += 1
+        }
+        return nil
+    }
+
+    /// ip is the block of lines, blank or not, the cursor is in; ap adds the
+    /// blank lines after it (or before, at the end of the text).
+    private func paragraphObject(inner: Bool, count: Int) -> Range<Int>? {
+        let starts = lineStarts
+        func blank(_ line: Int) -> Bool {
+            text[starts[line]..<(line + 1 < starts.count ? starts[line + 1] - 1 : text.count)].allSatisfy { $0 == " " || $0 == "\t" }
+        }
+        func blockEnd(from line: Int) -> Int {
+            var end = line
+            while end + 1 < starts.count, blank(end + 1) == blank(line) { end += 1 }
+            return end
+        }
+        let line = lineIndex(cursor)
+        var first = line
+        while first > 0, blank(first - 1) == blank(line) { first -= 1 }
+        var last = blockEnd(from: line)
+        let blocks = inner ? max(count, 1) : max(count, 1) * 2
+        for _ in 1..<blocks {
+            guard last + 1 < starts.count else { break }
+            last = blockEnd(from: last + 1)
+        }
+        if !inner, !blank(line), blank(last) == false, first > 0 {
+            // No blank lines after the paragraph: take the ones before it.
+            while first > 0, blank(first - 1) { first -= 1 }
+        }
+        return first..<last + 1
+    }
+
+    // MARK: - Repeat
+
+    /// Runs the last change again; a count replaces the one it had.
+    private mutating func repeatLastChange(count: Int?) {
+        guard let change = lastChange else { return }
+        let digits = (count ?? change.count).map { VimKey.keys(String($0)) } ?? []
+        isRepeating = true
+        defer { isRepeating = false }
+        for key in digits + change.keys { _ = handle(key) }
+    }
+
+    // MARK: - Registers
+
+    /// Puts taken text in the unnamed register and the one named, as vim
+    /// does: a yank also goes in "0, "A to "Z add to "a to "z, "_ keeps
+    /// nothing, and "+ or "* is the system clipboard.
+    private mutating func store(_ taken: VimRegister, yank: Bool) {
+        guard activeRegister != "_" else { return }
+        register = taken
+        if yank { registers["0"] = taken }
+        switch activeRegister {
+        case "+"?, "*"?: clipboard.write(taken.text)
+        case let name? where name.isUppercase:
+            let lower = Character(name.lowercased())
+            let old = registers[lower]
+            registers[lower] = VimRegister(text: (old?.text ?? "") + taken.text, linewise: (old?.linewise ?? false) || taken.linewise)
+            register = registers[lower]!
+        case let name? where name.isLetter:
+            registers[name] = taken
+        default:
+            break
+        }
+    }
+
+    /// The register a put reads: the one named, or the unnamed one.
+    private func fetch() -> VimRegister {
+        switch activeRegister {
+        case "+"?, "*"?:
+            let text = clipboard.read() ?? ""
+            return VimRegister(text: text, linewise: text.hasSuffix("\n"))
+        case "_"?: return VimRegister(text: "", linewise: false)
+        case let name?: return name == "\"" ? register : registers[Character(name.lowercased())] ?? VimRegister(text: "", linewise: false)
+        case nil: return register
+        }
+    }
+
+    /// p or P in visual mode: the selection is replaced by the register,
+    /// and what was selected goes in the unnamed register.
+    private mutating func replaceSelection() {
+        guard let range = selection else { return }
+        let replacement = fetch()
+        let linewise = mode == .visualLine
+        let (first, last) = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
+        mode = .normal
+        let named = activeRegister
+        activeRegister = nil
+        let lines = Array(replacement.linewise ? replacement.text : replacement.text + "\n")
+        if linewise {
+            let wasFinal = last == lineStarts.count - 1
+            applyLines(.delete, first, last)
+            if wasFinal, first == 0 {
+                text = Array(lines.dropLast())
+                cursor = firstNonBlank(0)
+            } else if wasFinal {
+                let at = text.count
+                text.insert(contentsOf: ["\n"] + lines.dropLast(), at: at)
+                cursor = firstNonBlank(at + 1)
+            } else {
+                let at = lineStarts[first]
+                text.insert(contentsOf: lines, at: at)
+                cursor = firstNonBlank(at)
+            }
+        } else {
+            apply(.delete, to: range)
+            let pasted = replacement.linewise ? ["\n"] + lines : Array(replacement.text)
+            text.insert(contentsOf: pasted, at: range.lowerBound)
+            cursor = replacement.linewise ? firstNonBlank(range.lowerBound + 1) : range.lowerBound + pasted.count - 1
+        }
+        activeRegister = named
+        clampCursor()
     }
 
     // MARK: - Undo
