@@ -743,7 +743,7 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     | `s` | Flag (Gmail: star) | ⇧⌘L |
     | `b` | Snooze | I4 |
     | `v` | Move to a mailbox | Message › Move to; quick filing (above) |
-    | `l` | Label | Open question: Mail has no labels; nearest is flag colours or moving |
+    | `l` | Label: the same mailbox picker as `v` (David: "label is just a folder") | Message › Move to. To confirm with David: `l` moves the message, as `v` does (assumed), or copies it, keeping it in the inbox (closer to Gmail's label) |
     | `m` | Mute the conversation | Message › Mute |
     | `!` | Junk | Mark as Junk (⇧⌘J) |
     | `Shift-i` / `Shift-u` | Mark read / unread | ⇧⌘U toggles |
