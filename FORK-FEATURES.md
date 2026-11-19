@@ -427,3 +427,4 @@ Type while a keyboard wheel is open (the ⌃⌥Space text wheel, Finder or a she
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.
 - Every push goes to both branches: `git push origin djnesmith djnesmith:main`, fast-forward only.
+- Both of upstream's GitHub Actions workflows are turned off on the fork in its Actions settings, not in the files, so upstream merges never conflict. Release (`release.yml`) would build ad-hoc and fail at Sparkle's `generate_appcast`, since the fork has no Sparkle. CI (`ci.yml`) would fail at `make app`, since the fork signs with David's certificate, which GitHub's runners don't have. Check: `gh workflow list -R djnesmith/OpenShelf --all` shows both as `disabled_manually`.
