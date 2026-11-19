@@ -33,6 +33,10 @@ struct VimTextObjectTests {
         ("say \"hell|o\"", "da\"", "sa|y"),
         ("say \"hello\" no|w", "di\"", "say \"hello\" no|w"),
         ("say \"a\\\"|b\" c", "di\"", "say \"|\" c"),
+        // Two backslashes don't escape the quote.
+        ("a \"b\\\\\"| c\" d", "di\"", "a \"b\\\\\"|\" d"),
+        // ciw on empty text still types.
+        ("|", "ciwX<Esc>", "|X"),
         ("it's 'o|k' yes", "di'", "it's '|' yes"),
         ("x `y|y` z", "da`", "x |z"),
         // Brackets: nested, counts, the cursor on a bracket, empty pairs.
@@ -50,6 +54,10 @@ struct VimTextObjectTests {
         ("f() |x", "di(", "f() |x"),
         // Not inside a pair: the next one after the cursor.
         ("x |a (b) c", "di(", "x a (|) c"),
+        // Across lines: skip the break after "(", stop before the one above ")".
+        ("(a\n  b|\n)", "di(", "|(\n)"),
+        ("(\n  b|)", "di(", "(\n|)"),
+        ("(\n|)", "ci(X<Esc>", "(\n|X)"),
         ("f(a|b)", "yi(P", "f(a|bab)"),
         // Brackets on their own lines: i{ is the lines between.
         ("if {\n  a|\n  b\n}", "di{", "if {\n|}"),
@@ -69,6 +77,7 @@ struct VimTextObjectTests {
         ("<|div class=\"c\">hi</div>", "cit!<Esc>", "<div class=\"c\">|!</div>"),
         ("<a>x<br/>|y</a>", "dit", "<a>|</a>"),
         ("<a>x<a/>|y</a>", "dit", "<a>|</a>"),
+        ("<a href=\"x>y\">h|i</a>", "dit", "<a href=\"x>y\">|</a>"),
         ("<p>a<p>b|</p>c</p>", "dit", "<p>a<p>|</p>c</p>"),
         // In visual mode a text object selects.
         ("foo b|ar baz", "viwd", "foo | baz"),
@@ -93,6 +102,16 @@ struct VimTextObjectTests {
         // A yank is not a change: "." still repeats the delete.
         ("|a\nb\nc", "ddyy.", "|c"),
         ("|a b c", "dwyw.", "|c"),
+        // "." puts the total count back in front, once, and types what was typed.
+        ("|a b c d e f g h", "d3w.", "|g h"),
+        ("|a b c d e f g h", "d2iw.", "|c d e f g h"),
+        ("|a b c d", "d2w.", "|"),
+        ("|a b c d e f", "3dw.", "|"),
+        ("|aa bb cc dd", "3cwabc<Esc>w.", "abc ab|c"),
+        ("|aa bb cc dd ee", "2cwxx<Esc>w.", "xx x|x ee"),
+        ("|aaaa", "2ix<Esc>.", "xx|xxaaaa"),
+        // A change that fails is not the last change.
+        ("a|bc d", "x$ci\"<Esc>0.", "|c d"),
         // A count repeats what an insert typed, and "." takes a new count.
         ("|ab", "3ix<Esc>", "xx|xab"),
         ("a|b", "2aXY<Esc>", "abXYX|Y"),
@@ -107,6 +126,11 @@ struct VimTextObjectTests {
         ("|one two", "\"ayiww\"byiw\"aP", "one on|etwo"),
         ("|one two", "\"ayiw\"Ayiw\"ap", "ooneon|ene two"),
         ("|one\ntwo", "\"_ddp", "|two"),
+        // "A appends: lines and characters together become lines.
+        ("|one two", "\"ayiw\"Ayy\"ap", "one two\n|one\none two"),
+        ("|one\ntwo", "\"ayy\"Ayiw\"ap", "one\n|one\none\ntwo"),
+        // "0 holds yanks into the unnamed register only.
+        ("|one two", "\"ayiw\"0p", "|one two"),
         ("|one two", "yiwwdiw\"0P", "oneon|e "),
         ("|a b", "yiwwviwp", "a |a"),
         ("|a b", "yiwwviwpu", "a |b"),
@@ -115,6 +139,23 @@ struct VimTextObjectTests {
     ])
     func registersAndVisualPut(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
+    }
+
+    /// A count past the words on the line fails and changes nothing.
+    @Test func wordCountsPastTheLineFail() {
+        var engine = VimEngineTests.engine("|a b")
+        _ = engine.handle(VimEngineTests.keys("d999999iw"))
+        #expect(engine.string == "a b")
+        _ = engine.handle(VimEngineTests.keys("c999999awX<Esc>"))
+        #expect(engine.string.hasSuffix("a b"))
+    }
+
+    /// Windows line breaks from the clipboard paste as lines.
+    @Test func clipboardCRLFPastesAsLines() {
+        var engine = VimEngineTests.engine("|ab")
+        engine.clipboard = VimClipboard(read: { "x\r\ny\r\n" }, write: { _ in })
+        _ = engine.handle(VimEngineTests.keys("\"+p"))
+        #expect(engine.string == "ab\nx\ny")
     }
 
     /// "+ and "* are the system clipboard.

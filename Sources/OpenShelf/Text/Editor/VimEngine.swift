@@ -230,6 +230,7 @@ struct VimEngine {
     }
 
     private mutating func leaveInsert() {
+        let repeats = insertCount
         if insertCount > 1 {
             let typed = typedSinceInsert()
             let more = Array(repeating: typed, count: insertCount - 1).flatMap { $0 }
@@ -241,7 +242,7 @@ struct VimEngine {
         insertStartText = nil
         // "." types again what was typed: the text between what stayed the same at either end.
         if let change = changeInProgress, !isRepeating {
-            lastChange = (change.count, change.keys + typedSinceInsert(single: change.count).map(VimKey.char) + [.escape])
+            lastChange = (change.count, change.keys + typedSinceInsert(single: repeats).map(VimKey.char) + [.escape])
         }
         changeInProgress = nil
         mode = .normal
@@ -334,6 +335,9 @@ struct VimEngine {
         var register: Character?
         /// The keys after the count and register, for ".".
         var keys: [VimKey] = []
+        /// Where a count between an operator and its motion sits (d3w), so
+        /// "." can leave it out and use the total count instead.
+        var innerCount: Range<Int>?
 
         init(count: Int?, action: Action) {
             self.count = count
@@ -375,7 +379,8 @@ struct VimEngine {
         let result = parseCommand(keys, from: index, count: count)
         guard case .done(var command) = result else { return result }
         command.register = register
-        command.keys = Array(keys[body...])
+        // The keys "." runs again, without counts: it puts the total back in front.
+        command.keys = keys.indices.filter { $0 >= body && !(command.innerCount?.contains($0) ?? false) }.map { keys[$0] }
         return .done(command)
     }
 
@@ -421,7 +426,9 @@ struct VimEngine {
             if c == "y" {
                 // A count may also come between ys and its motion (ys2w).
                 var count = count
+                let countStart = index
                 if let more = readCount() { count = min((count ?? 1) * more, Self.maxCount) }
+                let innerCount = countStart..<index
                 guard index < keys.count else { return .incomplete }
                 var motion: Motion?
                 if keys[index] == .char("s") {
@@ -433,7 +440,11 @@ struct VimEngine {
                     case .done(let parsed): motion = parsed
                     }
                 }
-                return parseReplacement(keys, &index).map { Command(count: count, action: .addSurround(motion, $0)) }
+                return parseReplacement(keys, &index).map {
+                    var command = Command(count: count, action: .addSurround(motion, $0))
+                    command.innerCount = innerCount
+                    return command
+                }
             }
             guard index < keys.count else { return .incomplete }
             guard case .char(let target) = keys[index], Self.surroundTargets.contains(target) else { return .invalid }
@@ -455,7 +466,9 @@ struct VimEngine {
         }
         if let op {
             if inVisual { return .done(Command(count: count, action: .operate(op, nil))) }
+            let countStart = index
             let motionCount = readCount()
+            let innerCount = countStart..<index
             let total = count.map { min($0 * (motionCount ?? 1), Self.maxCount) } ?? motionCount
             guard let doubled = next() else { return .incomplete }
             // dd, cc, yy, >>, <<, g~~, guu, gUU, and gugu-style repeats.
@@ -465,12 +478,17 @@ struct VimEngine {
                     guard let third = next() else { return .incomplete }
                     guard case .char(op.rawValue) = third else { return .invalid }
                 }
-                return .done(Command(count: total, action: .simple("line\(op.rawValue)")))
+                var command = Command(count: total, action: .simple("line\(op.rawValue)"))
+                command.innerCount = innerCount
+                return .done(command)
             }
             switch parseMotion(keys, &index, textObjects: true) {
             case .incomplete: return .incomplete
             case .invalid: return .invalid
-            case .done(let motion): return .done(Command(count: total, action: .operate(op, motion)))
+            case .done(let motion):
+                var command = Command(count: total, action: .operate(op, motion))
+                command.innerCount = innerCount
+                return .done(command)
             }
         }
 
@@ -611,10 +629,12 @@ struct VimEngine {
         activeRegister = command.register
         defer { activeRegister = nil }
         let wasVisual = inVisual
+        let before = text
         let effect = perform(command)
         // Remember a change for "." (a repeat records itself again, count and all, as in vim);
         // changes made in visual mode are not repeated.
-        if !wasVisual, Self.isChange(command) {
+        // A change that failed (ci" with no quotes) leaves the last one in place.
+        if !wasVisual, Self.isChange(command), text != before || mode == .insert {
             let change = (command.count, (command.register.map { [VimKey.char("\""), .char($0)] } ?? []) + command.keys)
             if mode == .insert { changeInProgress = change } else { lastChange = change }
         }
@@ -1262,7 +1282,6 @@ struct VimEngine {
     /// The range a text object covers: characters, or for whole lines
     /// (ip, ap, i{ around lines) the line numbers.
     private func textObject(inner: Bool, _ kind: Character, count: Int) -> (Range<Int>, Bool)? {
-        guard !text.isEmpty else { return nil }
         switch kind {
         case "w", "W": return wordObject(inner: inner, big: kind == "W", count: count).map { ($0, false) }
         case "\"", "'", "`": return quoteObject(inner: inner, quote: kind).map { ($0, false) }
@@ -1292,12 +1311,16 @@ struct VimEngine {
         while start > 0, kind(start - 1) == kind(cursor) { start -= 1 }
         var end = runEnd(from: cursor)
         if inner {
-            for _ in 1..<max(count, 1) where end + 1 < n && kind(end + 1) != 3 { end = runEnd(from: end + 1) }
+            // A count past the words on the line fails, as in vim.
+            for _ in 1..<max(count, 1) {
+                guard end + 1 < n, kind(end + 1) != 3 else { return nil }
+                end = runEnd(from: end + 1)
+            }
             return start..<end + 1
         }
         for index in 0..<max(count, 1) {
             if index > 0 {
-                guard end + 1 < n, kind(end + 1) != 3 else { break }
+                guard end + 1 < n, kind(end + 1) != 3 else { return nil }
                 end = runEnd(from: end + 1)
             }
             if kind(end) == 0 {
@@ -1329,7 +1352,10 @@ struct VimEngine {
     /// The quotes around the cursor on its line, or the next quoted text after it.
     private func quotePair(_ quote: Character) -> (Int, Int)? {
         let start = lineStart(cursor), end = lineEnd(cursor)
-        let quotes = (start..<end).filter { text[$0] == quote && ($0 == start || text[$0 - 1] != "\\") }
+        // A quote after an odd number of backslashes is escaped.
+        let quotes = (start..<end).filter { i in
+            text[i] == quote && (text[start..<i].reversed().prefix { $0 == "\\" }.count % 2 == 0)
+        }
         var pair: (Int, Int)?
         if let at = quotes.firstIndex(of: cursor) {
             // On a quote, counting from the line's start says whether it opens or closes.
@@ -1358,12 +1384,19 @@ struct VimEngine {
         }
         guard let start = openAt, let end = matchingClose(open, close, from: start) else { return nil }
         if !inner { return (start..<end + 1, false) }
-        if start + 1 < text.count, text[start + 1] == "\n", isInIndent(end) {
+        let breakAfterOpen = start + 1 < text.count && text[start + 1] == "\n"
+        let closeInIndent = isInIndent(end) && lineIndex(end) > lineIndex(start)
+        if breakAfterOpen, closeInIndent {
             let first = lineIndex(start) + 1, last = lineIndex(end) - 1
-            guard first <= last else { return (start + 1..<start + 1, false) }
+            // Nothing between: ci( types on the line of the ")".
+            guard first <= last else { return (start + 2..<start + 2, false) }
             return (first..<last + 1, true)
         }
-        return (start + 1..<end, false)
+        // vim's two rules, each on its own: skip the line break after "(",
+        // and stop before the line break above a ")" in the indentation.
+        let low = breakAfterOpen ? start + 2 : start + 1
+        let high = closeInIndent ? lineStart(end) - 1 : end
+        return (low..<max(low, high), false)
     }
 
     private func enclosingOpen(_ open: Character, _ close: Character, before position: Int) -> Int? {
@@ -1393,6 +1426,7 @@ struct VimEngine {
     /// it is between the tags around the cursor (<a>…</a>); at takes the
     /// tags too. A count reaches further out. Self-closing tags are skipped.
     private func tagObject(inner: Bool, count: Int) -> Range<Int>? {
+        guard !text.isEmpty else { return nil }
         var found = 0
         var i = min(cursor, text.count - 1)
         // The cursor may be inside a tag; start from that tag's "<".
@@ -1412,7 +1446,15 @@ struct VimEngine {
         guard text[start] == "<", start + 1 < text.count, text[start + 1].isLetter else { return nil }
         var j = start + 1
         while j < text.count, text[j].isLetter || text[j].isNumber || "-:_.".contains(text[j]) { j += 1 }
-        guard let end = (j..<text.count).first(where: { text[$0] == ">" }), text[end - 1] != "/" else { return nil }
+        // The tag ends at the first ">" outside a quoted attribute value.
+        var end = j
+        var quote: Character?
+        while end < text.count {
+            let c = text[end]
+            if let open = quote { if c == open { quote = nil } } else if c == "\"" || c == "'" { quote = c } else if c == ">" { break }
+            end += 1
+        }
+        guard end < text.count, text[end - 1] != "/" else { return nil }
         return (String(text[(start + 1)..<j]), end)
     }
 
@@ -1570,13 +1612,18 @@ struct VimEngine {
     private mutating func store(_ taken: VimRegister, yank: Bool) {
         guard activeRegister != "_" else { return }
         register = taken
-        if yank { registers["0"] = taken }
+        if yank, activeRegister == nil { registers["0"] = taken }
         switch activeRegister {
         case "+"?, "*"?: clipboard.write(taken.text)
         case let name? where name.isUppercase:
             let lower = Character(name.lowercased())
-            let old = registers[lower]
-            registers[lower] = VimRegister(text: (old?.text ?? "") + taken.text, linewise: (old?.linewise ?? false) || taken.linewise)
+            if let old = registers[lower], old.linewise || taken.linewise {
+                // Lines and characters together make lines, each part on its own.
+                func asLines(_ part: VimRegister) -> String { part.linewise || part.text.hasSuffix("\n") ? part.text : part.text + "\n" }
+                registers[lower] = VimRegister(text: asLines(old) + asLines(taken), linewise: true)
+            } else {
+                registers[lower] = VimRegister(text: (registers[lower]?.text ?? "") + taken.text, linewise: false)
+            }
             register = registers[lower]!
         case let name? where name.isLetter:
             registers[name] = taken
@@ -1589,7 +1636,7 @@ struct VimEngine {
     private func fetch() -> VimRegister {
         switch activeRegister {
         case "+"?, "*"?:
-            let text = clipboard.read() ?? ""
+            let text = (clipboard.read() ?? "").replacingOccurrences(of: "\r\n", with: "\n")
             return VimRegister(text: text, linewise: text.hasSuffix("\n"))
         case "_"?: return VimRegister(text: "", linewise: false)
         case let name?: return name == "\"" ? register : registers[Character(name.lowercased())] ?? VimRegister(text: "", linewise: false)
