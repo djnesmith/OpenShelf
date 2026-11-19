@@ -42,7 +42,7 @@ final class SelectedTextController {
         let strategy = TextAppStrategy.for(bundleID: app.bundleIdentifier)
         return await HotkeyRoute.choose(
             frontmostBundleID: app.bundleIdentifier,
-            isSecureInputOn: AccessibilityText.isSecureInputOn,
+            appHoldsSecureInput: AccessibilityText.holdsSecureInput(app.processIdentifier),
             strategy: strategy
         ) { reader in
             await self.read(reader, in: app)
@@ -265,12 +265,12 @@ final class SelectedTextController {
     }
 
     /// Whether Edit may paste over the selection: only when it reads back as
-    /// the same text, and secure input is off. A field that is gone, a caret
+    /// the same text, and the app itself doesn't have secure input on. A field that is gone, a caret
     /// with nothing selected or a password field all copy instead. Apps read
     /// with ⌘C can't be read back, so they are trusted as tools are; copied
     /// text and terminals (⌃ held) paste at the cursor, as the tools do.
-    static func canReplace(_ session: Session, now: SelectedTextRead, isSecureInputOn: Bool = AccessibilityText.isSecureInputOn) -> Bool {
-        guard !isSecureInputOn else { return false }
+    static func canReplace(_ session: Session, now: SelectedTextRead, appHoldsSecureInput: Bool? = nil) -> Bool {
+        guard !(appHoldsSecureInput ?? AccessibilityText.holdsSecureInput(session.app.processIdentifier)) else { return false }
         if session.strategy.isCopyOnly(from: session.source) { return true }
         if case .text(let text) = now { return text == session.text }
         return session.source == .copyShortcut && now == .unavailable

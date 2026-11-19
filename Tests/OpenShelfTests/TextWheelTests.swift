@@ -243,7 +243,26 @@ struct TextHistoryTests {
 @MainActor
 struct HotkeyRouteTests {
     func route(_ bundleID: String? = "com.apple.TextEdit", secure: Bool = false, reads: [TextReader: SelectedTextRead]) async -> HotkeyRoute {
-        await HotkeyRoute.choose(frontmostBundleID: bundleID, isSecureInputOn: secure, strategy: .for(bundleID: bundleID)) { reads[$0] ?? .unavailable }
+        await HotkeyRoute.choose(frontmostBundleID: bundleID, appHoldsSecureInput: secure, strategy: .for(bundleID: bundleID)) { reads[$0] ?? .unavailable }
+    }
+
+    /// Secure input is system-wide and often left on by another app
+    /// (loginwindow after unlocking, a browser's password field). Only the
+    /// app being read holding it, or a password field, refuses.
+    @Test func secureInputHeldElsewhereStillReads() async {
+        #expect(await route(secure: false, reads: [.accessibility: .text("mail")]) == .text("mail", from: .accessibility))
+        #expect(await route(secure: true, reads: [.accessibility: .text("mail")]) == .secureInput)
+        #expect(await route(secure: false, reads: [.accessibility: .secure]) == .secureInput)
+    }
+
+    /// Live: whoever holds secure input now holds it; any other pid doesn't.
+    @Test func onlyTheHolderOfSecureInputCounts() {
+        guard let holder = AccessibilityText.secureInputPID else {
+            #expect(!AccessibilityText.holdsSecureInput(ProcessInfo.processInfo.processIdentifier))
+            return
+        }
+        #expect(AccessibilityText.holdsSecureInput(holder))
+        #expect(!AccessibilityText.holdsSecureInput(holder + 1))
     }
 
     @Test func finderKeepsItsFileWheel() async {
@@ -257,7 +276,7 @@ struct HotkeyRouteTests {
 
     @Test func terminalsNeverPressKeys() async {
         var asked: [TextReader] = []
-        let chosen = await HotkeyRoute.choose(frontmostBundleID: "com.googlecode.iterm2", isSecureInputOn: false, strategy: .for(bundleID: "com.googlecode.iterm2")) { asked.append($0); return $0 == .recentClipboard ? .text("copied") : .nothingSelected }
+        let chosen = await HotkeyRoute.choose(frontmostBundleID: "com.googlecode.iterm2", appHoldsSecureInput: false, strategy: .for(bundleID: "com.googlecode.iterm2")) { asked.append($0); return $0 == .recentClipboard ? .text("copied") : .nothingSelected }
         #expect(chosen == .text("copied", from: .recentClipboard))
         #expect(!asked.contains(.copyShortcut))
     }

@@ -20,8 +20,9 @@ struct EditWriteBackTests {
         (.accessibility, .nothingSelected, false, false),
         (.accessibility, .secure, false, false),
         (.accessibility, .notPermitted, false, false),
+        // The app itself holding secure input refuses; one held elsewhere doesn't (the false rows).
         (.accessibility, .text("hello"), true, false),
-        // Apps read with ⌘C can't be read back, so they paste as tools do, unless secure input is on.
+        // Apps read with ⌘C can't be read back, so they paste as tools do, unless that app holds secure input.
         (.copyShortcut, .unavailable, false, true),
         (.copyShortcut, .unavailable, true, false),
         (.copyShortcut, .nothingSelected, false, false),
@@ -31,6 +32,6 @@ struct EditWriteBackTests {
         (.recentClipboard, .nothingSelected, true, false),
     ])
     func replacesOnlyAnUnchangedSelection(source: TextReader, now: SelectedTextRead, secure: Bool, expected: Bool) {
-        #expect(SelectedTextController.canReplace(Self.session(source), now: now, isSecureInputOn: secure) == expected)
+        #expect(SelectedTextController.canReplace(Self.session(source), now: now, appHoldsSecureInput: secure) == expected)
     }
 }

@@ -20,10 +20,19 @@ enum AccessibilityText {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    /// Whether some app (a password field, a password manager, Terminal's
-    /// Secure Keyboard Entry) has secure input on, which blocks reading and typing.
-    static var isSecureInputOn: Bool { IsSecureEventInputEnabled() }
+    /// The app that has secure input on (a password field, Terminal's Secure
+    /// Keyboard Entry), if any. The flag is system-wide and is often left on
+    /// by an app in the background (loginwindow after unlocking, a browser's
+    /// password field), so only the app being read or written to counts.
+    static var secureInputPID: pid_t? {
+        guard IsSecureEventInputEnabled(),
+              let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+              let pid = session["kCGSSessionSecureInputPID"] as? NSNumber else { return nil }
+        return pid.int32Value
+    }
 
+    /// Whether `pid` itself has secure input on.
+    static func holdsSecureInput(_ pid: pid_t) -> Bool { secureInputPID == pid }
 
     /// The selection in app `pid`'s focused element.
     static func read(pid: pid_t) -> SelectedTextRead {
