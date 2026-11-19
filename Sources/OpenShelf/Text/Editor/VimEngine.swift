@@ -57,6 +57,11 @@ struct VimEngine {
     private(set) var commandLine = ""
     /// A note for the status line, cleared by the next key.
     private(set) var message: String?
+    /// Why the last command did nothing, where vim would beep ("d3j: no line below"). The
+    /// window shows it until the next key; vim's behavior is unchanged and nothing sounds.
+    private(set) var failureHint: String?
+    /// The keys of the command being run, as typed, for the hint.
+    private var typed: [VimKey] = []
     /// The unnamed register.
     private(set) var register = VimRegister(text: "", linewise: false)
     /// Registers "a to "z and "0 (the last yank).
@@ -148,6 +153,7 @@ struct VimEngine {
     /// Handles one key. Returns `.finish` or `.cancel` when the window should close.
     mutating func handle(_ key: VimKey) -> VimEffect? {
         message = nil
+        if playDepth == 0, !isRepeating { failureHint = nil }
         if recording != nil, playDepth == 0, !isRepeating { recordedKeys.append(key) }
         switch mode {
         case .insert: handleInsert(key); return nil
@@ -161,10 +167,12 @@ struct VimEngine {
             switch parse(pending) {
             case .incomplete: return nil
             case .invalid:
+                if playDepth == 0, !isRepeating { failureHint = "\(Self.describe(pending)): not a command" }
                 pending = []
                 failed = true
                 return nil
             case .done(let command):
+                if playDepth == 0, !isRepeating { typed = pending }
                 pending = []
                 return run(command)
             }
@@ -717,6 +725,8 @@ struct VimEngine {
         let changesBefore = undoStack.count + undoTrimmed
         failed = false
         let effect = perform(command)
+        // A macro or "." that stops says so for the key that played it, which fails too.
+        if failed, message == nil { failureHint = failureHint(for: command) }
         // Remember a change for "." (a repeat records itself again, count and all, as in vim);
         // changes made in visual mode are not repeated, and "." after one does nothing rather
         // than repeat an older change.
@@ -728,6 +738,38 @@ struct VimEngine {
             if mode == .insert { changeInProgress = change } else { lastChange = change }
         }
         return effect
+    }
+
+    /// A few words on why `command` did nothing, after the keys typed.
+    private func failureHint(for command: Command) -> String {
+        let keys = Self.describe(typed)
+        let motion: Motion? = switch command.action {
+        case .motion(let motion): motion
+        case .operate(_, let motion): motion
+        default: nil
+        }
+        let reason: String = switch motion {
+        // A count on j, k or $ only fails on the last (or first) line.
+        case .down?, .lineEnd?: "no line below"
+        case .up?: "no line above"
+        case .wordBackward?: "at the start"
+        case .find(_, let target)?: "no “\(target)” on the line"
+        default: "nothing to do"
+        }
+        return "\(keys): \(reason)"
+    }
+
+    /// Keys as typed, for the hint.
+    private static func describe(_ keys: [VimKey]) -> String {
+        keys.map { key in
+            switch key {
+            case .char(let c): String(c)
+            case .ctrl(let c): "⌃\(c)"
+            case .escape: "Esc"
+            case .enter: "↩"
+            default: ""
+            }
+        }.joined()
     }
 
     private static func isChange(_ command: Command) -> Bool {

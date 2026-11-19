@@ -250,19 +250,24 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
 
     /// The bottom line's keys, most needed first: a narrow window cuts the end.
     /// The line-number key sits beside the wrap key, and goes first when it doesn't fit.
-    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers? = nil) -> String {
+    /// A command that did nothing (`failure`) is said right after the wrap key, until the next key.
+    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers? = nil, failure: String? = nil) -> String {
+        let failed = failure.map { " · \($0)" } ?? ""
         let lines = lineNumbers.map { " · ⌥⌘L lines: \($0.rawValue)" } ?? ""
-        return "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: \(wraps ? "on" : "off")\(lines) · the text goes \(destination)"
+        return "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: \(wraps ? "on" : "off")\(failed)\(lines) · the text goes \(destination)"
     }
 
     /// The hints with the line-number key when they fit in `width`, without it when not.
-    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers, fitting width: CGFloat, font: NSFont) -> String {
-        let full = hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers)
+    static func hints(destination: String, wraps: Bool, lineNumbers: LineNumbers, failure: String? = nil, fitting width: CGFloat, font: NSFont) -> String {
+        let full = hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers, failure: failure)
         let size = (full as NSString).size(withAttributes: [.font: font])
-        return size.width <= width ? full : hints(destination: destination, wraps: wraps)
+        return size.width <= width ? full : hints(destination: destination, wraps: wraps, failure: failure)
     }
 
     static let statusFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+
+    /// The bottom line's right side, for tests.
+    var bottomLineHints: String { statusRight?.stringValue ?? "" }
 
     /// Whether long lines wrap in the text view itself, for tests.
     var textViewWraps: Bool { textView?.textContainer?.widthTracksTextView ?? true }
@@ -283,7 +288,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         // What the right side has: the window's width (the bar's, which may not be laid out
         // yet) less the left text, the gap and the edges.
         let room = (panel?.contentView?.bounds.width ?? 0) - (statusLeft?.fittingSize.width ?? 0) - 8 - 20
-        statusRight?.stringValue = Self.hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers, fitting: room, font: Self.statusFont)
+        statusRight?.stringValue = Self.hints(destination: destination, wraps: wraps, lineNumbers: lineNumbers, failure: engine.failureHint, fitting: room, font: Self.statusFont)
         // Relative numbers follow the cursor.
         ruler?.refresh()
     }

@@ -91,6 +91,41 @@ struct VimCountTests {
         #expect(Self.run(start, keys) == expected)
     }
 
+    /// Where vim would beep, the engine says why in a few words, and changes nothing more;
+    /// the next key clears it. A command that works, or one with its own message, has none.
+    @Test func aFailedCommandSaysWhy() {
+        let cases: [(String, String, String?)] = [
+            ("a\n|b", "d3j", "d3j: no line below"),
+            ("a\n|b", "3dj", "3dj: no line below"),
+            ("a\n|b", "j", "j: no line below"),
+            ("|a\nb", "k", "k: no line above"),
+            ("a\n|b", "2$", "2$: no line below"),
+            ("|abc", "fx", "fx: no “x” on the line"),
+            ("|abc", "dfx", "dfx: no “x” on the line"),
+            ("|abc", "b", "b: at the start"),
+            ("|abc", "di(", "di(: nothing to do"),
+            ("|a\nb\nc\nd", "d3j", nil),
+            // p with nothing to paste fails with its own message (E353), so no hint.
+            ("|abc", "p", nil),
+        ]
+        for (start, keys, hint) in cases {
+            var engine = VimEngineTests.engine(start)
+            let before = engine.string
+            _ = engine.handle(VimEngineTests.keys(keys))
+            #expect(engine.failureHint == hint, "\(keys)")
+            if hint != nil { #expect(engine.string == before, "\(keys)") }
+        }
+        var engine = VimEngineTests.engine("a\n|b")
+        _ = engine.handle(VimEngineTests.keys("d3j"))
+        _ = engine.handle(.char("k"))
+        #expect(engine.failureHint == nil)
+        // A macro that stops part way says so once, for the key that played it.
+        _ = engine.handle(VimEngineTests.keys("qajq"))
+        #expect(engine.failureHint == nil)
+        _ = engine.handle(VimEngineTests.keys("@a"))
+        #expect(engine.failureHint == "@a: nothing to do")
+    }
+
     /// vim repeats a visual change with "."; this engine does not, so "." after one does
     /// nothing rather than repeat an older change.
     @Test func dotAfterAVisualChangeDoesNothing() {

@@ -352,6 +352,20 @@ struct VimEditorWindowTests {
         #expect(ruler.labels(in: everything).count == 2)
     }
 
+    /// A failed command shows its reason after the wrap key, in the bottom line's gray, until the next key.
+    @Test func theBottomLineSaysWhyACommandDidNothing() {
+        let window = VimEditorWindow(defaults: Self.scratchDefaults())
+        let panel = window.makePanel()
+        panel.setContentSize(NSSize(width: 1200, height: 300))
+        window.load("a\nb")
+        let view = window.panelTextView!
+        for c in "jd3j" { view.keyDown(with: Self.key(String(c))) }
+        #expect(window.text == "a\nb")
+        #expect(window.bottomLineHints.contains("⌥⌘Z wrap: on · d3j: no line below · ⌥⌘L lines: relative"))
+        view.keyDown(with: Self.key("k"))
+        #expect(!window.bottomLineHints.contains("no line below"))
+    }
+
     /// The gutter is as wide as the largest line number needs.
     @Test func theGutterFitsTheLineCount() {
         let window = VimEditorWindow(defaults: Self.scratchDefaults())
