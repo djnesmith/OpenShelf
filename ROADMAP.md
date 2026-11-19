@@ -552,6 +552,26 @@ report is in the result panel and can be copied.
 - Record a region, then the existing video tools and GIF apply.
 - ScreenCaptureKit. Needs Screen Recording permission.
 
+**F5. Edit audio tags** (M)
+David, 2026-11-19: "editing the metadata tags of files like mp3s".
+- Today the audio and video Metadata tool only removes tags: `Tools/ToolLauncher.swift:49`
+  runs `MediaTools.stripMetadata` (`Tools/Media/MediaFilters.swift:27`), a copy without title,
+  dates, chapters or cover art, through ffmpeg (shown only when ffmpeg is installed,
+  `Tools/FileTool.swift:222`, `:226`). Nothing shows or edits tags.
+- Wanted: a window with the file's title, artist, album, album artist, track and disc number,
+  year, genre, comment and cover art (show, replace from a dropped image, remove), saved as a
+  copy or in place. Several files at once edit the fields they share (an album).
+- Formats: MP3 (ID3v2), M4A/AAC/ALAC, FLAC, Ogg/Opus, WAV and AIFF where they carry tags.
+- Builds on the PDF Metadata editor's form (`Tools/PDF/PDFMetadataEditor.swift`). Reading:
+  AVFoundation's metadata or ffprobe. Writing: ffmpeg `-map_metadata` with `-metadata
+  key=value` and `-c copy`, so the sound is never re-encoded; cover art as an attached picture.
+- Needs ffmpeg, as the strip tool does. Native writing without ffmpeg (AVFoundation can
+  write M4A tags, not MP3 ID3) would be a later, smaller slice.
+- Tests without a screen: the field to ffmpeg argument mapping, and a round trip on small
+  fixture files when ffmpeg is present (the opt-in tool tests).
+- Risks: in-place saving must write a temporary copy and swap it in; ID3 versions (v2.3 vs
+  v2.4) and non-Latin text.
+
 ### G. PDFs
 
 **G1. Page numbers, watermark, stamp** (S-M)
@@ -621,6 +641,19 @@ report is in the result panel and can be copied.
 - Risks: it turns off a macOS safety check, so it always confirms first. It does not fix a
   bad or missing signature or notarization; an app whose signature is broken still won't open
   and the confirm text says so.
+
+**H10. Move and Copy remember the last folder** (S)
+David, 2026-11-19: "when you do move or copy a file it should remember the last directory a
+file was copied or moved to and open on that instead of the current dir".
+- Today: Move and Copy (`Support/FileActions.swift:62`, `:71`) open their folder picker where
+  the first file is (`chooseDestination`, `Support/FileActions.swift:203`:
+  `panel.directoryURL = urls.first?.deletingLastPathComponent()`).
+- Wanted: the picker opens on the folder last chosen by Move or Copy (one shared memory),
+  kept in UserDefaults. If that folder is gone or its disk isn't mounted, it opens where the
+  file is, as today.
+- Watched Folders and Shortcuts actions that name their folder are unchanged.
+- Tests without a screen: the choice of starting folder (remembered, missing, none) as a pure
+  function.
 
 ### I. Automation and developer tools
 
