@@ -45,6 +45,11 @@ enum TextTool: CaseIterable, Hashable, Sendable {
     case stripTracking
     case fixEncoding
     case stripANSI
+    // Code
+    case encodeURL, encodeBase64, encodeHTML, encodeJSON, encodeHex, encodeUnicode
+    case decodeURL, decodeBase64, decodeHTML, decodeJSON, decodeHex, decodeUnicode
+    case uuid, timestamp, loremIpsum, password
+    case jwt
     // Reports: they say something about the text and leave it as it is.
     case count
     case md5
@@ -93,6 +98,17 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .stripTracking: "Strip Tracking"
         case .fixEncoding: "Fix Encoding"
         case .stripANSI: "Strip ANSI"
+        case .encodeURL, .decodeURL: "URL"
+        case .encodeBase64, .decodeBase64: "Base64"
+        case .encodeHTML, .decodeHTML: "HTML"
+        case .encodeJSON, .decodeJSON: "JSON String"
+        case .encodeHex, .decodeHex: "Hex"
+        case .encodeUnicode, .decodeUnicode: "Unicode"
+        case .uuid: "UUID"
+        case .timestamp: "Timestamp"
+        case .loremIpsum: "Lorem Ipsum"
+        case .password: "Password"
+        case .jwt: "JWT"
         case .count: "Count"
         case .md5: "MD5"
         case .sha1: "SHA-1"
@@ -136,6 +152,13 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .stripTracking: "link"
         case .fixEncoding: "character"
         case .stripANSI: "paintbrush"
+        case .encodeURL, .encodeBase64, .encodeHTML, .encodeJSON, .encodeHex, .encodeUnicode: "arrowshape.right"
+        case .decodeURL, .decodeBase64, .decodeHTML, .decodeJSON, .decodeHex, .decodeUnicode: "arrowshape.left"
+        case .uuid: "number"
+        case .timestamp: "clock"
+        case .loremIpsum: "text.quote"
+        case .password: "key"
+        case .jwt: "key.horizontal"
         case .count: "sum"
         case .md5, .sha1, .sha256: "number.square"
         }
@@ -144,8 +167,27 @@ enum TextTool: CaseIterable, Hashable, Sendable {
     /// Tools done in memory that return new text, with no file and no external process.
     var isPureSwift: Bool { ![.reindent, .toMarkdown].contains(self) && !isReport }
 
-    /// Count and the hashes say something about the text and don't change it.
-    var isReport: Bool { [.count, .md5, .sha1, .sha256].contains(self) }
+    /// Count, the hashes and JWT say something about the text and don't change it.
+    var isReport: Bool { [.count, .md5, .sha1, .sha256, .jwt].contains(self) }
+
+    /// The format an Encode or Decode tool works in, and which way.
+    var codeFormat: (format: CodeTransforms.Format, encodes: Bool)? {
+        switch self {
+        case .encodeURL: (.url, true)
+        case .encodeBase64: (.base64, true)
+        case .encodeHTML: (.html, true)
+        case .encodeJSON: (.jsonString, true)
+        case .encodeHex: (.hex, true)
+        case .encodeUnicode: (.unicode, true)
+        case .decodeURL: (.url, false)
+        case .decodeBase64: (.base64, false)
+        case .decodeHTML: (.html, false)
+        case .decodeJSON: (.jsonString, false)
+        case .decodeHex: (.hex, false)
+        case .decodeUnicode: (.unicode, false)
+        default: nil
+        }
+    }
 
     /// The digest a hash tool takes.
     var digest: TextInfo.Digest? {
@@ -199,7 +241,15 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .stripTracking: FixTransforms.stripTracking(text)
         case .fixEncoding: FixTransforms.fixEncoding(text)
         case .stripANSI: FixTransforms.stripANSI(text)
-        case .reindent, .toMarkdown, .count, .md5, .sha1, .sha256: nil
+        case .encodeURL, .encodeBase64, .encodeHTML, .encodeJSON, .encodeHex, .encodeUnicode,
+             .decodeURL, .decodeBase64, .decodeHTML, .decodeJSON, .decodeHex, .decodeUnicode:
+            codeFormat.map { $0.encodes ? CodeTransforms.encode(text, as: $0.format) : CodeTransforms.decode(text, from: $0.format) }
+        // Generators replace the selection with something new.
+        case .uuid: CodeTransforms.uuid()
+        case .timestamp: CodeTransforms.timestamp()
+        case .loremIpsum: CodeTransforms.loremIpsum
+        case .password: CodeTransforms.password()
+        case .reindent, .toMarkdown, .count, .md5, .sha1, .sha256, .jwt: nil
         }
     }
 
@@ -227,6 +277,9 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
     case format
     case code
     case hash
+    case encode
+    case decode
+    case generate
     case extract
 
     var title: String {
@@ -244,6 +297,9 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .format: "Format"
         case .code: "Code"
         case .hash: "Hash"
+        case .encode: "Encode"
+        case .decode: "Decode"
+        case .generate: "Generate"
         case .extract: "Extract"
         }
     }
@@ -263,6 +319,9 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .format: "paragraphsign"
         case .code: "curlybraces"
         case .hash: "number.square"
+        case .encode: "arrowshape.right"
+        case .decode: "arrowshape.left"
+        case .generate: "sparkle"
         case .extract: "text.magnifyingglass"
         }
     }
@@ -273,7 +332,7 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .convert, .more: nil
         case .lines, .textCase, .fix, .format, .code, .extract: .more
         case .indentation: .format
-        case .hash: .code
+        case .hash, .encode, .decode, .generate: .code
         case .order, .joinSplit, .lists: .lines
         case .codeCase: .textCase
         }
@@ -288,7 +347,10 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .more: [.open(.lines), .open(.textCase), .open(.fix), .open(.format), .open(.code), .open(.extract)]
         case .fix: [.tool(.trimLines), .tool(.straightenQuotes), .tool(.plainText), .tool(.stripTracking), .tool(.fixEncoding), .tool(.stripANSI)]
         case .format: [.open(.indentation)]
-        case .code: [.open(.hash)]
+        case .code: [.open(.encode), .open(.decode), .open(.hash), .open(.generate), .tool(.jwt)]
+        case .encode: [.tool(.encodeURL), .tool(.encodeBase64), .tool(.encodeHTML), .tool(.encodeJSON), .tool(.encodeHex), .tool(.encodeUnicode)]
+        case .decode: [.tool(.decodeURL), .tool(.decodeBase64), .tool(.decodeHTML), .tool(.decodeJSON), .tool(.decodeHex), .tool(.decodeUnicode)]
+        case .generate: [.tool(.uuid), .tool(.timestamp), .tool(.loremIpsum), .tool(.password)]
         case .hash: [.tool(.md5), .tool(.sha1), .tool(.sha256)]
         case .extract: [.tool(.count)]
         case .lines: [.tool(.sortAZ), .tool(.removeDuplicates), .tool(.removeBlankLines), .open(.order), .open(.joinSplit), .open(.lists)]
@@ -350,6 +412,10 @@ extension TextCommand {
             case .stripTracking: "Stripped tracking"
             case .fixEncoding: "Fixed encoding"
             case .stripANSI: "Stripped colour codes"
+            case .encodeURL, .encodeBase64, .encodeHTML, .encodeJSON, .encodeHex, .encodeUnicode: "Encoded as \(tool.title)"
+            case .decodeURL, .decodeBase64, .decodeHTML, .decodeJSON, .decodeHex, .decodeUnicode: "Decoded \(tool.title)"
+            case .uuid, .timestamp, .loremIpsum, .password: "Made a \(tool.title.lowercased())"
+            case .jwt: "JWT read and copied"
             case .count: "Counted"
             case .md5, .sha1, .sha256: "\(tool.title) copied"
             }

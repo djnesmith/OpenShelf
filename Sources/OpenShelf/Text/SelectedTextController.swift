@@ -185,7 +185,15 @@ final class SelectedTextController {
     /// Count shows a toast; a hash goes on the clipboard and shows a toast.
     /// Neither changes the text.
     private func report(_ tool: TextTool, on session: Session) {
-        if let digest = tool.digest {
+        if tool == .jwt {
+            guard let decoded = CodeTransforms.readJWT(session.text) else {
+                ToastController.shared.show(Toast(systemImage: "key.horizontal", title: "Not a JWT", subtitle: "Expected three base64url parts with dots between"))
+                self.session = nil
+                return
+            }
+            relay.pasteboard.writeText(decoded)
+            ToastController.shared.show(Toast(systemImage: "key.horizontal", title: TextCommand.tool(tool).doneTitle, subtitle: "Header and payload; the signature isn't checked"), for: .seconds(4))
+        } else if let digest = tool.digest {
             let hex = TextInfo.hash(session.text, digest)
             relay.pasteboard.writeText(hex)
             ToastController.shared.show(Toast(systemImage: "number.square", title: TextCommand.tool(tool).doneTitle, subtitle: hex), for: .seconds(4))
