@@ -461,6 +461,12 @@ More ▸ is Lines ▸ · Case ▸ · Fix ▸ · Format ▸ · Code ▸ · Extrac
 - Files: `Sources/OpenShelf/Text/TextInfo.swift`, `Text/TextWheel.swift` (`TextTool.count`, `.md5`, `.sha1`, `.sha256`, `isReport`; `TextGroup.fix`, `.format`, `.code`, `.hash`, `.extract`), `Text/SelectedTextController.swift` (`report`), `Wheel/WheelSearch.swift`
 - Check: `swift test --filter 'TextInfoTests|TextWheelTests|WedgeLabel'`. In the app: select a paragraph, ⌃⌥Space, More ▸, Extract ▸, Count; then More ▸, Code ▸, Hash ▸, SHA-256 and paste.
 
+### 56. Metadata › Clean checks the file's own bytes
+Upstream's image Metadata › Clean judged a cleaned copy by ImageIO's properties alone. Some metadata survives a lossless copy and isn't in those properties. Found 2026-11-19 with made-up files: a lossless PNG copy (what Clean does when it keeps orientation and profile) kept Content Credentials (caBX) and tEXt/iTXt/zTXt comments, and a lossless TIFF copy kept ImageDescription and Artist; both were called clean. The fork's leftover check also walks the file's PNG chunks, JPEG segments, GIF blocks and TIFF tags. Anything found sends the copy to the re-encode (lossless for PNG and TIFF, profile and orientation kept, pixels identical); anything the re-encode can't drop stops the copy with a message, never "clean". JPEG (APP11 C2PA, XMP, Photoshop IPTC, comments) and GIF comments were already dropped by the lossless copy; the JPEG copy stays lossless.
+- Commits: 5238589
+- Files: `Sources/OpenShelf/Tools/Editors/MetadataContainers.swift`, `Tools/Editors/MetadataEditor.swift` (`leftoverMetadata`)
+- Check: `swift test --filter 'MetadataContainerTests|MetadataStrippingTests'`. In the app: a PNG with Content Credentials, Metadata › Clean with "keep orientation and profile" on, then `grep -c caBX` on the copy is 0.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.
