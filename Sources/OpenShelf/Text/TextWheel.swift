@@ -50,6 +50,10 @@ enum TextTool: CaseIterable, Hashable, Sendable {
     case decodeURL, decodeBase64, decodeHTML, decodeJSON, decodeHex, decodeUnicode
     case uuid, timestamp, loremIpsum, password
     case jwt
+    // Format
+    case wrapQuotes, wrapParentheses, wrapBrackets, wrapBraces, wrapCodeFence, wrapBlockQuote
+    case markdownLink, alignTable, headingUp, headingDown
+    case convertDate
     // Extract
     case extractLinks, extractEmails, extractNumbers, extractPhoneNumbers, extractDates
     // Reports: they say something about the text and leave it as it is.
@@ -111,6 +115,17 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .loremIpsum: "Lorem Ipsum"
         case .password: "Password"
         case .jwt: "JWT"
+        case .wrapQuotes: "Quotes"
+        case .wrapParentheses: "Parentheses"
+        case .wrapBrackets: "Brackets"
+        case .wrapBraces: "Braces"
+        case .wrapCodeFence: "Code Fence"
+        case .wrapBlockQuote: "Block Quote"
+        case .markdownLink: "Link"
+        case .alignTable: "Align Table"
+        case .headingUp: "Heading Up"
+        case .headingDown: "Heading Down"
+        case .convertDate: "Dates"
         case .extractLinks: "Links"
         case .extractEmails: "Emails"
         case .extractNumbers: "Numbers"
@@ -166,6 +181,17 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .loremIpsum: "text.quote"
         case .password: "key"
         case .jwt: "key.horizontal"
+        case .wrapQuotes: "quote.opening"
+        case .wrapParentheses: "parentheses"
+        case .wrapBrackets: "chevron.left.square"
+        case .wrapBraces: "curlybraces"
+        case .wrapCodeFence: "chevron.left.forwardslash.chevron.right"
+        case .wrapBlockQuote: "text.quote"
+        case .markdownLink: "link.badge.plus"
+        case .alignTable: "tablecells"
+        case .headingUp: "textformat.size.larger"
+        case .headingDown: "textformat.size.smaller"
+        case .convertDate: "calendar.badge.clock"
         case .extractLinks: "link"
         case .extractEmails: "at"
         case .extractNumbers: "number"
@@ -177,7 +203,8 @@ enum TextTool: CaseIterable, Hashable, Sendable {
     }
 
     /// Tools done in memory that return new text, with no file and no external process.
-    var isPureSwift: Bool { ![.reindent, .toMarkdown].contains(self) && !isReport }
+    /// Link also needs the clipboard, so the controller runs it.
+    var isPureSwift: Bool { ![.reindent, .toMarkdown, .markdownLink].contains(self) && !isReport }
 
     /// Count, the hashes and JWT say something about the text and don't change it.
     var isReport: Bool { [.count, .md5, .sha1, .sha256, .jwt].contains(self) }
@@ -261,6 +288,17 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .timestamp: CodeTransforms.timestamp()
         case .loremIpsum: CodeTransforms.loremIpsum
         case .password: CodeTransforms.password()
+        case .wrapQuotes: FormatTransforms.wrap(text, in: .quotes)
+        case .wrapParentheses: FormatTransforms.wrap(text, in: .parentheses)
+        case .wrapBrackets: FormatTransforms.wrap(text, in: .brackets)
+        case .wrapBraces: FormatTransforms.wrap(text, in: .braces)
+        case .wrapCodeFence: FormatTransforms.wrap(text, in: .codeFence)
+        case .wrapBlockQuote: FormatTransforms.wrap(text, in: .blockQuote)
+        case .alignTable: FormatTransforms.alignTable(text)
+        case .headingUp: FormatTransforms.heading(text, up: true)
+        case .headingDown: FormatTransforms.heading(text, up: false)
+        case .convertDate: FormatTransforms.convertDate(text)
+        case .markdownLink: nil
         case .extractLinks: ExtractTransforms.extract(.links, from: text)
         case .extractEmails: ExtractTransforms.extract(.emails, from: text)
         case .extractNumbers: ExtractTransforms.extract(.numbers, from: text)
@@ -294,6 +332,8 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
     case format
     case code
     case hash
+    case wrap
+    case markdown
     case encode
     case decode
     case generate
@@ -314,6 +354,8 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .format: "Format"
         case .code: "Code"
         case .hash: "Hash"
+        case .wrap: "Wrap"
+        case .markdown: "Markdown"
         case .encode: "Encode"
         case .decode: "Decode"
         case .generate: "Generate"
@@ -336,6 +378,8 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .format: "paragraphsign"
         case .code: "curlybraces"
         case .hash: "number.square"
+        case .wrap: "parentheses"
+        case .markdown: "number"
         case .encode: "arrowshape.right"
         case .decode: "arrowshape.left"
         case .generate: "sparkle"
@@ -350,6 +394,7 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .lines, .textCase, .fix, .format, .code, .extract: .more
         case .indentation: .format
         case .hash, .encode, .decode, .generate: .code
+        case .wrap, .markdown: .format
         case .order, .joinSplit, .lists: .lines
         case .codeCase: .textCase
         }
@@ -363,7 +408,9 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         // More ▸ as David approved it (2026-11-18); Fix, Format, Code and Extract fill up as their tools are built.
         case .more: [.open(.lines), .open(.textCase), .open(.fix), .open(.format), .open(.code), .open(.extract)]
         case .fix: [.tool(.trimLines), .tool(.straightenQuotes), .tool(.plainText), .tool(.stripTracking), .tool(.fixEncoding), .tool(.stripANSI)]
-        case .format: [.open(.indentation)]
+        case .format: [.open(.indentation), .open(.wrap), .open(.markdown), .tool(.convertDate)]
+        case .wrap: [.tool(.wrapQuotes), .tool(.wrapParentheses), .tool(.wrapBrackets), .tool(.wrapBraces), .tool(.wrapCodeFence), .tool(.wrapBlockQuote)]
+        case .markdown: [.tool(.markdownLink), .tool(.alignTable), .tool(.headingUp), .tool(.headingDown)]
         case .code: [.open(.encode), .open(.decode), .open(.hash), .open(.generate), .tool(.jwt)]
         case .encode: [.tool(.encodeURL), .tool(.encodeBase64), .tool(.encodeHTML), .tool(.encodeJSON), .tool(.encodeHex), .tool(.encodeUnicode)]
         case .decode: [.tool(.decodeURL), .tool(.decodeBase64), .tool(.decodeHTML), .tool(.decodeJSON), .tool(.decodeHex), .tool(.decodeUnicode)]
@@ -433,6 +480,11 @@ extension TextCommand {
             case .decodeURL, .decodeBase64, .decodeHTML, .decodeJSON, .decodeHex, .decodeUnicode: "Decoded \(tool.title)"
             case .uuid, .timestamp, .loremIpsum, .password: "Made a \(tool.title.lowercased())"
             case .jwt: "JWT read and copied"
+            case .wrapQuotes, .wrapParentheses, .wrapBrackets, .wrapBraces, .wrapCodeFence, .wrapBlockQuote: "Wrapped in \(tool.title.lowercased())"
+            case .markdownLink: "Made a link"
+            case .alignTable: "Aligned the table"
+            case .headingUp, .headingDown: "Changed headings"
+            case .convertDate: "Converted the date"
             case .extractLinks, .extractEmails, .extractNumbers, .extractPhoneNumbers, .extractDates: "Extracted \(tool.title.lowercased())"
             case .count: "Counted"
             case .md5, .sha1, .sha256: "\(tool.title) copied"

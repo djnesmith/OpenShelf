@@ -172,6 +172,12 @@ final class SelectedTextController {
                 }
                 return result
             }
+        case .markdownLink:
+            // The selection is the label; the link is what was copied.
+            await produce(done: done, fileExtension: "md", modifiers: modifiers) {
+                guard let link = FormatTransforms.markdownLink(session.text, link: self.relay.pasteboard.string()) else { throw TextToolMessage.noLinkCopied }
+                return link
+            }
         case .toMarkdown:
             await produce(done: done, fileExtension: "md", modifiers: modifiers) {
                 guard let rich = try await self.richText(for: session) else { throw TextToolMessage.noFormatting }
@@ -344,12 +350,14 @@ enum TextToolMessage: Error {
     case alreadyTidy
     case unchanged
     case noFormatting
+    case noLinkCopied
 
     var toast: Toast {
         switch self {
         case .alreadyTidy: Toast(systemImage: "checkmark", title: "Already tidy")
         case .unchanged: Toast(systemImage: "checkmark", title: "Nothing to change")
         case .noFormatting: Toast(systemImage: "textformat", title: "No formatting to convert", subtitle: "The app copied plain text only")
+        case .noLinkCopied: Toast(systemImage: "link", title: "Copy a link first", subtitle: "Link makes [selection](copied link)")
         }
     }
 }

@@ -88,5 +88,6 @@ struct TextTransformsTests {
         }
         #expect(!TextTool.reindent.isPureSwift)
         #expect(!TextTool.toMarkdown.isPureSwift)
+        #expect(!TextTool.markdownLink.isPureSwift)
     }
 }
