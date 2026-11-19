@@ -469,6 +469,12 @@ Upstream's image Metadata › Clean judged a cleaned copy by ImageIO's propertie
 - Files: `Sources/OpenShelf/Tools/Editors/MetadataContainers.swift`, `Tools/Editors/MetadataEditor.swift` (`leftoverMetadata`)
 - Check: `swift test --filter 'MetadataContainerTests|MetadataStrippingTests'`. In the app: a PNG with Content Credentials, Metadata › Clean with "keep orientation and profile" on, then `grep -c caBX` on the copy is 0.
 
+### 57. Move and Copy open on the last folder used
+David, 2026-11-19: "it should remember the last directory a file was copied or moved to and open on that instead of the current dir". Move's and Copy's folder picker opens on the folder Move or Copy last put a file in (one memory for both, UserDefaults `MoveCopyLastFolder`). It is remembered only when at least one file went there. If that folder is gone or its disk isn't mounted, the picker opens where the first file is, as before. ROADMAP H10.
+- Commits: this one
+- Files: `Sources/OpenShelf/Support/FileActions.swift` (`startingFolder`, `rememberFolder`)
+- Check: `swift test --filter MoveCopyFolderTests`. In the app: Move a file to a folder, then Move or Copy another file from somewhere else; the picker opens on the first folder.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

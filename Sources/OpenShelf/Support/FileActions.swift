@@ -62,6 +62,7 @@ enum FileActions {
         guard let destination = chooseDestination(for: urls, verb: "Move") else { return nil }
         let result = transfer(urls, into: destination, operation: .move, prompt: askAboutConflict)
         report(result.failures, verb: "moved")
+        rememberFolder(destination, afterDoing: result.done.count)
         return (destination, result.done.count, result.moves)
     }
 
@@ -71,7 +72,30 @@ enum FileActions {
         guard let destination = chooseDestination(for: urls, verb: "Copy") else { return nil }
         let result = transfer(urls, into: destination, operation: .copy, prompt: askAboutConflict)
         report(result.failures, verb: "copied")
+        rememberFolder(destination, afterDoing: result.done.count)
         return (destination, result.done.count)
+    }
+
+    /// Where Move and Copy last put files (David, 2026-11-19: "it should remember the last
+    /// directory a file was copied or moved to and open on that instead of the current dir").
+    static let lastFolderKey = "MoveCopyLastFolder"
+
+    /// Remembers `folder` for the next Move or Copy, only when a file actually went there.
+    static func rememberFolder(_ folder: URL, afterDoing done: Int, defaults: UserDefaults = .standard) {
+        guard done > 0 else { return }
+        defaults.set(folder.path, forKey: lastFolderKey)
+    }
+
+    /// Where the picker opens: the last folder Move or Copy used, while it is still a folder
+    /// (not deleted, its disk mounted); otherwise the first file's folder.
+    static func startingFolder(for urls: [URL], defaults: UserDefaults = .standard) -> URL? {
+        if let path = defaults.string(forKey: lastFolderKey) {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue {
+                return URL(fileURLWithPath: path, isDirectory: true)
+            }
+        }
+        return urls.first?.deletingLastPathComponent()
     }
 
     enum Transfer: Sendable {
@@ -192,7 +216,7 @@ enum FileActions {
         return ConflictDecision(choice: choice, applyToAll: alert.suppressionButton?.state == .on)
     }
 
-    /// Move's and Copy's folder picker, starting where the first file is.
+    /// Move's and Copy's folder picker, starting in the last folder they used.
     private static func chooseDestination(for urls: [URL], verb: String) -> URL? {
         let panel = NSOpenPanel()
         panel.title = urls.count == 1 ? "\(verb) “\(urls[0].lastPathComponent)” to…" : "\(verb) \(urls.count) Files to…"
@@ -200,7 +224,7 @@ enum FileActions {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
-        panel.directoryURL = urls.first?.deletingLastPathComponent()
+        panel.directoryURL = startingFolder(for: urls)
         NSApp.activate()
         guard panel.runModal() == .OK else { return nil }
         return panel.url
