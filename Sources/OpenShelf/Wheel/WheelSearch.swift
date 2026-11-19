@@ -134,6 +134,10 @@ enum WheelSearch {
         .snakeCase: ["snake", "underscore"],
         .kebabCase: ["kebab", "dash", "hyphen"],
         .constantCase: ["constant", "screaming", "upper snake"],
+        .count: ["words", "characters", "length", "lines", "reading time"],
+        .md5: ["hash", "checksum", "digest"],
+        .sha1: ["hash", "checksum", "digest", "sha1"],
+        .sha256: ["hash", "checksum", "digest", "sha256"],
     ]
 }
 

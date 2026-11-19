@@ -403,7 +403,7 @@ Select text in any app and press the wheel shortcut (⌃⌥Space): a Text wheel 
 - Check: `swift test --filter 'TextTransformsTests|TextSnifferTests|TextWheelTests|TextHistoryTests|HotkeyRouteTests|ClipboardRelayTests|TextConversionTests|EmacsClientTests'`, and `OPENSHELF_TOOL_TESTS=1` for the real yq, jet, deno and pandoc runs and the Emacs elisp in a batch Emacs. In the app: select text in TextEdit, press ⌃⌥Space, Trim, then ⌘Z; in iTerm2 select, ⌘C, ⌃⌥Space, Trim, and the result is on the clipboard; in Emacs select a region, Trim, then undo once; and with files selected in Finder, the shortcut still opens the file wheel.
 
 ### 51. Lines and Case tools on the text wheel
-More ▸ now holds Lines ▸ · Case ▸ · Indent ▸ · Trim Lines · Straight Quotes. The tools work like the rest of the text wheel (replace the selection, ⌥ copies, ⇧ to a shelf, copy-only in terminals with ⌃ to paste, Undo wedge); a result the same as the selection shows "Nothing to change".
+More ▸ holds Lines ▸ · Case ▸ · Fix ▸ · Format ▸ · Code ▸ · Extract ▸ (David's layout, 2026-11-18; see #55). Indent ▸ is under Format ▸, Trim Lines and Straight Quotes under Fix ▸. The tools work like the rest of the text wheel (replace the selection, ⌥ copies, ⇧ to a shelf, copy-only in terminals with ⌃ to paste, Undo wedge); a result the same as the selection shows "Nothing to change".
 - Lines ▸: Sort A–Z (case ignored, ties keep their order) · Remove Duplicates (exact, the first stays) · Remove Blank Lines · Order ▸ (Sort Natural, as Finder sorts numbers; Sort by Length; Reverse; Shuffle) · Join & Split ▸ (Join with Commas, Join with Spaces, Split at Commas, Split at Spaces) · Lists ▸ (Number, Markdown List, CSV → Table, Quote, Unquote, Add Commas).
 - Case ▸: UPPER · lower · Title Case (keeps inner capitals such as "iPhone"; all-caps text is lowered first; no small-word rule) · Sentence case (lowers everything, then capitals after . ! ? and blank lines) · Code Case ▸ (camelCase, PascalCase, snake_case, kebab-case, CONSTANT_CASE, line by line; words split at spaces and punctuation, lower-to-upper changes, and acronyms, so "HTTPServer" is HTTP + Server).
 - Indent ▸: Dedent, Indent, Outdent, Tabs ↔ Spaces (moved from More).
@@ -446,6 +446,15 @@ The text wheel, Edit and the tools refuse only when the focused element is a pas
 - Commits: 9e77d1a, a2274f1, 20d4e0a, 697a239
 - Files: `Sources/OpenShelf/Text/AccessibilityText.swift` (`read`, `secureInputDiagnostics`), `Text/HotkeyRouting.swift` (`choose`), `Text/SelectedTextController.swift` (`canReplace`, `toolMayReplace`), `Text/TextLog.swift`, `App/AppDelegate.swift` (toast)
 - Check: `swift test --filter 'HotkeyRouteTests|EditWriteBack'`. In the app, with iTerm2 in front holding secure input, select text in Mail, ⌃⌥Space: the wheel opens. In a browser's password field: "Password field". `log show --last 10m --predicate 'subsystem == "com.djnesmith.OpenShelf"'` shows any refusal.
+
+### 55. More ▸ regrouped, with Count and Hash
+More ▸ is Lines ▸ · Case ▸ · Fix ▸ · Format ▸ · Code ▸ · Extract ▸ (David, 2026-11-18). Fix ▸ has Trim Lines and Straight Quotes; Format ▸ has Indent ▸; Code ▸ has Hash ▸ (MD5, SHA-1, SHA-256); Extract ▸ has Count. The rest of the Stage 2 tools fill these groups as they are built (ROADMAP C6).
+- Count shows a toast: words, characters (as people see them, so an emoji with a skin tone is one), lines, sentences and reading time at 230 words a minute; words and sentences follow the system's rules for the language. The text isn't changed.
+- A hash of the text's UTF-8 bytes, as lowercase hex, goes on the clipboard and shows in a toast; the text isn't changed.
+- Search finds them ("sha256", "count", "checksum", "reading time").
+- Commits: 1f962b5 (TextInfo), this one
+- Files: `Sources/OpenShelf/Text/TextInfo.swift`, `Text/TextWheel.swift` (`TextTool.count`, `.md5`, `.sha1`, `.sha256`, `isReport`; `TextGroup.fix`, `.format`, `.code`, `.hash`, `.extract`), `Text/SelectedTextController.swift` (`report`), `Wheel/WheelSearch.swift`
+- Check: `swift test --filter 'TextInfoTests|TextWheelTests|WedgeLabel'`. In the app: select a paragraph, ⌃⌥Space, More ▸, Extract ▸, Count; then More ▸, Code ▸, Hash ▸, SHA-256 and paste.
 
 ## Outside the repo
 

@@ -116,7 +116,7 @@ struct LineTransformsTests {
     /// The edges the brief named, on every Lines and Case tool: nothing in,
     /// nothing out; one line stays one line; a final newline and CRLF stay.
     @Test(arguments: TextGroup.allCases.flatMap(\.wedges).compactMap { command -> TextTool? in
-        guard case .tool(let tool) = command, ![.dedent, .indent, .outdent, .tabsSpaces, .trimLines, .straightenQuotes].contains(tool) else { return nil }
+        guard case .tool(let tool) = command, ![.dedent, .indent, .outdent, .tabsSpaces, .trimLines, .straightenQuotes].contains(tool), !tool.isReport else { return nil }
         return tool
     })
     func everyLineAndCaseToolKeepsTheShape(tool: TextTool) throws {

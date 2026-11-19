@@ -155,6 +155,10 @@ final class SelectedTextController {
 
     private func run(_ tool: TextTool, on session: Session, modifiers: NSEvent.ModifierFlags) async {
         let done = TextCommand.tool(tool).doneTitle
+        if tool.isReport {
+            report(tool, on: session)
+            return
+        }
         if let result = tool.apply(to: session.text) {
             await deliver(result, done: done, fileExtension: "txt", modifiers: modifiers)
             return
@@ -176,6 +180,19 @@ final class SelectedTextController {
         default:
             return
         }
+    }
+
+    /// Count shows a toast; a hash goes on the clipboard and shows a toast.
+    /// Neither changes the text.
+    private func report(_ tool: TextTool, on session: Session) {
+        if let digest = tool.digest {
+            let hex = TextInfo.hash(session.text, digest)
+            relay.pasteboard.writeText(hex)
+            ToastController.shared.show(Toast(systemImage: "number.square", title: TextCommand.tool(tool).doneTitle, subtitle: hex), for: .seconds(4))
+        } else {
+            ToastController.shared.show(Toast(systemImage: "sum", title: "Count", subtitle: TextInfo.summary(TextInfo.counts(session.text))), for: .seconds(5))
+        }
+        self.session = nil
     }
 
     /// The selection's formatted version: the one ⌘C already brought, or a

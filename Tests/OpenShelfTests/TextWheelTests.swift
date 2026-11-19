@@ -97,11 +97,32 @@ struct TextWheelTests {
         #expect(Self.commands(TextWheel.items(for: context, group: .convert)) == [.convert(.json), .convert(.edn), .convert(.xml), .convert(.toml), .back(nil)])
     }
 
-    @Test func moreLeadsToLinesCaseAndIndent() {
+    /// Count and the hashes report on the text and never change it; search finds them.
+    @Test func countAndHashAreReportsFoundBySearch() {
+        for tool in [TextTool.count, .md5, .sha1, .sha256] {
+            #expect(tool.isReport)
+            #expect(tool.apply(to: "x") == nil)
+        }
+        #expect(TextTool.sha256.digest == .sha256)
+        #expect(TextTool.count.digest == nil)
+        let candidates = TextWheel.searchCandidates(for: TextContext(text: "prose", hasRichText: false, canUndo: false))
+        #expect(WheelSearch.results(for: "sha256", in: candidates).first?.label == "SHA-256 · Code › Hash")
+        #expect(WheelSearch.results(for: "count", in: candidates).first?.label == "Count · Extract")
+        #expect(WheelSearch.results(for: "trim lines", in: candidates).first?.label == "Trim Lines · Fix")
+    }
+
+    /// More ▸ as David approved it: Lines · Case · Fix · Format · Code · Extract.
+    @Test func moreLeadsToTheSixGroups() {
         let context = TextContext(text: "x", hasRichText: false, canUndo: false)
         #expect(Self.commands(TextWheel.items(for: context, group: .more)) == [
-            .open(.lines), .open(.textCase), .open(.indentation), .tool(.trimLines), .tool(.straightenQuotes), .back(nil),
+            .open(.lines), .open(.textCase), .open(.fix), .open(.format), .open(.code), .open(.extract), .back(nil),
         ])
+        #expect(Self.commands(TextWheel.items(for: context, group: .fix)) == [.tool(.trimLines), .tool(.straightenQuotes), .back(.more)])
+        #expect(Self.commands(TextWheel.items(for: context, group: .format)) == [.open(.indentation), .back(.more)])
+        #expect(Self.commands(TextWheel.items(for: context, group: .indentation)).last == .back(.format))
+        #expect(Self.commands(TextWheel.items(for: context, group: .code)) == [.open(.hash), .back(.more)])
+        #expect(Self.commands(TextWheel.items(for: context, group: .hash)) == [.tool(.md5), .tool(.sha1), .tool(.sha256), .back(.code)])
+        #expect(Self.commands(TextWheel.items(for: context, group: .extract)) == [.tool(.count), .back(.more)])
         #expect(Self.commands(TextWheel.items(for: context, group: .lines)) == [
             .tool(.sortAZ), .tool(.removeDuplicates), .tool(.removeBlankLines), .open(.order), .open(.joinSplit), .open(.lists), .back(.more),
         ])

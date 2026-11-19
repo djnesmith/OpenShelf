@@ -40,6 +40,11 @@ enum TextTool: CaseIterable, Hashable, Sendable {
     case snakeCase
     case kebabCase
     case constantCase
+    // Reports: they say something about the text and leave it as it is.
+    case count
+    case md5
+    case sha1
+    case sha256
 
     var title: String {
         switch self {
@@ -79,6 +84,10 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .snakeCase: "snake_case"
         case .kebabCase: "kebab-case"
         case .constantCase: "CONSTANT_CASE"
+        case .count: "Count"
+        case .md5: "MD5"
+        case .sha1: "SHA-1"
+        case .sha256: "SHA-256"
         }
     }
 
@@ -114,11 +123,26 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .titleCase: "textformat"
         case .sentenceCase: "text.alignleft"
         case .camelCase, .pascalCase, .snakeCase, .kebabCase, .constantCase: "chevron.left.forwardslash.chevron.right"
+        case .count: "sum"
+        case .md5, .sha1, .sha256: "number.square"
         }
     }
 
-    /// Tools done in memory, with no file and no external process.
-    var isPureSwift: Bool { ![.reindent, .toMarkdown].contains(self) }
+    /// Tools done in memory that return new text, with no file and no external process.
+    var isPureSwift: Bool { ![.reindent, .toMarkdown].contains(self) && !isReport }
+
+    /// Count and the hashes say something about the text and don't change it.
+    var isReport: Bool { [.count, .md5, .sha1, .sha256].contains(self) }
+
+    /// The digest a hash tool takes.
+    var digest: TextInfo.Digest? {
+        switch self {
+        case .md5: .md5
+        case .sha1: .sha1
+        case .sha256: .sha256
+        default: nil
+        }
+    }
 
     /// Runs a pure-Swift tool; nil for the ones that need a converter.
     func apply(to text: String) -> String? {
@@ -158,7 +182,7 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .snakeCase: CaseTransforms.snake(text)
         case .kebabCase: CaseTransforms.kebab(text)
         case .constantCase: CaseTransforms.constant(text)
-        case .reindent, .toMarkdown: nil
+        case .reindent, .toMarkdown, .count, .md5, .sha1, .sha256: nil
         }
     }
 
@@ -182,6 +206,11 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
     /// The identifier cases, under Case.
     case codeCase
     case indentation
+    case fix
+    case format
+    case code
+    case hash
+    case extract
 
     var title: String {
         switch self {
@@ -194,6 +223,11 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .textCase: "Case"
         case .codeCase: "Code Case"
         case .indentation: "Indent"
+        case .fix: "Fix"
+        case .format: "Format"
+        case .code: "Code"
+        case .hash: "Hash"
+        case .extract: "Extract"
         }
     }
 
@@ -208,6 +242,11 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .textCase: "textformat"
         case .codeCase: "chevron.left.forwardslash.chevron.right"
         case .indentation: "increase.indent"
+        case .fix: "wand.and.stars"
+        case .format: "paragraphsign"
+        case .code: "curlybraces"
+        case .hash: "number.square"
+        case .extract: "text.magnifyingglass"
         }
     }
 
@@ -215,7 +254,9 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
     var parent: TextGroup? {
         switch self {
         case .convert, .more: nil
-        case .lines, .textCase, .indentation: .more
+        case .lines, .textCase, .fix, .format, .code, .extract: .more
+        case .indentation: .format
+        case .hash: .code
         case .order, .joinSplit, .lists: .lines
         case .codeCase: .textCase
         }
@@ -226,7 +267,13 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
     var wedges: [TextCommand] {
         switch self {
         case .convert: []
-        case .more: [.open(.lines), .open(.textCase), .open(.indentation), .tool(.trimLines), .tool(.straightenQuotes)]
+        // More ▸ as David approved it (2026-11-18); Fix, Format, Code and Extract fill up as their tools are built.
+        case .more: [.open(.lines), .open(.textCase), .open(.fix), .open(.format), .open(.code), .open(.extract)]
+        case .fix: [.tool(.trimLines), .tool(.straightenQuotes)]
+        case .format: [.open(.indentation)]
+        case .code: [.open(.hash)]
+        case .hash: [.tool(.md5), .tool(.sha1), .tool(.sha256)]
+        case .extract: [.tool(.count)]
         case .lines: [.tool(.sortAZ), .tool(.removeDuplicates), .tool(.removeBlankLines), .open(.order), .open(.joinSplit), .open(.lists)]
         case .order: [.tool(.sortNatural), .tool(.sortByLength), .tool(.reverseLines), .tool(.shuffleLines)]
         case .joinSplit: [.tool(.joinWithCommas), .tool(.joinWithSpaces), .tool(.splitAtCommas), .tool(.splitAtSpaces)]
@@ -282,6 +329,8 @@ extension TextCommand {
             case .addCommas: "Added commas"
             case .upperCase, .lowerCase, .titleCase, .sentenceCase, .camelCase, .pascalCase, .snakeCase, .kebabCase, .constantCase:
                 "Changed to \(tool.title)"
+            case .count: "Counted"
+            case .md5, .sha1, .sha256: "\(tool.title) copied"
             }
         case .convert(let format): "Converted to \(format.title)"
         case .undo: "Original"
