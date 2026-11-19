@@ -312,6 +312,7 @@ final class VimTextView: NSTextView {
     func load(_ text: String) {
         engine = VimEngine(text)
         // "+ and "* are the Mac clipboard.
+        engine.usesSystemClipboard = true
         engine.clipboard = VimClipboard(
             read: { NSPasteboard.general.string(forType: .string) },
             write: { text in

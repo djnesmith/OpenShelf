@@ -31,6 +31,9 @@ struct VimEditorWindowTests {
         var effects: [VimEffect] = []
         view.onEffect = { effects.append($0) }
         view.load("one\ntwo\nthree")
+        // The window follows David's clipboard rule; a bare engine is plain vim.
+        #expect(view.engine.usesSystemClipboard)
+        #expect(!VimEngine("x").usesSystemClipboard)
         for c in "jdd" { view.keyDown(with: Self.key(String(c))) }
         #expect(view.string == "one\nthree")
         #expect(view.selectedRange() == NSRange(location: 4, length: 0))

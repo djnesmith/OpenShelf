@@ -58,6 +58,10 @@ struct VimEngine {
     private(set) var registers: [Character: VimRegister] = [:]
     /// The system clipboard behind "+ and "*; the window connects it.
     var clipboard = VimClipboard()
+    /// David's rule for the Edit window: yanks also go on the Mac clipboard,
+    /// deletes and changes never do, and p and P with no register always
+    /// paste the Mac clipboard. Off (plain vim) unless the window turns it on.
+    var usesSystemClipboard = false
 
     private let original: [Character]
     private var pending: [VimKey] = []
@@ -1827,7 +1831,10 @@ struct VimEngine {
     private mutating func store(_ taken: VimRegister, yank: Bool) {
         guard activeRegister != "_" else { return }
         register = taken
-        if yank, activeRegister == nil { registers["0"] = taken }
+        if yank, activeRegister == nil {
+            registers["0"] = taken
+            if usesSystemClipboard { clipboard.write(taken.text) }
+        }
         switch activeRegister {
         case "+"?, "*"?: clipboard.write(taken.text)
         case let name? where name.isUppercase:
@@ -1855,7 +1862,11 @@ struct VimEngine {
             return VimRegister(text: text, linewise: text.hasSuffix("\n"))
         case "_"?: return VimRegister(text: "", linewise: false)
         case let name?: return name == "\"" ? register : registers[Character(name.lowercased())] ?? VimRegister(text: "", linewise: false)
-        case nil: return register
+        case nil:
+            guard usesSystemClipboard else { return register }
+            // The clipboard, whoever put it there; a final line break makes it lines, as vim's "+ does.
+            let text = (clipboard.read() ?? "").replacingOccurrences(of: "\r\n", with: "\n")
+            return VimRegister(text: text, linewise: text.hasSuffix("\n"))
         }
     }
 
