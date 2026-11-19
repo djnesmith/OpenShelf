@@ -16,6 +16,19 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
     private var destination = ""
     /// The text came with Windows line breaks, which go back on at the end.
     private var usesCRLF = false
+    private var scroll: NSScrollView?
+    /// Where the wrap choice is remembered between windows, like the window size.
+    private let defaults: UserDefaults
+    static let wrapKey = "EditWindowWrapsLines"
+    /// Said in the status line until the next key ("wrap off").
+    private var notice: String?
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    /// Long lines wrap (the default) or scroll sideways.
+    var wraps: Bool { defaults.object(forKey: Self.wrapKey) as? Bool ?? true }
 
     var isOpen: Bool { panel?.isVisible == true }
 
@@ -51,6 +64,9 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         textView?.load(lf)
     }
 
+    /// The window's panel, for tests.
+    var editorPanel: EditorPanel? { panel }
+
     /// The window's text view, for tests.
     var panelTextView: VimTextView? { textView }
 
@@ -76,6 +92,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.onFinish = { [weak self] in self?.finish() }
         panel.onCancel = { [weak self] in self?.cancel() }
+        panel.onToggleWrap = { [weak self] in self?.setWrap(nil) }
 
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
@@ -92,9 +109,13 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
             switch effect {
             case .finish: self?.finish()
             case .cancel: self?.cancel()
+            case .wrap(let on): self?.setWrap(on)
             }
         }
-        textView.onChange = { [weak self] in self?.updateStatus() }
+        textView.onChange = { [weak self] in
+            self?.notice = nil
+            self?.updateStatus()
+        }
 
         let left = NSTextField(labelWithString: "")
         let right = NSTextField(labelWithString: "")
@@ -126,6 +147,8 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
 
         self.panel = panel
         self.textView = textView
+        self.scroll = scroll
+        applyWrap()
         statusLeft = left
         statusRight = right
         return panel
@@ -144,6 +167,36 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         panel.setFrame(frame, display: false)
     }
 
+    /// Turns wrapping on, off or (nil) the other way, remembers it, and says so.
+    func setWrap(_ on: Bool?) {
+        let wraps = on ?? !self.wraps
+        defaults.set(wraps, forKey: Self.wrapKey)
+        applyWrap()
+        notice = wraps ? "wrap on" : "wrap off"
+        updateStatus()
+    }
+
+    private func applyWrap() {
+        guard let textView, let container = textView.textContainer else { return }
+        let wraps = self.wraps
+        scroll?.hasHorizontalScroller = !wraps
+        textView.isHorizontallyResizable = !wraps
+        container.widthTracksTextView = wraps
+        if wraps {
+            textView.autoresizingMask = [.width]
+            textView.setFrameSize(NSSize(width: scroll?.contentSize.width ?? textView.frame.width, height: textView.frame.height))
+            container.containerSize = NSSize(width: textView.frame.width, height: .greatestFiniteMagnitude)
+        } else {
+            textView.autoresizingMask = []
+            container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        }
+        textView.sizeToFit()
+        textView.scrollRangeToVisible(textView.selectedRange())
+    }
+
+    /// Whether long lines wrap in the text view itself, for tests.
+    var textViewWraps: Bool { textView?.textContainer?.widthTracksTextView ?? true }
+
     private func updateStatus() {
         guard let engine = textView?.engine else { return }
         if engine.mode == .commandLine {
@@ -156,6 +209,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         if let register = engine.recording, engine.mode != .commandLine {
             statusLeft?.stringValue += " · recording @\(register)"
         }
+        if let notice { statusLeft?.stringValue += " · \(notice)" }
         statusRight?.stringValue = "⌘↩ puts it \(destination) · ⌘W cancels"
     }
 
@@ -190,6 +244,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
 final class EditorPanel: NSPanel {
     var onFinish: () -> Void = {}
     var onCancel: () -> Void = {}
+    var onToggleWrap: () -> Void = {}
 
     override var canBecomeKey: Bool { true }
 
@@ -198,6 +253,13 @@ final class EditorPanel: NSPanel {
         if flags == .command {
             if event.keyCode == 36 || event.keyCode == 76 { onFinish(); return true }
             if event.charactersIgnoringModifiers == "w" { onCancel(); return true }
+        }
+        // ⌥⌘Z toggles wrapping: with ⌘ it never types, and it is no vim key.
+        if flags == [.command, .option], event.keyCode == 6 {
+            onToggleWrap()
+            return true
+        }
+        if flags == .command {
             // The app has no Edit menu, so the standard edit keys are sent here.
             let actions: [String: Selector] = ["c": #selector(NSText.copy(_:)), "v": #selector(NSText.paste(_:)), "x": #selector(NSText.cut(_:))]
             if let key = event.charactersIgnoringModifiers, let action = actions[key] {

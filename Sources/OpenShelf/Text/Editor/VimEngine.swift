@@ -20,6 +20,8 @@ enum VimMode: Equatable, Sendable {
 /// What the window does after a key.
 enum VimEffect: Equatable, Sendable {
     case finish, cancel
+    /// `:set wrap` (true), `:set nowrap` (false), `:set wrap!` or `:set invwrap` (nil: toggle).
+    case wrap(Bool?)
 }
 
 /// The system clipboard as the engine sees it, so tests need none.
@@ -321,6 +323,9 @@ struct VimEngine {
         let command = body.trimmingCharacters(in: .whitespaces)
         switch command {
         case "w", "wq", "x", "wq!", "x!", "w!": return .finish
+        case "set wrap": return .wrap(true)
+        case "set nowrap": return .wrap(false)
+        case "set wrap!", "set invwrap": return .wrap(nil)
         case "q!": return .cancel
         case "q":
             if isChanged {
@@ -1750,7 +1755,7 @@ struct VimEngine {
             }
             macroBudget -= 1
             failed = false
-            if handle(key) != nil {
+            if let effect = handle(key), effect == .finish || effect == .cancel {
                 // A macro can't close the window.
                 message = "Macro stopped: it would have closed the window"
                 return

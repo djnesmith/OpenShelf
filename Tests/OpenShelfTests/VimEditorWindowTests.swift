@@ -107,4 +107,61 @@ struct VimEditorWindowTests {
         #expect(load < .milliseconds(250))
         #expect(reload < .milliseconds(50))
     }
+
+    static func scratchDefaults() -> UserDefaults {
+        let name = "OpenShelfTests.wrap.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    /// Wrapping is on by default; turning it off makes long lines scroll
+    /// sideways, and the next window remembers the choice.
+    @Test func wrapTogglesAndIsRemembered() {
+        let defaults = Self.scratchDefaults()
+        let window = VimEditorWindow(defaults: defaults)
+        _ = window.makePanel()
+        #expect(window.wraps)
+        #expect(window.textViewWraps)
+        window.setWrap(nil)
+        #expect(!window.wraps)
+        #expect(!window.textViewWraps)
+        #expect(window.panelTextView?.isHorizontallyResizable == true)
+        let next = VimEditorWindow(defaults: defaults)
+        _ = next.makePanel()
+        #expect(!next.textViewWraps)
+        next.setWrap(true)
+        #expect(next.textViewWraps)
+    }
+
+    /// :set wrap, :set nowrap, :set wrap! and :set invwrap.
+    @Test func setWrapOnTheCommandLine() {
+        for (command, effect) in [("set wrap", VimEffect.wrap(true)), ("set nowrap", .wrap(false)), ("set wrap!", .wrap(nil)), ("set invwrap", .wrap(nil))] {
+            var engine = VimEngine("a")
+            #expect(engine.handle(VimEngineTests.keys(":\(command)<CR>")) == effect, "\(command)")
+        }
+        let window = VimEditorWindow(defaults: Self.scratchDefaults())
+        _ = window.makePanel()
+        window.load("abc")
+        for c in ":set nowrap" { window.panelTextView?.keyDown(with: Self.key(String(c))) }
+        window.panelTextView?.keyDown(with: Self.key("\r", keyCode: 36))
+        #expect(!window.textViewWraps)
+    }
+
+    /// ⌥⌘Z never reaches vim: the text, the mode, a pending operator and a
+    /// macro being recorded are as they were.
+    @Test func theWrapHotkeyLeavesVimAlone() {
+        let window = VimEditorWindow(defaults: Self.scratchDefaults())
+        let panel = window.makePanel()
+        window.load("one two")
+        let view = window.panelTextView!
+        for c in "qad" { view.keyDown(with: Self.key(String(c))) }
+        #expect(panel.performKeyEquivalent(with: Self.key("z", keyCode: 6, modifiers: [.command, .option])))
+        #expect(!window.textViewWraps)
+        #expect(view.engine.recording == "a")
+        #expect(view.engine.mode == .normal)
+        for c in "wq" { view.keyDown(with: Self.key(String(c))) }
+        #expect(view.string == "two")
+        #expect(view.engine.registers["a"]?.text == "dw")
+    }
 }
