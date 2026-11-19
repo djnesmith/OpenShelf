@@ -721,6 +721,7 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     |---|---|---|
     | `x` | Move the selected message(s) to Trash | "i think i would like x to trash" |
     | `c` | Open a new message | "c for compose" |
+    | `?` | Show the list of these shortcuts (an overlay; Esc or any key closes it) | "DuperMail has ? to bring them up" |
   - Settings sync: skip.
 
 ### Considered and not a fit
