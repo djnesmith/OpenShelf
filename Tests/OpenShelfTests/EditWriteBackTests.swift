@@ -34,4 +34,17 @@ struct EditWriteBackTests {
     func replacesOnlyAnUnchangedSelection(source: TextReader, now: SelectedTextRead, secure: Bool, expected: Bool) {
         #expect(SelectedTextController.canReplace(Self.session(source), now: now, appHoldsSecureInput: secure) == expected)
     }
+
+    /// The other tools paste right after reading: an unreadable selection is
+    /// trusted, but a password field that took focus meanwhile never gets the text.
+    @Test(arguments: [
+        (SelectedTextRead.text("hello"), true),
+        (.text("other"), false),
+        (.secure, false),
+        (.unavailable, true),
+        (.nothingSelected, true),
+    ])
+    func toolsNeverPasteIntoAPasswordField(now: SelectedTextRead, expected: Bool) {
+        #expect(SelectedTextController.toolMayReplace(Self.session(.accessibility), now: now) == expected)
+    }
 }

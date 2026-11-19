@@ -279,8 +279,19 @@ final class SelectedTextController {
     /// Whether the app still has the same text selected, where Accessibility
     /// can tell; a paste must never land on a different selection.
     private func selectionIsUnchanged(_ session: Session) -> Bool {
-        guard AccessibilityText.isTrusted, let now = AccessibilityText.currentSelection(pid: session.app.processIdentifier) else { return true }
-        return now == session.text
+        guard AccessibilityText.isTrusted else { return true }
+        return Self.toolMayReplace(session, now: AccessibilityText.read(pid: session.app.processIdentifier))
+    }
+
+    /// The tools paste right after reading, so a selection that can't be
+    /// read back is trusted; but a password field never gets the text, and a
+    /// different selection doesn't either.
+    static func toolMayReplace(_ session: Session, now: SelectedTextRead) -> Bool {
+        switch now {
+        case .text(let text): text == session.text
+        case .secure: false
+        case .nothingSelected, .notPermitted, .unavailable: true
+        }
     }
 
     /// Brings the app back in front (the keyboard wheel may have activated

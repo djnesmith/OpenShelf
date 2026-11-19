@@ -54,13 +54,6 @@ enum AccessibilityText {
         }
     }
 
-    /// The text selected now in app `pid`, or nil when it can't be read.
-    /// Checked just before pasting, so a result never lands somewhere else.
-    static func currentSelection(pid: pid_t) -> String? {
-        if case .text(let text) = read(pid: pid) { return text }
-        return nil
-    }
-
     private static func element(_ parent: AXUIElement, _ attribute: String) -> AXUIElement? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(parent, attribute as CFString, &value) == .success,
