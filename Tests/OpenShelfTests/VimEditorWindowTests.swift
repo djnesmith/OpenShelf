@@ -173,4 +173,43 @@ struct VimEditorWindowTests {
         #expect(view.string == "two")
         #expect(view.engine.registers["a"]?.text == "dw")
     }
+
+    /// A blue block in normal and visual mode, a bar in insert; while typing
+    /// a ":" or "/" command the bar is in the status line instead.
+    @Test func cursorShapeFollowsTheMode() {
+        #expect(VimTextView.cursorShape(for: .normal) == .block)
+        #expect(VimTextView.cursorShape(for: .visual) == .block)
+        #expect(VimTextView.cursorShape(for: .visualLine) == .block)
+        #expect(VimTextView.cursorShape(for: .insert) == .bar)
+        #expect(VimTextView.cursorShape(for: .commandLine) == .hidden)
+        #expect(VimTextView.cursorBlue.usingColorSpace(.sRGB)!.blueComponent > 0.9)
+    }
+
+    /// The block covers the whole character: one cell for a letter, wider for
+    /// an emoji or a tab, one cell at a line's end or past the text.
+    @Test func blockCoversTheWholeCharacter() {
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        view.load("a😀\tb\n")
+        view.layoutManager!.ensureLayout(for: view.textContainer!)
+        let caret = NSRect(x: 0, y: 0, width: 1, height: 16)
+        let cell = view.blockRect(at: 0, caret: caret).width
+        #expect(cell > 4)
+        #expect(view.blockRect(at: 1, caret: caret).width > cell)
+        #expect(view.blockRect(at: 2, caret: caret).width >= cell)
+        #expect(view.blockRect(at: 4, caret: caret).width == cell)
+        #expect(view.blockRect(at: 99, caret: caret).width == cell)
+        // Asking for the block changes neither the text nor vim.
+        #expect(view.string == "a😀\tb\n")
+        #expect(view.engine.mode == .normal)
+        #expect(view.engine.cursor == 0)
+    }
+
+    /// The bottom line always shows the wrap key and its state, after the keys
+    /// needed most, so a narrow window cuts the least needed part first.
+    @Test func bottomLineShowsTheWrapKeyAndState() {
+        let on = VimEditorWindow.hints(destination: "back into Mail", wraps: true)
+        #expect(on == "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: on · the text goes back into Mail")
+        #expect(VimEditorWindow.hints(destination: "on the clipboard", wraps: false).contains("⌥⌘Z wrap: off"))
+        #expect(on.range(of: "⌘W")!.lowerBound < on.range(of: "⌥⌘Z")!.lowerBound)
+    }
 }

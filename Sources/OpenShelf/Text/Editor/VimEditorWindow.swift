@@ -20,8 +20,6 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
     /// Where the wrap choice is remembered between windows, like the window size.
     private let defaults: UserDefaults
     static let wrapKey = "EditWindowWrapsLines"
-    /// Said in the status line until the next key ("wrap off").
-    private var notice: String?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -112,10 +110,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
             case .wrap(let on): self?.setWrap(on)
             }
         }
-        textView.onChange = { [weak self] in
-            self?.notice = nil
-            self?.updateStatus()
-        }
+        textView.onChange = { [weak self] in self?.updateStatus() }
 
         let left = NSTextField(labelWithString: "")
         let right = NSTextField(labelWithString: "")
@@ -172,7 +167,6 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         let wraps = on ?? !self.wraps
         defaults.set(wraps, forKey: Self.wrapKey)
         applyWrap()
-        notice = wraps ? "wrap on" : "wrap off"
         updateStatus()
     }
 
@@ -198,13 +192,19 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         textView.scrollRangeToVisible(textView.selectedRange())
     }
 
+    /// The bottom line's keys, most needed first: a narrow window cuts the end.
+    static func hints(destination: String, wraps: Bool) -> String {
+        "⌘↩ done · ⌘W cancel · ⌥⌘Z wrap: \(wraps ? "on" : "off") · the text goes \(destination)"
+    }
+
     /// Whether long lines wrap in the text view itself, for tests.
     var textViewWraps: Bool { textView?.textContainer?.widthTracksTextView ?? true }
 
     private func updateStatus() {
         guard let engine = textView?.engine else { return }
         if engine.mode == .commandLine {
-            statusLeft?.stringValue = engine.commandLine
+            // The command line's own cursor: a blue bar after what is typed.
+            statusLeft?.stringValue = engine.commandLine + "▏"
         } else if let message = engine.message {
             statusLeft?.stringValue = "\(engine.modeName) · \(message)"
         } else {
@@ -213,8 +213,7 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         if let register = engine.recording, engine.mode != .commandLine {
             statusLeft?.stringValue += " · recording @\(register)"
         }
-        if let notice { statusLeft?.stringValue += " · \(notice)" }
-        statusRight?.stringValue = "⌘↩ puts it \(destination) · ⌘W cancels"
+        statusRight?.stringValue = Self.hints(destination: destination, wraps: wraps)
     }
 
     private func finish() {
@@ -297,6 +296,7 @@ final class VimTextView: NSTextView {
 
     private func setUp() {
         font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        insertionPointColor = Self.cursorBlue
         isRichText = false
         importsGraphics = false
         allowsUndo = false
@@ -394,26 +394,104 @@ final class VimTextView: NSTextView {
         return text.distance(from: text.startIndex, to: index)
     }
 
-    // A block cursor outside insert mode, as in vim.
-    private var blockWidth: CGFloat {
-        ("0" as NSString).size(withAttributes: [.font: font ?? .monospacedSystemFont(ofSize: 13, weight: .regular)]).width
-    }
+    // MARK: - Cursor
 
-    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
-        guard engine.mode != .insert else { return super.drawInsertionPoint(in: rect, color: color, turnedOn: flag) }
-        var block = rect
-        block.size.width = blockWidth
-        if flag {
-            color.withAlphaComponent(0.5).set()
-            block.fill()
-        } else {
-            setNeedsDisplay(block, avoidAdditionalLayout: true)
+    /// The cursor's shape for each mode (David: "a block if normal and a | if
+    /// insert ... blue for both ... see the letter in the blue block").
+    enum CursorShape: Equatable { case block, bar, hidden }
+
+    /// Whether the normal-mode block blinks (David's call; insert's bar always does).
+    static let blockBlinks = true
+
+    static func cursorShape(for mode: VimMode) -> CursorShape {
+        switch mode {
+        case .normal, .visual, .visualLine: .block
+        case .insert: .bar
+        // Typing after ":" or "/": the bar is in the status line instead.
+        case .commandLine: .hidden
         }
     }
 
+    /// Doom One's blue, as in David's terminal theme.
+    static let cursorBlue = NSColor(srgbRed: 0x51 / 255.0, green: 0xaf / 255.0, blue: 0xef / 255.0, alpha: 1)
+    /// The letter inside the block: near-black reads on that blue in light and dark
+    /// appearance alike (about 8:1; white would be about 2.4:1).
+    static let cursorLetter = NSColor(srgbRed: 0x1c / 255.0, green: 0x1f / 255.0, blue: 0x24 / 255.0, alpha: 1)
+
+    private var cellWidth: CGFloat {
+        ("0" as NSString).size(withAttributes: [.font: font ?? .monospacedSystemFont(ofSize: 13, weight: .regular)]).width
+    }
+
+    /// The block covers the whole character under the cursor (an emoji or a
+    /// letter with accents is one; a tab is its full width); at a line's end
+    /// or on an empty line it is one cell wide.
+    func blockRect(at index: Int, caret: NSRect) -> NSRect {
+        var block = caret
+        block.size.width = cellWidth
+        guard let layoutManager, let textContainer, index < engine.text.count, engine.text[index] != "\n" else { return block }
+        let start = engine.text.prefix(index).reduce(0) { $0 + $1.utf16.count }
+        let characters = NSRange(location: start, length: engine.text[index].utf16.count)
+        let glyphs = layoutManager.glyphRange(forCharacterRange: characters, actualCharacterRange: nil)
+        var rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+        if engine.text[index] == "\t", glyphs.upperBound < layoutManager.numberOfGlyphs {
+            // A tab's glyph is narrow; the block runs to where the next character starts.
+            rect.size.width = layoutManager.location(forGlyphAt: glyphs.upperBound).x - layoutManager.location(forGlyphAt: glyphs.location).x
+        }
+        rect.origin.x += textContainerOrigin.x
+        rect.origin.y = caret.origin.y
+        rect.size.height = caret.height
+        rect.size.width = max(rect.width, cellWidth)
+        return rect
+    }
+
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        switch Self.cursorShape(for: engine.mode) {
+        case .bar: super.drawInsertionPoint(in: rect, color: Self.cursorBlue, turnedOn: flag)
+        case .hidden: return
+        case .block:
+            guard Self.blockBlinks else { return }
+            let block = blockRect(at: engine.cursor, caret: rect)
+            if flag { drawBlock(block, at: engine.cursor) } else { setNeedsDisplay(block, avoidAdditionalLayout: true) }
+        }
+    }
+
+    /// The blue block, with the letter under it drawn again in near-black.
+    private func drawBlock(_ block: NSRect, at index: Int) {
+        Self.cursorBlue.set()
+        block.fill()
+        guard index < engine.text.count, !engine.text[index].isNewline, engine.text[index] != "\t" else { return }
+        let letter = NSAttributedString(string: String(engine.text[index]), attributes: [
+            .font: font ?? .monospacedSystemFont(ofSize: 13, weight: .regular),
+            .foregroundColor: Self.cursorLetter,
+        ])
+        let start = engine.text.prefix(index).reduce(0) { $0 + $1.utf16.count }
+        guard let layoutManager else { return }
+        let glyph = layoutManager.glyphIndexForCharacter(at: start)
+        let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let baseline = line.origin.y + textContainerOrigin.y + layoutManager.location(forGlyphAt: glyph).y
+        let ascent = (font ?? .monospacedSystemFont(ofSize: 13, weight: .regular)).ascender
+        letter.draw(at: NSPoint(x: block.minX, y: baseline - ascent))
+    }
+
+    /// In visual mode the selection hides the caret, so the block at the
+    /// selection's moving end is drawn here, without blinking; so is the
+    /// normal-mode block when it doesn't blink.
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let steady = engine.mode == .visual || engine.mode == .visualLine || (engine.mode == .normal && !Self.blockBlinks)
+        guard steady, let layoutManager, layoutManager.numberOfGlyphs > 0 else { return }
+        let offset = engine.text.prefix(engine.cursor).reduce(0) { $0 + $1.utf16.count }
+        let glyph = layoutManager.glyphIndexForCharacter(at: min(offset, layoutManager.numberOfGlyphs - 1))
+        var caret = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        caret.origin.x = layoutManager.location(forGlyphAt: glyph).x + textContainerOrigin.x
+        caret.origin.y += textContainerOrigin.y
+        drawBlock(blockRect(at: engine.cursor, caret: caret), at: engine.cursor)
+    }
+
     override func setNeedsDisplay(_ invalidRect: NSRect, avoidAdditionalLayout flag: Bool) {
+        // Wide enough for a block over an emoji or a tab.
         var rect = invalidRect
-        rect.size.width += blockWidth
+        rect.size.width += cellWidth * 8
         super.setNeedsDisplay(rect, avoidAdditionalLayout: flag)
     }
 
