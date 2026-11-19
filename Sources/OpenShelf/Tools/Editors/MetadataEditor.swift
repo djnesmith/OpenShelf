@@ -236,17 +236,53 @@ enum MetadataStripper {
         }
         let type = EditableImage.writableTypes.contains(image.type) ? image.type : .png
         let url = OutputNaming.destination(for: image.url, suffix: MetadataSuffix.removed, pathExtension: image.pathExtension(for: type))
-        var pixels = image.cgImage
-        if !keepsOrientationAndProfile {
-            pixels = sRGB(pixels) ?? pixels
+        if let source = CGImageSourceCreateWithURL(image.url as CFURL, nil), CGImageSourceGetCount(source) > 1 {
+            // An animation or a multi-page TIFF keeps every frame and its timing.
+            try writeFrames(from: source, to: url, type: type, toSRGB: !keepsOrientationAndProfile)
+        } else {
+            var pixels = image.cgImage
+            if !keepsOrientationAndProfile {
+                pixels = sRGB(pixels) ?? pixels
+            }
+            try EditableImage.write(pixels, to: url, type: type, quality: 0.95, metadata: [:])
         }
-        try EditableImage.write(pixels, to: url, type: type, quality: 0.95, metadata: [:])
         let leftovers = leftoverMetadata(at: url)
         guard leftovers.isEmpty else {
             try? FileManager.default.removeItem(at: url)
             throw StripError.couldNotRemove(file: image.url.lastPathComponent, fields: leftovers)
         }
         return url
+    }
+
+    /// Every frame of `source`, with no metadata but its timing and loop count.
+    private static func writeFrames(from source: CGImageSource, to url: URL, type: UTType, toSRGB: Bool) throws {
+        try SaveError.checkWritable(url)
+        let count = CGImageSourceGetCount(source)
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, count, nil) else {
+            throw SaveError.diagnose(url)
+        }
+        let timing: [CFString] = [kCGImagePropertyGIFDelayTime, kCGImagePropertyGIFUnclampedDelayTime, kCGImagePropertyAPNGDelayTime, kCGImagePropertyAPNGUnclampedDelayTime]
+        func only(_ keys: [CFString], of dictionary: CFString, in properties: [CFString: Any]?) -> [CFString: Any] {
+            guard let values = properties?[dictionary] as? [CFString: Any] else { return [:] }
+            let kept = values.filter { keys.contains($0.key) }
+            return kept.isEmpty ? [:] : [dictionary: kept]
+        }
+        let file = CGImageSourceCopyProperties(source, nil) as? [CFString: Any]
+        let loops = only([kCGImagePropertyGIFLoopCount], of: kCGImagePropertyGIFDictionary, in: file)
+            .merging(only([kCGImagePropertyAPNGLoopCount], of: kCGImagePropertyPNGDictionary, in: file)) { $1 }
+        CGImageDestinationSetProperties(destination, loops as CFDictionary)
+        for index in 0..<count {
+            guard var frame = CGImageSourceCreateImageAtIndex(source, index, nil) else { throw SaveError.diagnose(url) }
+            if toSRGB { frame = sRGB(frame) ?? frame }
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+            let delays = only(timing, of: kCGImagePropertyGIFDictionary, in: properties)
+                .merging(only(timing, of: kCGImagePropertyPNGDictionary, in: properties)) { $1 }
+            CGImageDestinationAddImage(destination, frame, delays as CFDictionary)
+        }
+        guard CGImageDestinationFinalize(destination) else {
+            try? FileManager.default.removeItem(at: url)
+            throw SaveError.diagnose(url)
+        }
     }
 
     /// Whether the file at `url` has anything for `strip` to remove.
@@ -330,7 +366,7 @@ enum MetadataStripper {
             }
         }
         // What ImageIO doesn't show: C2PA, PNG text chunks, comments.
-        if let data = try? Data(contentsOf: url) {
+        if let data = try? Data(contentsOf: url, options: .alwaysMapped) {
             found += MetadataContainers.leftovers(in: data)
         }
         var unique: [String] = []

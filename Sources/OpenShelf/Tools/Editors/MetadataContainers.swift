@@ -6,16 +6,24 @@ import Foundation
 /// Clean checks its result with this, so it can't call a file clean that isn't.
 /// A lossless PNG copy, for one, keeps caBX and tEXt chunks.
 enum MetadataContainers {
-    /// What metadata the bytes still hold, by name; empty when none, or when
-    /// the format isn't one this reads (HEIC and AVIF are re-encoded and
-    /// checked by ImageIO).
+    /// What metadata the bytes still hold, by name; empty when none. PNG,
+    /// JPEG, GIF, TIFF and WebP are walked; any other format (HEIC, AVIF) is
+    /// searched for a C2PA (JUMBF) box. `data` can be memory-mapped: it is
+    /// read in place, never copied.
     static func leftovers(in data: Data) -> [String] {
-        let bytes = [UInt8](data)
+        let bytes = data.startIndex == 0 ? data : Data(data)
         if bytes.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return png(bytes) }
         if bytes.starts(with: [0xFF, 0xD8]) { return jpeg(bytes) }
         if bytes.starts(with: Array("GIF8".utf8)) { return gif(bytes) }
         if bytes.starts(with: [0x49, 0x49, 0x2A, 0x00]) || bytes.starts(with: [0x4D, 0x4D, 0x00, 0x2A]) { return tiff(bytes) }
-        return []
+        if bytes.starts(with: Array("RIFF".utf8)), bytes.count >= 12, bytes[8..<12].elementsEqual("WEBP".utf8) { return webp(bytes) }
+        return containsJUMBF(bytes) ? ["Content Credentials (C2PA)"] : []
+    }
+
+    /// A JUMBF box ("jumb" with a "jumd" description inside), as C2PA uses in
+    /// any container.
+    static func containsJUMBF(_ bytes: Data) -> Bool {
+        bytes.range(of: Data("jumb".utf8)).map { bytes.range(of: Data("jumd".utf8), in: $0.upperBound..<bytes.endIndex) != nil } ?? false
     }
 
     // MARK: - PNG
@@ -30,7 +38,7 @@ enum MetadataContainers {
         "eXIf",
     ]
 
-    static func png(_ bytes: [UInt8]) -> [String] {
+    static func png(_ bytes: Data) -> [String] {
         var found: [String] = []
         var offset = 8
         while offset + 8 <= bytes.count {
@@ -52,7 +60,7 @@ enum MetadataContainers {
 
     // MARK: - JPEG
 
-    static func jpeg(_ bytes: [UInt8]) -> [String] {
+    static func jpeg(_ bytes: Data) -> [String] {
         var found: [String] = []
         var offset = 2
         while offset + 4 <= bytes.count, bytes[offset] == 0xFF {
@@ -63,7 +71,9 @@ enum MetadataContainers {
             // The image data starts: no more metadata segments.
             if marker == 0xDA || marker == 0xD9 { break }
             let length = Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
-            let body = Array(bytes[min(offset + 4, bytes.count)..<min(offset + 2 + length, bytes.count)])
+            // A length below 2 can't be a segment: stop rather than misread.
+            guard length >= 2 else { break }
+            let body = Data(bytes[(offset + 4)..<min(offset + 2 + length, bytes.count)])
             func starts(_ text: String) -> Bool { body.starts(with: Array(text.utf8)) }
             switch marker {
             case 0xE0, 0xEE:
@@ -72,7 +82,14 @@ enum MetadataContainers {
                 // EXIF and XMP are ImageIO's to judge (its XMP check reads
                 // every tag, and lets a kept orientation through); anything
                 // else in APP1 is not either.
-                if !starts("Exif") && !starts("http://ns.adobe.com/xap/1.0/") && !starts("http://ns.adobe.com/xmp/extension/") { found.append("APP1 data") }
+                if starts("Exif") {
+                    if exifHasThumbnail(Data(body.dropFirst(6))) { found.append("EXIF thumbnail") }
+                } else if starts("http://ns.adobe.com/xmp/extension/") {
+                    // ImageIO reads extended XMP only beside a main packet; never leave it.
+                    found.append("extended XMP")
+                } else if !starts("http://ns.adobe.com/xap/1.0/") {
+                    found.append("APP1 data")
+                }
             case 0xE2:
                 if starts("MPF") { found.append("embedded images (MPF)") } else if !starts("ICC_PROFILE") { found.append("APP2 data") }
             case 0xEB:
@@ -94,7 +111,7 @@ enum MetadataContainers {
 
     // MARK: - GIF
 
-    static func gif(_ bytes: [UInt8]) -> [String] {
+    static func gif(_ bytes: Data) -> [String] {
         guard bytes.count >= 13 else { return [] }
         var found: [String] = []
         var offset = 13
@@ -136,6 +153,35 @@ enum MetadataContainers {
         return unique(found)
     }
 
+    /// Whether EXIF holds a thumbnail: a second image directory with a JPEG offset (tag 513).
+    static func exifHasThumbnail(_ tiff: Data) -> Bool {
+        guard tiff.count >= 8, tiff.starts(with: [0x49, 0x49]) || tiff.starts(with: [0x4D, 0x4D]) else { return false }
+        let fields = TIFFFields(tiff)
+        let first = fields.u32(4)
+        guard first > 0, first + 2 <= tiff.count else { return false }
+        let second = fields.u32(first + 2 + fields.u16(first) * 12)
+        return second > 0 && fields.tags(at: second).contains(513)
+    }
+
+    // MARK: - WebP
+
+    static func webp(_ bytes: Data) -> [String] {
+        var found: [String] = []
+        var offset = 12
+        while offset + 8 <= bytes.count {
+            let type = String(decoding: bytes[offset..<(offset + 4)], as: UTF8.self)
+            let length = Int(bytes[offset + 4]) | Int(bytes[offset + 5]) << 8 | Int(bytes[offset + 6]) << 16 | Int(bytes[offset + 7]) << 24
+            switch type {
+            case "C2PA": found.append("Content Credentials (C2PA)")
+            case "XMP ": found.append("XMP")
+            case "EXIF": found.append("EXIF")
+            default: break
+            }
+            offset += 8 + length + (length & 1)
+        }
+        return unique(found)
+    }
+
     // MARK: - TIFF
 
     /// Text and identifying tags. A lossless TIFF copy keeps them, and
@@ -146,21 +192,42 @@ enum MetadataContainers {
         34853: "location", 37510: "comment",
     ]
 
-    static func tiff(_ bytes: [UInt8]) -> [String] {
-        let little = bytes[0] == 0x49
-        func u16(_ at: Int) -> Int { at + 2 <= bytes.count ? (little ? Int(bytes[at]) | Int(bytes[at + 1]) << 8 : Int(bytes[at]) << 8 | Int(bytes[at + 1])) : 0 }
-        func u32(_ at: Int) -> Int { at + 4 <= bytes.count ? (little ? u16(at) | u16(at + 2) << 16 : u16(at) << 16 | u16(at + 2)) : 0 }
+    static func tiff(_ bytes: Data) -> [String] {
+        let fields = TIFFFields(bytes)
         var found: [String] = []
-        var directory = u32(4)
+        var directory = fields.u32(4)
         var visited = Set<Int>()
         while directory > 0, directory + 2 <= bytes.count, visited.insert(directory).inserted {
-            let count = u16(directory)
-            for index in 0..<count {
-                if let name = tiffTags[u16(directory + 2 + index * 12)] { found.append(name) }
-            }
-            directory = u32(directory + 2 + count * 12)
+            found += fields.tags(at: directory).compactMap { tiffTags[$0] }
+            directory = fields.u32(directory + 2 + fields.u16(directory) * 12)
         }
         return unique(found)
+    }
+
+    /// Reads TIFF numbers in the file's byte order; out of range reads as 0.
+    struct TIFFFields {
+        let bytes: Data
+        let little: Bool
+
+        init(_ bytes: Data) {
+            self.bytes = bytes
+            little = bytes.first == 0x49
+        }
+
+        func u16(_ at: Int) -> Int {
+            guard at >= 0, at + 2 <= bytes.count else { return 0 }
+            return little ? Int(bytes[at]) | Int(bytes[at + 1]) << 8 : Int(bytes[at]) << 8 | Int(bytes[at + 1])
+        }
+
+        func u32(_ at: Int) -> Int {
+            little ? u16(at) | u16(at + 2) << 16 : u16(at) << 16 | u16(at + 2)
+        }
+
+        /// The tag numbers in the directory at `offset`.
+        func tags(at offset: Int) -> [Int] {
+            let count = min(u16(offset), max((bytes.count - offset - 2) / 12, 0))
+            return (0..<count).map { u16(offset + 2 + $0 * 12) }
+        }
     }
 
     private static func unique(_ items: [String]) -> [String] {

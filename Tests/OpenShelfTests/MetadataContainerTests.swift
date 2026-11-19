@@ -155,4 +155,104 @@ struct MetadataContainerTests {
         #expect(MetadataContainers.leftovers(in: tiff) == ["image description", "copyright"])
         #expect(MetadataContainers.leftovers(in: Data("not an image".utf8)).isEmpty)
     }
+
+    static func frames(_ url: URL) -> Int {
+        CGImageSourceCreateWithURL(url as CFURL, nil).map(CGImageSourceGetCount) ?? 0
+    }
+
+    /// Several frames written by ImageIO, with timing (GIF or APNG) or as pages (TIFF).
+    static func encodeFrames(_ type: UTType, count: Int, frame: (Int) -> [CFString: Any] = { _ in [:] }) -> Data {
+        let data = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(data, type.identifier as CFString, count, nil)!
+        for index in 0..<count { CGImageDestinationAddImage(destination, image(), frame(index) as CFDictionary) }
+        CGImageDestinationFinalize(destination)
+        return data as Data
+    }
+
+    /// A malformed JPEG segment (length 1) once crashed the walker; ImageIO opens such a file.
+    @Test func malformedSegmentLengthDoesNotCrash() {
+        var jpeg = Self.encode(.jpeg)
+        let scan = jpeg.range(of: Data([0xFF, 0xDA]))!.lowerBound
+        jpeg.insert(contentsOf: [0xFF, 0xE5, 0x00, 0x01], at: scan)
+        _ = MetadataContainers.leftovers(in: jpeg)
+        var zero = Self.encode(.jpeg)
+        zero.insert(contentsOf: [0xFF, 0xE5, 0x00, 0x00], at: 2)
+        _ = MetadataContainers.leftovers(in: zero)
+    }
+
+    /// Cleaning an animation or a multi-page TIFF keeps every frame and its timing.
+    @Test func animationsAndPagesKeepEveryFrame() throws {
+        let directory = try Self.directory()
+        var gif = Self.encodeFrames(.gif, count: 3) { _ in [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.25]] }
+        gif.insert(contentsOf: Data([0x21, 0xFE, 6]) + Data("secret".utf8) + Data([0]), at: gif.count - 1)
+        let gifURL = directory.appendingPathComponent("Anim.gif")
+        try gif.write(to: gifURL)
+        let cleanGIF = try MetadataStripper.strip(try EditableImage.load(gifURL), keepsOrientationAndProfile: true)
+        #expect(Self.frames(cleanGIF) == 3)
+        let delay = (CGImageSourceCopyPropertiesAtIndex(CGImageSourceCreateWithURL(cleanGIF as CFURL, nil)!, 1, nil) as? [CFString: Any])
+            .flatMap { $0[kCGImagePropertyGIFDictionary] as? [CFString: Any] }?[kCGImagePropertyGIFDelayTime] as? Double
+        #expect(delay == 0.25)
+        #expect(try Data(contentsOf: cleanGIF).range(of: Data("secret".utf8)) == nil)
+
+        var apng = Self.encodeFrames(.png, count: 3) { _ in [kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGDelayTime: 0.3]] }
+        apng.insert(contentsOf: Self.pngChunk("caBX", Data("jumbjumdc2pa".utf8)), at: apng.count - 12)
+        let apngURL = directory.appendingPathComponent("Anim.png")
+        try apng.write(to: apngURL)
+        #expect(Self.frames(apngURL) == 3)
+        let cleanAPNG = try MetadataStripper.strip(try EditableImage.load(apngURL), keepsOrientationAndProfile: true)
+        #expect(Self.frames(cleanAPNG) == 3)
+        let apngDelay = (CGImageSourceCopyPropertiesAtIndex(CGImageSourceCreateWithURL(cleanAPNG as CFURL, nil)!, 1, nil) as? [CFString: Any])
+            .flatMap { $0[kCGImagePropertyPNGDictionary] as? [CFString: Any] }?[kCGImagePropertyAPNGDelayTime] as? Double
+        // APNG stores the delay as a fraction, so it reads back a hair off.
+        #expect(apngDelay.map { abs($0 - 0.3) < 0.001 } == true)
+        #expect(try Data(contentsOf: cleanAPNG).range(of: Data("caBX".utf8)) == nil)
+
+        let tiff = Self.encodeFrames(.tiff, count: 2) { $0 == 1 ? [kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFArtist: "secret"]] : [:] }
+        let tiffURL = directory.appendingPathComponent("Pages.tiff")
+        try tiff.write(to: tiffURL)
+        let cleanTIFF = try MetadataStripper.strip(try EditableImage.load(tiffURL), keepsOrientationAndProfile: true)
+        #expect(Self.frames(cleanTIFF) == 2)
+        #expect(try Data(contentsOf: cleanTIFF).range(of: Data("secret".utf8)) == nil)
+    }
+
+    /// WebP, HEIC and AVIF aren't walked chunk by chunk like PNG; C2PA in them is still found.
+    @Test func webpAndHEIFCredentialsAreFound() throws {
+        // A 1×1 lossless WebP, with a C2PA chunk added and the RIFF size fixed.
+        var webp = Data(base64Encoded: "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")!
+        let chunk = Data("C2PA".utf8) + Data([12, 0, 0, 0]) + Data("jumbjumdc2pa".utf8)
+        webp.append(chunk)
+        let size = UInt32(webp.count - 8)
+        webp.replaceSubrange(4..<8, with: [UInt8(size & 0xff), UInt8(size >> 8 & 0xff), UInt8(size >> 16 & 0xff), UInt8(size >> 24)])
+        #expect(MetadataContainers.leftovers(in: webp) == ["Content Credentials (C2PA)"])
+        let url = try Self.directory().appendingPathComponent("Shot.webp")
+        try webp.write(to: url)
+        #expect(MetadataStripper.hasIdentifyingMetadata(at: url))
+        let clean = try MetadataStripper.strip(try EditableImage.load(url), keepsOrientationAndProfile: true)
+        #expect(MetadataStripper.leftoverMetadata(at: clean).isEmpty)
+        // WebP's own XMP and EXIF chunks are named too.
+        var xmp = Data(base64Encoded: "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")!
+        xmp.append(Data("XMP ".utf8) + Data([6, 0, 0, 0]) + Data("secret".utf8))
+        #expect(MetadataContainers.leftovers(in: xmp) == ["XMP"])
+        // HEIC and AVIF: a JUMBF box anywhere counts.
+        #expect(MetadataContainers.leftovers(in: Data("....ftypheic....jumb....jumdc2pa".utf8)) == ["Content Credentials (C2PA)"])
+        #expect(MetadataContainers.leftovers(in: Data("....ftypheic....mdat".utf8)).isEmpty)
+    }
+
+    /// An EXIF thumbnail (an uncropped copy of the photo) is found and removed.
+    @Test func exifThumbnailIsFoundAndRemoved() throws {
+        let jpeg = Self.encode(.jpeg, properties: [kCGImageDestinationEmbedThumbnail: true, kCGImagePropertyExifDictionary: [kCGImagePropertyExifUserComment: "x"]])
+        #expect(MetadataContainers.leftovers(in: jpeg).contains("EXIF thumbnail"))
+        let url = try Self.directory().appendingPathComponent("Thumb.jpg")
+        try jpeg.write(to: url)
+        let clean = try MetadataStripper.strip(try EditableImage.load(url), keepsOrientationAndProfile: true)
+        #expect(MetadataStripper.leftoverMetadata(at: clean).isEmpty)
+        #expect(!MetadataContainers.leftovers(in: try Data(contentsOf: clean)).contains("EXIF thumbnail"))
+    }
+
+    /// Extended XMP without a main packet: ImageIO doesn't read it, so the bytes are checked.
+    @Test func extendedXMPAloneIsFound() {
+        var jpeg = Self.encode(.jpeg)
+        jpeg.insert(contentsOf: Self.jpegSegment(0xE1, "http://ns.adobe.com/xmp/extension/\0" + String(repeating: "0", count: 40) + "secret"), at: 2)
+        #expect(MetadataContainers.leftovers(in: jpeg) == ["extended XMP"])
+    }
 }
