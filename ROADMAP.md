@@ -649,8 +649,12 @@ message because it stays in the inbox even though it has a reminder. if you arch
 back at the right time."
 - Not on the wheel: keys that act only while Mail's message list or reading pane has focus,
   never in a compose window or another app.
-- Snooze is Mail's own Remind Me at the chosen date and time, then Archive (⌃⌘A); Mail brings
-  the message back at that time. No mailbox or timer of OpenShelf's own.
+- Snooze is Mail's own Remind Me at the chosen date and time, and nothing else, with Mail's
+  Settings › General › Remind Me behavior set to "Move to “Remind Me”" (David, 2026-11-19, on
+  finding it: "that is what i need"): Mail takes the message out of the inbox and brings it back
+  at that time. With that setting off, the fallback is Remind Me then Archive (⌃⌘A), his old
+  routine, which he has seen work. The feature checks the setting and does the right one. No
+  mailbox or timer of OpenShelf's own.
 - Presets: tomorrow morning (7am), this afternoon (2pm), tonight (5pm), in two days (7am:
   David to confirm), this weekend (Saturday 7am), next week (Monday 7am). Free text ("fri 2pm",
   "in 3 hours", "dec 3 9am") in a one-line prompt that shows the date it understood before
@@ -664,8 +668,14 @@ back at the right time."
   - Archive keeps the reminder: confirmed by David's daily use on this Mac (2026-11-19: "i have
     seen it work with archive. that's how i do it all the time"). Apple's Mail guide is silent on
     archived messages, and some users report reminders lost when a message leaves the inbox on
-    other setups. An alternative, noted only: Mail's Settings › General › Remind Me behavior,
-    "Move to “Remind Me”", moves a reminded message out of the inbox without archiving.
+    other setups. This is the fallback when "Move to “Remind Me”" is off.
+  - Where the setting lives: Mail's own code has a `remindMeBehaviorTag` setting (in the Mail
+    binary's strings), and the option's text is in Mail's PreferencesWindow.loctable. David's
+    preferences (`~/Library/Containers/com.apple.mail/Data/Library/Preferences/com.apple.mail.plist`)
+    held no such key on 2026-11-19, likely because it is only written once changed from the
+    default. To confirm, read-only, after he turns it on: `defaults read
+    ~/Library/Containers/com.apple.mail/Data/Library/Preferences/com.apple.mail.plist | grep -i remind`.
+    If it can't be read, the feature asks once which way he has it.
   - NSDataDetector reads "tomorrow morning" (9am), "this afternoon" (3pm), "tonight" (7pm),
     "saturday morning", "next monday morning", "fri 2pm", "in 2 days", "dec 3 9am" and "monday
     7am"; it reads nothing for "in two days", "this weekend", "next week", "in 3 hours" or "eod",
@@ -677,8 +687,8 @@ back at the right time."
     take a key only with a modifier (not verified here). A global NSEvent monitor can't stop the
     key reaching Mail.
 - First slice: snooze only, behind one hotkey while Mail is in front: presets and free text, then
-  Remind Me Later… through Accessibility at that date and time, then Archive. Then the
-  single-key layer.
+  Remind Me Later… through Accessibility at that date and time; Archive too only when "Move to
+  “Remind Me”" is off. Then the single-key layer.
 - Tests without a screen: the phrase table and parsing (pure functions with a fixed "now").
 
 ### Considered and not a fit
