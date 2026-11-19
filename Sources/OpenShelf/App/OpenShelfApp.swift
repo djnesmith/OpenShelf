@@ -21,6 +21,7 @@ struct OpenShelfApp: App {
             }
             Divider()
             openWheelButton
+            Button("Check Mail (read only)") { MailHelpers.writeCheck() }
             Button("Take the Tour…") { TourWindowController.present() }
             Button("Settings…") { SettingsWindowController.shared.show() }
                 .keyboardShortcut(",")

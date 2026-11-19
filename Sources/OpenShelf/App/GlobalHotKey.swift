@@ -101,16 +101,26 @@ struct KeyCombo: Equatable, Codable, Sendable {
 }
 
 /// One system-wide shortcut, registered with Carbon's hot-key API, which needs
-/// no Accessibility or Input Monitoring permission.
+/// no Accessibility or Input Monitoring permission. Each instance has its own id, so
+/// several can be registered at once (the wheel's, and Mail's while Mail is in front).
 @MainActor
 final class GlobalHotKey {
-    static let shared = GlobalHotKey()
+    static let shared = GlobalHotKey(id: 1)
+    /// The Mail helpers' prompt (ROADMAP I4), registered only while Mail is in front.
+    static let mail = GlobalHotKey(id: 2)
 
     var onPress: (() -> Void)?
 
+    private let id: UInt32
     private var hotKeyRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
+    private static var handlerRef: EventHandlerRef?
+    private static var byID: [UInt32: GlobalHotKey] = [:]
     private static let signature: OSType = 0x4F53_484B  // "OSHK"
+
+    init(id: UInt32) {
+        self.id = id
+        Self.byID[id] = self
+    }
 
     /// Replaces the registered shortcut; nil turns it off. Returns false when
     /// macOS refuses the combination (usually because another app owns it).
@@ -118,9 +128,9 @@ final class GlobalHotKey {
     func register(_ combo: KeyCombo?) -> Bool {
         unregister()
         guard let combo, combo.isValid else { return combo == nil }
-        installHandlerIfNeeded()
-        let id = EventHotKeyID(signature: Self.signature, id: 1)
-        let status = RegisterEventHotKey(combo.keyCode, combo.carbonModifiers, id, GetApplicationEventTarget(), 0, &hotKeyRef)
+        Self.installHandlerIfNeeded()
+        let hotKeyID = EventHotKeyID(signature: Self.signature, id: id)
+        let status = RegisterEventHotKey(combo.keyCode, combo.carbonModifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         if status != noErr {
             hotKeyRef = nil
             return false
@@ -128,20 +138,25 @@ final class GlobalHotKey {
         return true
     }
 
-    private func unregister() {
+    var isRegistered: Bool { hotKeyRef != nil }
+
+    func unregister() {
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
         }
         hotKeyRef = nil
     }
 
-    private func installHandlerIfNeeded() {
+    private static func installHandlerIfNeeded() {
         guard handlerRef == nil else { return }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
+            var pressed = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &pressed)
+            let id = pressed.id
             // Carbon delivers hot-key events on the main thread.
             MainActor.assumeIsolated {
-                GlobalHotKey.shared.onPress?()
+                GlobalHotKey.byID[id]?.onPress?()
             }
             return noErr
         }, 1, &spec, nil, &handlerRef)

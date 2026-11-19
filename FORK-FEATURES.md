@@ -476,6 +476,15 @@ David, 2026-11-19: "it should remember the last directory a file was copied or m
 - Files: `Sources/OpenShelf/Support/FileActions.swift` (`startingFolder`, `rememberFolder`)
 - Check: `swift test --filter MoveCopyFolderTests`. In the app: Move a file to a folder, then Move or Copy another file from somewhere else; the picker opens on the first folder.
 
+### 58. Mail: snooze through Mail's own Remind Me (MAIL-PLAN slice A)
+David, 2026-11-19 (ROADMAP I4). While Mail is in front, ⌃⌥S opens a small prompt: David's presets (tomorrow morning 7am, this afternoon 2pm, tonight 5pm, in two days 7am, this weekend Saturday 7am, next week Monday 7am; ⌘1-⌘6 or click) or a typed time ("fri 2pm", "in 3 hours", "dec 3 9am"; a date with no time is 7am; a preset already past today is the next day's). It shows the time it understood before Return; Esc closes it; no sound. The time goes to Mail's Message › Remind Me › Remind Me Later…, found by exact title; in Mail's window OpenShelf sets the one date picker, reads it back, and presses Remind Me only if the time matches to the minute, otherwise it presses Cancel and says why. With David's Mail setting "Move to “Remind Me”" on, Mail takes the message out of the inbox itself. That setting can't be read (it is in no preference file), so Archive after Remind Me is an OpenShelf default, `MailSnoozeArchives`, off. The shortcut exists only while Mail is in front (registered and dropped as apps come forward); before the prompt opens it checks that the menu items exist and Remind Me Later… is enabled (a message is selected), and says what's wrong if not.
+- Menu bar › Check Mail (read only) writes `~/Library/Logs/OpenShelf/mail-check.txt`: the focused element's role, whether Message › Send, Archive and Remind Me Later… are enabled and their shortcuts, and the front window's controls (roles, ids, button titles, date pickers' dates). No message text: lists, bodies, text fields and static text are not read.
+- Not decided by David: the shortcut (`MailPromptShortcut`, default ⌃⌥S).
+- Not yet tried against Mail: the date picker step was built from Mail's strings, not its live window. Check Mail with the Remind Me Later… window open shows whether the picker is one settable control.
+- Commits: this one
+- Files: `Sources/OpenShelf/Mail/` (`SnoozeTime`, `SnoozePrompt`, `MailMenu`, `RemindDialog`, `MailHelpers`, `MailCheck`), `App/GlobalHotKey.swift` (several shortcuts by id), `App/AppDelegate.swift`, `App/OpenShelfApp.swift`
+- Check: `swift test --filter 'SnoozeTimeTests|MailMenuTests'`. In the app: select a test message, ⌃⌥S, type "in 2 minutes", Return; the message leaves the inbox and comes back two minutes later.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.
