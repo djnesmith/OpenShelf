@@ -411,6 +411,23 @@ item on a shelf.
 - Permissions: none for the files. Writing straight into Calendar or Contacts would need
   their permission, so files come first.
 
+**C12. More for the Edit window** (David, 2026-11-18: "add your recs to the future features")
+The Edit window (FORK-FEATURES #53) has vim's motions, operators, text objects, surround,
+`.`, registers and macros. Next, in this order:
+1. `:s` find and replace: `:%s/old/new/g`, flags g, i and c if cheap, `&` to repeat.
+2. `jk` leaves insert mode, as Doom's evil-escape does by default.
+3. Visual block (⌃V) with `I` and `A`.
+4. `gq` re-wraps a paragraph to a line width (`gqip`).
+5. ⌃A and ⌃X add to or take from a number.
+6. Replace mode `R`; `gv` selects the last selection again; `o` swaps the ends in visual line mode too.
+
+Left out for now:
+- Marks: the text in the window is short.
+- `:g`, `:sort` and `:normal`: the Lines tools cover them.
+- `:!` shell filters: the app would run shell commands, which is a safety decision.
+- David's vim or Doom config and plugins: the price of a built-in engine.
+- Keeping macros between windows.
+
 ### D. Links and the web
 
 **D1. Drop links** (M)
