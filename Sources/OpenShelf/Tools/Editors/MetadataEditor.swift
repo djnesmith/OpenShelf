@@ -329,6 +329,10 @@ enum MetadataStripper {
                 }
             }
         }
+        // What ImageIO doesn't show: C2PA, PNG text chunks, comments.
+        if let data = try? Data(contentsOf: url) {
+            found += MetadataContainers.leftovers(in: data)
+        }
         var unique: [String] = []
         for item in found where !unique.contains(item) { unique.append(item) }
         return unique
