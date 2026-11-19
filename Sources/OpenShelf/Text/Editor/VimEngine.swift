@@ -283,6 +283,7 @@ struct VimEngine {
         }
         changeInProgress = nil
         mode = .normal
+        wantedColumn = nil
         if cursor > lineStart(cursor) { cursor -= 1 }
         clampCursor()
     }
@@ -517,13 +518,18 @@ struct VimEngine {
             let innerCount = countStart..<index
             let total = count.map { min($0 * (motionCount ?? 1), Self.maxCount) } ?? motionCount
             guard let doubled = next() else { return .incomplete }
-            // dd, cc, yy, >>, <<, g~~, guu, gUU, and gugu-style repeats.
-            if case .char(let d) = doubled, d == op.rawValue || (d == "g" && [.toggleCase, .lower, .upper].contains(op)) {
-                if d == "g" {
-                    index += 1
-                    guard let third = next() else { return .incomplete }
-                    guard case .char(op.rawValue) = third else { return .invalid }
+            // dd, cc, yy, >>, <<, g~~, guu, gUU, and gugu-style repeats. gUgg is gU to the first line.
+            var repeated = false
+            if case .char(let d) = doubled, d == op.rawValue {
+                repeated = true
+            } else if case .char("g") = doubled, [.toggleCase, .lower, .upper].contains(op) {
+                guard index + 1 < keys.count else { return .incomplete }
+                if case .char(op.rawValue) = keys[index + 1] {
+                    index += 2
+                    repeated = true
                 }
+            }
+            if repeated {
                 var command = Command(count: total, action: .simple("line\(op.rawValue)"))
                 command.innerCount = innerCount
                 return .done(command)
@@ -693,12 +699,15 @@ struct VimEngine {
         activeRegister = command.register
         defer { activeRegister = nil }
         let wasVisual = inVisual
+        let changesBefore = undoStack.count + undoTrimmed
         failed = false
         let effect = perform(command)
         // Remember a change for "." (a repeat records itself again, count and all, as in vim);
-        // changes made in visual mode are not repeated.
+        // changes made in visual mode are not repeated, and "." after one does nothing rather
+        // than repeat an older change.
         // A change that failed (ci" with no quotes) leaves the last one in place;
         // one that worked counts even when the text came out the same.
+        if wasVisual, undoStack.count + undoTrimmed != changesBefore { lastChange = nil }
         if !wasVisual, Self.isChange(command), !failed {
             let change = (command.count, (command.register.map { [VimKey.char("\""), .char($0)] } ?? []) + command.keys)
             if mode == .insert { changeInProgress = change } else { lastChange = change }
@@ -734,7 +743,11 @@ struct VimEngine {
                 mode = .normal
                 if linewise { wrapLines(first, last, in: pair, indenting: true) } else { wrap(range, in: pair) }
             } else if let motion {
-                operate(.surround, motion: Self.resolved(motion, count: command.count), count: command.count ?? 1)
+                guard let motion = resolved(motion, count: command.count) else {
+                    failed = true
+                    return nil
+                }
+                operate(.surround, motion: motion, count: command.count ?? 1)
             } else {
                 // yss: the line, without its indentation; a count takes more lines.
                 let start = firstNonBlank(lineStart(cursor))
@@ -758,27 +771,45 @@ struct VimEngine {
             }
             return nil
         case .motion(let motion):
-            _ = runMotion(Self.resolved(motion, count: command.count), count: command.count ?? 1)
+            guard let motion = resolved(motion, count: command.count) else {
+                failed = true
+                return nil
+            }
+            _ = runMotion(motion, count: command.count ?? 1)
             return nil
         case .operate(let op, let motion):
-            wantedColumn = nil
             if let motion {
-                operate(op, motion: Self.resolved(motion, count: command.count), count: command.count ?? 1)
+                guard let motion = resolved(motion, count: command.count) else {
+                    failed = true
+                    return nil
+                }
+                // j and k under an operator aim for the remembered column; a failed
+                // operator keeps it, as in vim.
+                operate(op, motion: motion, count: command.count ?? 1)
+                if !failed { wantedColumn = nil }
             } else if let range = selection {
                 let linewise = mode == .visualLine
                 let (first, last) = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
                 mode = .normal
                 if linewise { applyLines(op, first, last) } else { apply(op, to: range) }
+                wantedColumn = nil
             }
             return nil
         case .simple(let name):
-            wantedColumn = nil
+            // Escape, v and V keep the column j and k aim for (after $, the line's end), as in vim.
+            if !["escape", "v", "V"].contains(name) { wantedColumn = nil }
             return runSimple(name, count: command.count)
         }
     }
 
     /// A count before G or gg names the line: G alone is the last line, gg the first.
-    private static func resolved(_ motion: Motion, count: Int?) -> Motion {
+    /// With a count, % goes to that percentage of the lines (50% is the middle), as in
+    /// vim; past 100 it fails.
+    private func resolved(_ motion: Motion, count: Int?) -> Motion? {
+        if motion == .matchingBracket, let count {
+            guard count <= 100 else { return nil }
+            return .goToLine((count * lineStarts.count + 99) / 100)
+        }
         guard case .goToLine(let line) = motion else { return motion }
         return .goToLine(count ?? (line == 0 ? 1 : nil))
     }
@@ -903,15 +934,27 @@ struct VimEngine {
             let column = wantedColumn ?? (cursor - lineStart(cursor))
             if wantedColumn == nil { wantedColumn = column }
             let start = lineStarts[line]
-            let end = lineEnd(start)
-            return Target(position: column == .max ? max(end - 1, start) : min(start + column, max(end - 1, start)), kind: .linewise)
+            // In visual mode the cursor may stop on the line's end, as in vim, so a
+            // column past it takes the line break.
+            let last = inVisual ? lineEnd(start) : max(lineEnd(start) - 1, start)
+            return Target(position: column == .max ? last : min(start + column, last), kind: .linewise)
         case .wordForward(let big):
             var position = cursor
             for _ in 0..<count { position = wordForward(from: position, big: big) }
             return Target(position: position, kind: .exclusive)
         case .wordBackward(let big):
             var position = cursor
-            for _ in 0..<count { position = wordBackward(from: position, big: big) }
+            for _ in 0..<count {
+                if position == 0 {
+                    // As vim's bck_word: a word that reaches the text's start ends the count
+                    // there. Only a step that has to start from an empty first line fails,
+                    // operator and all, and the cursor stays at the start.
+                    if position != cursor, text.first != "\n" { break }
+                    cursor = 0
+                    return nil
+                }
+                position = wordBackward(from: position, big: big)
+            }
             return Target(position: position, kind: .exclusive)
         case .wordEnd(let big):
             // A count goes as far as there are words.
@@ -926,7 +969,7 @@ struct VimEngine {
                 // An operator still takes the text up to the end; the cursor
                 // alone reaches a last empty line, or the last word end found.
                 // At the very end, ce still starts an (empty) change.
-                if forOperator { return n - 1 >= cursor ? Target(position: n - 1, kind: .inclusive) : Target(position: cursor, kind: .exclusive) }
+                if forOperator { return Target(position: n, kind: .inclusive) }
                 if text.last == "\n", cursor < n { return Target(position: n, kind: .exclusive) }
                 if position == cursor { return nil }
             }
@@ -936,10 +979,16 @@ struct VimEngine {
         case .firstNonBlank:
             return Target(position: firstNonBlank(lineStart(cursor)), kind: .exclusive)
         case .lineEnd:
+            // As for j: a count on the last line fails; elsewhere it stops at the last line.
+            // Failing still makes j and k aim for the line's end, as in vim.
+            guard count == 1 || lineIndex(cursor) + 1 < lineStarts.count else {
+                wantedColumn = .max
+                return nil
+            }
             let line = min(lineIndex(cursor) + count - 1, lineStarts.count - 1)
             let end = lineEnd(lineStarts[line])
             // d$ on an empty line has nothing to take; v$ takes the line break.
-            if end == lineStarts[line] || inVisual { return Target(position: end, kind: forOperator ? .exclusive : .inclusive) }
+            if end == lineStarts[line] || inVisual { return Target(position: end, kind: .inclusive) }
             return Target(position: end - 1, kind: .inclusive)
         case .goToLine(let number):
             let line = min(max(number ?? lineStarts.count, 1), lineStarts.count) - 1
@@ -955,16 +1004,20 @@ struct VimEngine {
             return matchingBracket().map { Target(position: $0, kind: .inclusive) }
         case .paragraphForward, .paragraphBackward:
             let starts = lineStarts
+            // } and { stop at empty lines only; a line of blanks is part of a paragraph, as in vim
+            // (unlike ip and ap).
             func blank(_ line: Int) -> Bool {
-                text[starts[line]..<(line + 1 < starts.count ? starts[line + 1] - 1 : n)].allSatisfy { $0 == " " || $0 == "\t" }
+                starts[line] == (line + 1 < starts.count ? starts[line + 1] - 1 : n)
             }
             var line = lineIndex(cursor)
             let forward = motion == .paragraphForward
             let step = forward ? 1 : -1
-            for _ in 0..<count {
+            for index in 0..<count {
                 while line + step >= 0, line + step < starts.count, blank(line) { line += step }
                 while line + step >= 0, line + step < starts.count, !blank(line + step) { line += step }
                 if line + step >= 0, line + step < starts.count { line += step } else {
+                    // The text's end counts as one more paragraph boundary; a count past it fails, as in vim.
+                    guard index == count - 1 else { return nil }
                     return Target(position: forward ? n : 0, kind: .exclusive)
                 }
             }
@@ -1123,6 +1176,18 @@ struct VimEngine {
     // MARK: - Operators
 
     private mutating func operate(_ op: Operator, motion: Motion, count: Int) {
+        // A word object ends like a motion: it can be exclusive, and the operator adjusts it as vim does.
+        if case .textObject(let inner, let kind) = motion, kind == "w" || kind == "W" {
+            let word = wordObject(inner: inner, big: kind == "W", count: count)
+            guard word.found else {
+                cursor = word.end
+                clampCursor()
+                failed = true
+                return
+            }
+            apply(op, from: word.start, to: Target(position: word.end, kind: word.inclusive ? .inclusive : .exclusive))
+            return
+        }
         if case .textObject(let inner, let kind) = motion {
             guard let (range, linewise) = textObject(inner: inner, kind, count: count) else {
                 failed = true
@@ -1131,10 +1196,16 @@ struct VimEngine {
             if linewise {
                 guard !range.isEmpty else { return }
                 applyLines(op, range.lowerBound, range.upperBound - 1)
+                // yap and yip go to the block's first line, at its start.
+                if op == .yank { cursor = lineStarts[range.lowerBound] }
             } else if op == .indent || op == .outdent {
                 applyLines(op, lineIndex(range.lowerBound), lineIndex(max(range.upperBound - 1, range.lowerBound)))
-            } else if !range.isEmpty || op == .change {
+            } else if !range.isEmpty || op == .change || op == .yank {
                 apply(op, to: range)
+            } else {
+                // Nothing between (di( on "()"): no change, but the cursor goes there, as in vim.
+                cursor = range.lowerBound
+                clampCursor()
             }
             return
         }
@@ -1144,14 +1215,13 @@ struct VimEngine {
             if op == .change, start < text.count, characterClass(start, big: big) != 0 {
                 var end = start - 1
                 for _ in 0..<count { end = wordEnd(from: end, big: big) }
-                apply(op, from: start, to: Target(position: min(end, text.count - 1), kind: .inclusive))
+                apply(op, from: start, to: Target(position: min(end, text.count), kind: .inclusive))
                 return
             }
-            // When the last word moved over ends a line, the operator stops
-            // at that line's end rather than taking the line break too.
-            var (previous, position) = (start, start)
-            for _ in 0..<count { (previous, position) = (position, wordForward(from: position, big: big)) }
-            if lineIndex(position) > lineIndex(previous), lineEnd(previous) > previous { position = lineEnd(previous) }
+            // As vim's fwd_word for an operator: the last word stops at its line's end rather
+            // than take the line break; a failure at the text's end still takes what it moved over.
+            var position = start
+            _ = vimForwardWord(&position, count: count, big: big, stopAtLineEnd: true)
             apply(op, from: start, to: Target(position: position, kind: .exclusive))
             return
         }
@@ -1166,10 +1236,13 @@ struct VimEngine {
         switch target.kind {
         case .linewise:
             applyLines(op, lineIndex(min(start, target.position)), lineIndex(max(start, target.position)))
+            // A case change leaves the cursor where the motion began or ended, whichever is first.
+            if [.upper, .lower, .toggleCase].contains(op) { cursor = min(start, target.position) }
         case .inclusive, .exclusive:
             let low = min(start, target.position)
             var high = max(start, target.position)
-            if target.kind == .inclusive { high = min(high + 1, text.count) }
+            // An inclusive end on a line's end takes the line, not its line break, as in vim.
+            if target.kind == .inclusive, high < text.count, text[high] != "\n" { high += 1 }
             // An exclusive motion that ends at the start of a later line ends
             // at the line before instead, and takes whole lines when it began
             // in the indentation (:help exclusive-linewise).
@@ -1187,7 +1260,11 @@ struct VimEngine {
                 applyLines(op, lineIndex(low), lineIndex(high))
                 return
             }
-            guard high > low || op == .change else { return }
+            // An empty yank still yanks (nothing), as vim's does.
+            guard high > low || op == .change || op == .yank else { return }
+            // c$ (C) or ce on an empty line takes the empty text, so the register is emptied, as in
+            // vim; an empty text has nothing to take, and the register stays.
+            if op == .change, high == low, target.kind == .inclusive, !text.isEmpty { store(VimRegister(text: "", linewise: false), yank: false) }
             if op == .indent || op == .outdent {
                 applyLines(op, lineIndex(low), lineIndex(max(high - 1, low)))
             } else {
@@ -1204,7 +1281,10 @@ struct VimEngine {
             return
         }
         let last = min(line + count - 1, lineStarts.count - 1)
+        let start = cursor
         applyLines(op, line, last)
+        // As for gUj: 2gUU keeps the column, gUU goes no further right than the first non-blank.
+        if [.upper, .lower, .toggleCase].contains(op) { cursor = min(start, firstNonBlank(lineStarts[last])) }
     }
 
     /// An operator on whole lines, `first` through `last`.
@@ -1261,7 +1341,7 @@ struct VimEngine {
             store(VimRegister(text: taken, linewise: false), yank: true)
             cursor = range.lowerBound
         case .delete, .change:
-            // C on an empty line takes nothing, and keeps what was taken before.
+            // An empty range (cl on an empty line) keeps what was taken before.
             if !range.isEmpty { store(VimRegister(text: taken, linewise: false), yank: false) }
             checkpoint(at: range.lowerBound)
             text.removeSubrange(range)
@@ -1284,7 +1364,9 @@ struct VimEngine {
 
     private func transformed(_ block: String, _ op: Operator) -> String {
         switch op {
-        case .indent: TextTransforms.indent(block)
+        // > skips only empty lines; a line of blanks is indented too, as in vim.
+        case .indent: block.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.isEmpty ? String($0) : String(repeating: " ", count: TextTransforms.indentWidth) + $0 }.joined(separator: "\n")
         case .outdent: TextTransforms.outdent(block)
         case .upper: block.uppercased()
         case .lower: block.lowercased()
@@ -1314,20 +1396,31 @@ struct VimEngine {
     private mutating func join(count: Int) {
         let line = lineIndex(cursor)
         guard line + 1 < lineStarts.count else {
-            failed = true
+            // On the last line 2J fails; a larger count joins nothing and goes to the line's start, as in vim.
+            if count > 2 { cursor = lineStart(cursor) } else { failed = true }
             return
         }
         checkpoint()
+        // As vim's do_join: whether a space goes in depends on the line joined just before
+        // (its last character), not on the text joined so far, so an empty line between
+        // starts afresh. Nothing is trimmed but the next line's indentation.
+        let first = lineStart(cursor)
+        var joined = lineEnd(cursor) - first
+        var lastCharacter: Character? = joined > 0 ? text[lineEnd(cursor) - 1] : nil
         for _ in 0..<(count - 1) {
             let end = lineEnd(cursor)
             guard end < text.count else { break }
             var next = end + 1
             while next < text.count, text[next] == " " || text[next] == "\t" { next += 1 }
-            // One space between, unless either side is empty, the line already
-            // ends in a blank, or the next starts with ")". Nothing else is trimmed.
-            let endsInBlank = end > lineStart(end) && (text[end - 1] == " " || text[end - 1] == "\t")
-            let joinsWithSpace = end > lineStart(end) && !endsInBlank && next < text.count && text[next] != "\n" && text[next] != ")"
-            text.replaceSubrange(end..<next, with: joinsWithSpace ? [" "] : [])
+            let pieceEnd = lineEnd(next)
+            let piece = pieceEnd - next
+            // One space, unless the line is empty, starts with ")", nothing came before,
+            // or what came before ends in a blank.
+            let space = piece > 0 && text[next] != ")" && joined > 0 && lastCharacter != " " && lastCharacter != "\t"
+            let nextLast: Character? = piece > 0 ? text[pieceEnd - 1] : nil
+            text.replaceSubrange(end..<next, with: space ? [" "] : [])
+            joined += piece + (space ? 1 : 0)
+            lastCharacter = nextLast
             cursor = end
         }
         clampCursor()
@@ -1398,7 +1491,10 @@ struct VimEngine {
     /// (ip, ap, i{ around lines) the line numbers.
     private func textObject(inner: Bool, _ kind: Character, count: Int) -> (Range<Int>, Bool)? {
         switch kind {
-        case "w", "W": return wordObject(inner: inner, big: kind == "W", count: count).map { ($0, false) }
+        case "w", "W":
+            // As visual mode selects it: the end is included.
+            let word = wordObject(inner: inner, big: kind == "W", count: count)
+            return word.found ? (word.start..<min(word.end + 1, text.count), false) : nil
         case "\"", "'", "`": return quoteObject(inner: inner, quote: kind).map { ($0, false) }
         case "(", ")", "b": return bracketObject(inner: inner, open: "(", close: ")", count: count)
         case "[", "]": return bracketObject(inner: inner, open: "[", close: "]", count: count)
@@ -1410,45 +1506,140 @@ struct VimEngine {
         }
     }
 
+    // MARK: - vim's own cursor steps, for word motions and objects
+
+    /// A position is a character, or a line's end: its "\n", or the text's end.
+    private func vimIsLineEnd(_ i: Int) -> Bool { i >= text.count || text[i] == "\n" }
+
+    /// vim's cls(): 0 for blanks and line ends.
+    private func vimClass(_ i: Int, big: Bool) -> Int { vimIsLineEnd(i) ? 0 : characterClass(i, big: big) }
+
+    /// vim's inc(): 0 within a line, 2 onto the line's end, 1 onto the next line, -1 at the text's end.
+    private func vimInc(_ i: inout Int) -> Int {
+        if !vimIsLineEnd(i) {
+            i += 1
+            return vimIsLineEnd(i) ? 2 : 0
+        }
+        guard i < text.count else { return -1 }
+        i += 1
+        return 1
+    }
+
+    /// vim's fwd_word(): `count` words forward. With `stopAtLineEnd` (vim's eol, used by
+    /// operators) the last word stops at its line's end. False on the last line's end.
+    private func vimForwardWord(_ i: inout Int, count: Int, big: Bool, stopAtLineEnd: Bool) -> Bool {
+        let lastLineStart = lineStarts[lineStarts.count - 1]
+        for left in (0..<max(count, 1)).reversed() {
+            let sclass = vimClass(i, big: big)
+            let lastLine = i >= lastLineStart
+            var r = vimInc(&i)
+            if r == -1 || (r >= 1 && lastLine) { return false }
+            if r >= 1, stopAtLineEnd, left == 0 { return true }
+            if sclass != 0 {
+                while vimClass(i, big: big) == sclass {
+                    r = vimInc(&i)
+                    if r == -1 || (r >= 1 && stopAtLineEnd && left == 0) { return true }
+                }
+            }
+            // Blanks, but an empty line is a word.
+            while vimClass(i, big: big) == 0, !(vimIsLineEnd(i) && (i == 0 || text[i - 1] == "\n")) {
+                r = vimInc(&i)
+                if r == -1 || (r >= 1 && stopAtLineEnd && left == 0) { return true }
+            }
+        }
+        return true
+    }
+
     /// iw is the run of word, punctuation or blank characters under the
-    /// cursor; aw adds the blanks after it (or before, at a line's end).
-    private func wordObject(inner: Bool, big: Bool, count: Int) -> Range<Int>? {
-        let n = text.count
-        // On an empty line iw is nothing, so ciw still types there.
-        guard cursor < n, text[cursor] != "\n" else { return inner ? cursor..<cursor : nil }
-        func kind(_ i: Int) -> Int { text[i] == "\n" ? 3 : characterClass(i, big: big) }
-        func runEnd(from i: Int) -> Int {
-            var end = i
-            while end + 1 < n, kind(end + 1) == kind(i) { end += 1 }
-            return end
+    /// cursor; aw adds the blanks after it (or before, at a line's end). A
+    /// port of vim's current_word, so counts cross lines as vim's do: a line's
+    /// end is a position (its "\n", or the text's end), and an empty line is a word.
+    /// On failure `end` is where the search stopped, which is where vim leaves the cursor.
+    private func wordObject(inner: Bool, big: Bool, count: Int) -> (start: Int, end: Int, inclusive: Bool, found: Bool) {
+        func isEnd(_ i: Int) -> Bool { vimIsLineEnd(i) }
+        func cls(_ i: Int) -> Int { vimClass(i, big: big) }
+        func atLineStart(_ i: Int) -> Bool { i == 0 || text[i - 1] == "\n" }
+        func inc(_ i: inout Int) -> Int { vimInc(&i) }
+        func incl(_ i: inout Int) -> Int {
+            let r = inc(&i)
+            return r >= 1 && !atLineStart(i) ? inc(&i) : r
         }
-        var start = cursor
-        while start > 0, kind(start - 1) == kind(cursor) { start -= 1 }
-        var end = runEnd(from: cursor)
-        if inner {
-            // A count past the words on the line fails, as in vim.
-            for _ in 1..<max(count, 1) {
-                guard end + 1 < n, kind(end + 1) != 3 else { return nil }
-                end = runEnd(from: end + 1)
-            }
-            return start..<end + 1
+        func dec(_ i: inout Int) -> Int {
+            guard i > 0 else { return -1 }
+            let crossed = atLineStart(i)
+            i -= 1
+            return crossed ? 1 : 0
         }
-        for index in 0..<max(count, 1) {
-            if index > 0 {
-                guard end + 1 < n, kind(end + 1) != 3 else { return nil }
-                end = runEnd(from: end + 1)
-            }
-            if kind(end) == 0 {
-                // On blanks: they and the word after them.
-                if end + 1 < n, kind(end + 1) != 3 { end = runEnd(from: end + 1) }
-            } else if end + 1 < n, kind(end + 1) == 0 {
-                end = runEnd(from: end + 1)
-            } else if index == 0 {
-                // No blanks after the word: take the ones before it instead.
-                while start > 0, kind(start - 1) == 0 { start -= 1 }
+        func decl(_ i: inout Int) {
+            if dec(&i) == 1, !atLineStart(i) { _ = dec(&i) }
+        }
+        func oneLeft(_ i: inout Int) -> Bool {
+            guard !atLineStart(i) else { return false }
+            i -= 1
+            return true
+        }
+        func backInLine(_ i: inout Int) {
+            let sclass = cls(i)
+            while !atLineStart(i) {
+                i -= 1
+                if cls(i) != sclass {
+                    i += 1
+                    return
+                }
             }
         }
-        return start..<end + 1
+        func forwardWord(_ i: inout Int) -> Bool { vimForwardWord(&i, count: 1, big: big, stopAtLineEnd: true) }
+        // vim's end_word(1, big, stop: true, empty: true).
+        func endWord(_ i: inout Int) -> Bool {
+            let sclass = cls(i)
+            if inc(&i) == -1 { return false }
+            if cls(i) == sclass, sclass != 0 {
+                while cls(i) == sclass { if inc(&i) == -1 { return false } }
+            } else if sclass == 0 {
+                while cls(i) == 0 {
+                    if atLineStart(i), isEnd(i) { return true }
+                    if inc(&i) == -1 { return false }
+                }
+                let word = cls(i)
+                while cls(i) == word { if inc(&i) == -1 { return false } }
+            }
+            _ = dec(&i)
+            return true
+        }
+
+        var i = cursor
+        var inclusive = true
+        var includeWhite = false
+        backInLine(&i)
+        var start = i
+        if (cls(i) == 0) == !inner {
+            guard endWord(&i) else { return (start, i, inclusive, false) }
+        } else {
+            _ = forwardWord(&i)
+            if atLineStart(i) { decl(&i) } else { _ = oneLeft(&i) }
+            includeWhite = !inner
+        }
+        var remaining = max(count, 1) - 1
+        while remaining > 0 {
+            inclusive = true
+            guard incl(&i) != -1 else { return (start, i, inclusive, false) }
+            if !inner != (cls(i) == 0) {
+                if !forwardWord(&i), remaining > 1 { return (start, i, inclusive, false) }
+                if !oneLeft(&i) { inclusive = false }
+            } else {
+                guard endWord(&i) else { return (start, i, inclusive, false) }
+            }
+            remaining -= 1
+        }
+        // aw with no blanks after takes the ones before, but not a line's indentation.
+        if includeWhite, cls(i) != 0 || (atLineStart(i) && !inclusive) {
+            var before = start
+            if oneLeft(&before) {
+                backInLine(&before)
+                if cls(before) == 0, !atLineStart(before) { start = before }
+            }
+        }
+        return (start, i, inclusive, true)
     }
 
     /// i" is between the quotes around the cursor on its line (or the next
@@ -1491,11 +1682,20 @@ struct VimEngine {
         // On an opening bracket, that pair; anywhere else (a closing one
         // included) the nearest open bracket before the cursor that encloses it.
         var openAt = cursor < text.count && text[cursor] == open ? cursor : enclosingOpen(open, close, before: cursor)
-        // Not inside a pair: the next pair after the cursor, as vim and Neovim do.
-        if openAt == nil, count <= 1 { openAt = (cursor..<text.count).first { text[$0] == open } }
-        for _ in 1..<max(count, 1) {
-            guard let current = openAt else { break }
-            openAt = enclosingOpen(open, close, before: current)
+        if openAt == nil {
+            // Not inside a pair: the next pair after the cursor, as vim and Neovim do. A count
+            // takes the pair that many deep inside it (2a( on "x (a (b))" is "(b)"), else fails.
+            var position = cursor
+            for _ in 0..<max(count, 1) {
+                guard let next = nextOpen(open, close, after: position) else { return nil }
+                position = next
+            }
+            openAt = position
+        } else {
+            for _ in 1..<max(count, 1) {
+                guard let current = openAt else { break }
+                openAt = enclosingOpen(open, close, before: current)
+            }
         }
         guard let start = openAt, let end = matchingClose(open, close, from: start) else { return nil }
         if !inner { return (start..<end + 1, false) }
@@ -1512,6 +1712,18 @@ struct VimEngine {
         let low = breakAfterOpen ? start + 2 : start + 1
         let high = closeInIndent ? lineStart(end) - 1 : end
         return (low..<max(low, high), false)
+    }
+
+    /// The next open bracket after `position` that no close bracket in between ends first.
+    private func nextOpen(_ open: Character, _ close: Character, after position: Int) -> Int? {
+        var depth = 0
+        for i in (position + 1)..<max(text.count, position + 1) {
+            if text[i] == close { depth += 1 } else if text[i] == open {
+                if depth == 0 { return i }
+                depth -= 1
+            }
+        }
+        return nil
     }
 
     private func enclosingOpen(_ open: Character, _ close: Character, before position: Int) -> Int? {
@@ -1609,8 +1821,13 @@ struct VimEngine {
         while first > 0, blank(first - 1) == blank(line) { first -= 1 }
         var last = blockEnd(from: line)
         let blocks = inner ? max(count, 1) : max(count, 1) * 2
-        for _ in 1..<blocks {
-            guard last + 1 < starts.count else { break }
+        for block in 1..<blocks {
+            guard last + 1 < starts.count else {
+                // Out of paragraphs before the count is met: fail, as vim does. Only the blank
+                // lines after a paragraph may be missing (ap takes the ones before instead).
+                if inner || block < blocks - 1 || blank(line) { return nil }
+                break
+            }
             last = blockEnd(from: last + 1)
         }
         if !inner, !blank(line), blank(last) == false, first > 0 {

@@ -148,13 +148,11 @@ struct VimTextObjectTests {
         #expect(Self.run(start, keys) == expected)
     }
 
-    /// A count past the words on the line fails and changes nothing.
-    @Test func wordCountsPastTheLineFail() {
-        var engine = VimEngineTests.engine("|a b")
-        _ = engine.handle(VimEngineTests.keys("d999999iw"))
-        #expect(engine.string == "a b")
-        _ = engine.handle(VimEngineTests.keys("c999999awX<Esc>"))
-        #expect(engine.string.hasSuffix("a b"))
+    /// A count past the words in the text fails and changes nothing, but leaves the
+    /// cursor where the search stopped; keys after it run as normal commands (checked against vim).
+    @Test func wordCountsPastTheTextFail() {
+        #expect(Self.run("|a b", "d999999iw") == "a |b")
+        #expect(Self.run("|a b", "c999999awX<Esc>") == "a|b")
     }
 
     /// Windows line breaks from the clipboard paste as lines.
