@@ -343,8 +343,11 @@ struct HotkeyRouteTests {
 
     @Test func nothingFoundNamesTheApp() {
         let toast = HotkeyRoute.nothingSelectedToast(appName: "Notes", strategy: .standard, shortcut: nil)
-        #expect(toast.title == "No selected text found in Notes")
-        #expect(toast.subtitle == "Select or copy text, or files in Finder")
+        #expect(toast.title == "No text to work on in Notes")
+        #expect(toast.subtitle == "Nothing selected, and the clipboard has no text")
+        // No "Copy first" anywhere: with nothing selected, the clipboard is used.
+        let terminal = HotkeyRoute.nothingSelectedToast(appName: "iTerm2", strategy: .terminal, shortcut: nil)
+        #expect(!terminal.title.contains("Copy first"))
     }
 
     /// Copied text is the last way in, after any selection, in every app.
@@ -402,11 +405,10 @@ struct HotkeyRouteTests {
         #expect(!freshness.isFresh(at: t.addingTimeInterval(61)))
     }
 
-    @Test func terminalsSayCopyFirst() {
+    /// A terminal with nothing readable and no text on the clipboard says so; it no longer asks to copy first.
+    @Test func terminalsSayThereIsNothingToWorkOn() {
         let toast = HotkeyRoute.nothingSelectedToast(appName: "iTerm2", strategy: .terminal, shortcut: .defaultOpenWheel)
-        #expect(toast.title == "Copy first: ⌘C, then ⌃⌥Space")
-        #expect(toast.subtitle == "OpenShelf can't see a terminal's selection")
-        let noShortcut = HotkeyRoute.nothingSelectedToast(appName: "iTerm2", strategy: .terminal, shortcut: nil)
-        #expect(noShortcut.title == "Copy first: ⌘C, then the shortcut")
+        #expect(toast.title == "No text to work on in iTerm2")
+        #expect(toast.subtitle == "OpenShelf can't see a terminal's selection, and the clipboard has no text · ⌃⌥Space twice for Settings")
     }
 }

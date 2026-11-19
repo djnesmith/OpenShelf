@@ -7,9 +7,9 @@ enum TextReader: Equatable, Sendable {
     /// ⌘C in the app, reading what it copied. Never used in terminals, where
     /// ⌘C can be mapped to Ctrl-C and would interrupt the running program.
     case copyShortcut
-    /// What the user copied in the last minute: in a terminal, select then
-    /// ⌘C; elsewhere, the last way in when nothing is selected. The result
-    /// is only copied, since there is no selection to put it over.
+    /// The clipboard's text, however old: the last way in when nothing is
+    /// selected, in every app (a terminal's selection is often unreadable).
+    /// The result is only copied, since there is no selection to put it over.
     case recentClipboard
     /// GUI Emacs, asked through emacsclient for its region.
     case emacsClient
@@ -65,9 +65,9 @@ struct TextAppStrategy: Equatable, Sendable {
     /// What to say when no route found any text.
     var nothingFoundHint: String {
         switch self {
-        case .terminal: "OpenShelf can't see a terminal's selection"
-        case .guiEmacs: "Select a region, or copy text first"
-        default: "Select or copy text, or files in Finder"
+        case .terminal: "OpenShelf can't see a terminal's selection, and the clipboard has no text"
+        case .guiEmacs: "No region, and the clipboard has no text"
+        default: "Nothing selected, and the clipboard has no text"
         }
     }
 }

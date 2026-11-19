@@ -76,10 +76,11 @@ final class ClipboardWatcher {
         beforeBorrow = nil
     }
 
-    /// The clipboard's text if it was copied in the last minute.
-    func recentText(now: Date = .now) -> String? {
-        poll(now: now)
-        guard freshness.isFresh(at: now) else { return nil }
-        return pasteboard.string(forType: .string)
+    /// The clipboard's text, however long ago it was copied (David,
+    /// 2026-11-19: with nothing selected, "it should just automatically work
+    /// on the clipboard"). Nil when the clipboard holds no text.
+    func clipboardText() -> String? {
+        guard let text = pasteboard.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
     }
 }

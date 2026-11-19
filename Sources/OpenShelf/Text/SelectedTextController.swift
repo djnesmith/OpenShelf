@@ -60,7 +60,7 @@ final class SelectedTextController {
             lastRich = copied.rich
             return .text(copied.text)
         case .recentClipboard:
-            return ClipboardWatcher.shared.recentText().map(SelectedTextRead.text) ?? .unavailable
+            return ClipboardWatcher.shared.clipboardText().map(SelectedTextRead.text) ?? .unavailable
         case .emacsClient:
             switch await EmacsClient.read() {
             case .region(let text): return .text(text)

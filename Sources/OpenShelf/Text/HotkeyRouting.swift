@@ -54,16 +54,9 @@ enum HotkeyRoute: Equatable {
     /// A terminal's selection may be there but unreadable (a TUI like herdr
     /// owns the mouse), so it says how to make it readable instead.
     static func nothingSelectedToast(appName: String?, strategy: TextAppStrategy, shortcut: KeyCombo?) -> Toast {
-        if strategy.isTerminal {
-            return Toast(
-                systemImage: "text.cursor",
-                title: "Copy first: ⌘C, then \(shortcut?.displayString ?? "the shortcut")",
-                subtitle: strategy.nothingFoundHint
-            )
-        }
-        return Toast(
+        Toast(
             systemImage: "text.cursor",
-            title: "No selected text found in \(appName ?? "this app")",
+            title: "No text to work on in \(appName ?? "this app")",
             subtitle: [strategy.nothingFoundHint, shortcut.map { "\($0.displayString) twice for Settings" }]
                 .compactMap { $0 }.joined(separator: " · ")
         )
