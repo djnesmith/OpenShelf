@@ -78,6 +78,8 @@ struct VimEngine {
     /// A change that went into insert mode; its typing is added on Esc.
     private var changeInProgress: (count: Int?, keys: [VimKey])?
     private var isRepeating = false
+    /// What ys wraps its range in: the opening and closing text.
+    private var surroundPair = (open: "", close: "")
     /// 3ix<Esc> types "x" three times: the count of the insert command.
     private var insertCount = 1
 
@@ -322,6 +324,8 @@ struct VimEngine {
     enum Operator: Character {
         case delete = "d", change = "c", yank = "y", indent = ">", outdent = "<"
         case upper = "U", lower = "u", toggleCase = "~"
+        /// ys: wraps the range in `surroundPair`.
+        case surround = "S"
     }
 
     struct Command {
@@ -341,6 +345,10 @@ struct VimEngine {
         case motion(Motion)
         case operate(Operator, Motion?)
         case simple(String)
+        /// vim-surround: ds, cs, ys (nil motion: yss) and visual S.
+        case deleteSurround(Character)
+        case changeSurround(Character, String)
+        case addSurround(Motion?, String)
     }
 
     private enum Parse {
@@ -407,6 +415,33 @@ struct VimEngine {
         }
         guard case .char(let c) = key else { return .invalid }
 
+        // vim-surround: ds{target}, cs{target}{replacement}, ys{motion}{replacement}, yss{replacement}.
+        if !inVisual, ["d", "c", "y"].contains(c), index < keys.count, keys[index] == .char("s") {
+            index += 1
+            if c == "y" {
+                // A count may also come between ys and its motion (ys2w).
+                var count = count
+                if let more = readCount() { count = min((count ?? 1) * more, Self.maxCount) }
+                guard index < keys.count else { return .incomplete }
+                var motion: Motion?
+                if keys[index] == .char("s") {
+                    index += 1
+                } else {
+                    switch parseMotion(keys, &index, textObjects: true) {
+                    case .incomplete: return .incomplete
+                    case .invalid: return .invalid
+                    case .done(let parsed): motion = parsed
+                    }
+                }
+                return parseReplacement(keys, &index).map { Command(count: count, action: .addSurround(motion, $0)) }
+            }
+            guard index < keys.count else { return .incomplete }
+            guard case .char(let target) = keys[index], Self.surroundTargets.contains(target) else { return .invalid }
+            index += 1
+            if c == "d" { return .done(Command(count: count, action: .deleteSurround(target))) }
+            return parseReplacement(keys, &index).map { Command(count: count, action: .changeSurround(target, $0)) }
+        }
+
         // An operator: d, c, y, >, <, g~, gu, gU (or the same in visual mode).
         var op: Operator?
         if let simpleOp = Operator(rawValue: c), [.delete, .change, .yank, .indent, .outdent].contains(simpleOp) {
@@ -449,6 +484,8 @@ struct VimEngine {
 
         if inVisual {
             switch c {
+            case "S":
+                return parseReplacement(keys, &index).map { Command(count: count, action: .addSurround(nil, $0)) }
             case "x": return .done(Command(count: count, action: .operate(.delete, nil)))
             case "s": return .done(Command(count: count, action: .operate(.change, nil)))
             case "~": return .done(Command(count: count, action: .operate(.toggleCase, nil)))
@@ -470,6 +507,42 @@ struct VimEngine {
             return ["Z", "Q"].contains(second) ? .done(Command(count: nil, action: .simple("Z\(second)"))) : .invalid
         default:
             return .invalid
+        }
+    }
+
+    static let surroundTargets = "\"'`()b[]r{}B<>at"
+
+    /// A surround replacement: one character, or a tag typed up to its ">"
+    /// ("<em>", or after t: "em>").
+    private func parseReplacement(_ keys: [VimKey], _ index: inout Int) -> ReplacementParse {
+        guard index < keys.count else { return .incomplete }
+        guard case .char(let c) = keys[index] else { return .invalid }
+        index += 1
+        if c == "<" || c == "t" {
+            var tag = "<"
+            while index < keys.count {
+                guard case .char(let k) = keys[index] else { return .invalid }
+                index += 1
+                tag.append(k)
+                if k == ">" { return tag.count > 2 ? .done(tag) : .invalid }
+            }
+            return .incomplete
+        }
+        // Letters other than the aliases b, B, r and a mean nothing.
+        if c.isLetter, !"bBra".contains(c) { return .invalid }
+        return .done(String(c))
+    }
+
+    private enum ReplacementParse {
+        case incomplete, invalid
+        case done(String)
+
+        func map(_ command: (String) -> Command) -> Parse {
+            switch self {
+            case .incomplete: .incomplete
+            case .invalid: .invalid
+            case .done(let replacement): .done(command(replacement))
+            }
         }
     }
 
@@ -551,6 +624,7 @@ struct VimEngine {
     private static func isChange(_ command: Command) -> Bool {
         switch command.action {
         case .motion: false
+        case .deleteSurround, .changeSurround, .addSurround: true
         case .operate(let op, _): op != .yank
         case .simple(let name):
             ["x", "X", "s", "S", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~"].contains(name)
@@ -560,6 +634,28 @@ struct VimEngine {
 
     private mutating func perform(_ command: Command) -> VimEffect? {
         switch command.action {
+        case .deleteSurround(let target):
+            surround(target, count: command.count ?? 1, with: nil)
+            return nil
+        case .changeSurround(let target, let replacement):
+            if let pair = Self.surroundPair(replacement) { surround(target, count: command.count ?? 1, with: pair) }
+            return nil
+        case .addSurround(let motion, let replacement):
+            guard let pair = Self.surroundPair(replacement) else { return nil }
+            surroundPair = pair
+            if inVisual, let range = selection {
+                let linewise = mode == .visualLine
+                let (first, last) = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
+                mode = .normal
+                if linewise { wrapLines(first, last, in: pair, indenting: true) } else { wrap(range, in: pair) }
+            } else if let motion {
+                operate(.surround, motion: Self.resolved(motion, count: command.count), count: command.count ?? 1)
+            } else {
+                // yss: the line, without its indentation.
+                let start = firstNonBlank(lineStart(cursor))
+                wrap(start..<lineEnd(cursor), in: pair, trimming: true)
+            }
+            return nil
         case .motion(.textObject(let inner, let kind)):
             // In visual mode a text object selects its range.
             guard inVisual, let (range, linewise) = textObject(inner: inner, kind, count: command.count ?? 1), !range.isEmpty else { return nil }
@@ -991,6 +1087,7 @@ struct VimEngine {
 
     /// An operator on whole lines, `first` through `last`.
     private mutating func applyLines(_ op: Operator, _ first: Int, _ last: Int) {
+        if op == .surround { return wrapLines(first, last, in: surroundPair, indenting: false) }
         let starts = lineStarts
         let start = starts[first]
         let bodyEnd = lineEnd(starts[last])
@@ -1019,6 +1116,8 @@ struct VimEngine {
             cursor = start + indent.count
             beginInsert()
             return
+        case .surround:
+            return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: start)
             let block = String(text[start..<bodyEnd])
@@ -1033,6 +1132,7 @@ struct VimEngine {
 
     /// An operator on the characters in `range`.
     private mutating func apply(_ op: Operator, to range: Range<Int>) {
+        if op == .surround { return wrap(range, in: surroundPair, trimming: true) }
         let taken = String(text[range])
         switch op {
         case .yank:
@@ -1048,6 +1148,8 @@ struct VimEngine {
                 beginInsert()
                 return
             }
+        case .surround:
+            return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: range.lowerBound)
             text.replaceSubrange(range, with: Array(transformed(taken, op)))
@@ -1215,6 +1317,18 @@ struct VimEngine {
     /// quoted text after it); a" takes the quotes and the blanks after them.
     private func quoteObject(inner: Bool, quote: Character) -> Range<Int>? {
         let start = lineStart(cursor), end = lineEnd(cursor)
+        guard let (open, close) = quotePair(quote) else { return nil }
+        if inner { return (open + 1)..<close }
+        var high = close + 1
+        while high < end, text[high] == " " || text[high] == "\t" { high += 1 }
+        var low = open
+        if high == close + 1 { while low > start, text[low - 1] == " " || text[low - 1] == "\t" { low -= 1 } }
+        return low..<high
+    }
+
+    /// The quotes around the cursor on its line, or the next quoted text after it.
+    private func quotePair(_ quote: Character) -> (Int, Int)? {
+        let start = lineStart(cursor), end = lineEnd(cursor)
         let quotes = (start..<end).filter { text[$0] == quote && ($0 == start || text[$0 - 1] != "\\") }
         var pair: (Int, Int)?
         if let at = quotes.firstIndex(of: cursor) {
@@ -1226,13 +1340,7 @@ struct VimEngine {
             // Before the first quote: the first quoted text on the line.
             pair = (quotes[after], quotes[after + 1])
         }
-        guard let (open, close) = pair else { return nil }
-        if inner { return (open + 1)..<close }
-        var high = close + 1
-        while high < end, text[high] == " " || text[high] == "\t" { high += 1 }
-        var low = open
-        if high == close + 1 { while low > start, text[low - 1] == " " || text[low - 1] == "\t" { low -= 1 } }
-        return low..<high
+        return pair
     }
 
     /// i( is inside the brackets around the cursor; a( takes the brackets
@@ -1353,6 +1461,94 @@ struct VimEngine {
             while first > 0, blank(first - 1) { first -= 1 }
         }
         return first..<last + 1
+    }
+
+    // MARK: - Surround
+
+    /// What a surround replacement puts around the text. ( [ { add a space
+    /// inside, ) ] } and their aliases b r B don't; < or t takes a tag.
+    static func surroundPair(_ replacement: String) -> (open: String, close: String)? {
+        if replacement.hasPrefix("<") {
+            let name = replacement.dropFirst().prefix { !$0.isWhitespace && $0 != ">" }
+            return name.isEmpty ? nil : (replacement, "</\(name)>")
+        }
+        switch replacement {
+        case ")", "b": return ("(", ")")
+        case "(": return ("( ", " )")
+        case "]", "r": return ("[", "]")
+        case "[": return ("[ ", " ]")
+        case "}", "B": return ("{", "}")
+        case "{": return ("{ ", " }")
+        case ">", "a": return ("<", ">")
+        default: return (replacement, replacement)
+        }
+    }
+
+    /// Where the surrounding marks are: quotes on the line, brackets around
+    /// the cursor (a count reaches further out), or a tag pair.
+    private func surroundParts(_ target: Character, count: Int) -> (open: Range<Int>, close: Range<Int>)? {
+        let aliases: [Character: Character] = ["b": ")", "B": "}", "r": "]", "a": ">"]
+        let target = aliases[target] ?? target
+        switch target {
+        case "\"", "'", "`":
+            guard let (open, close) = quotePair(target) else { return nil }
+            return (open..<open + 1, close..<close + 1)
+        case "t":
+            guard let outer = tagObject(inner: false, count: count), let inner = tagObject(inner: true, count: count) else { return nil }
+            return (outer.lowerBound..<inner.lowerBound, inner.upperBound..<outer.upperBound)
+        default:
+            let pairs: [Character: (Character, Character)] = ["(": ("(", ")"), ")": ("(", ")"), "[": ("[", "]"), "]": ("[", "]"), "{": ("{", "}"), "}": ("{", "}"), "<": ("<", ">"), ">": ("<", ">")]
+            guard let (open, close) = pairs[target], let (range, _) = bracketObject(inner: false, open: open, close: close, count: count) else { return nil }
+            return (range.lowerBound..<range.lowerBound + 1, range.upperBound - 1..<range.upperBound)
+        }
+    }
+
+    /// ds (no replacement) and cs. An opening bracket as the target also
+    /// takes the blanks just inside the pair.
+    private mutating func surround(_ target: Character, count: Int, with replacement: (open: String, close: String)?) {
+        guard var (open, close) = surroundParts(target, count: count) else { return }
+        if "([{<".contains(target) {
+            var inner = open.upperBound
+            while inner < close.lowerBound, text[inner] == " " || text[inner] == "\t" { inner += 1 }
+            var end = close.lowerBound
+            while end > inner, text[end - 1] == " " || text[end - 1] == "\t" { end -= 1 }
+            (open, close) = (open.lowerBound..<inner, end..<close.upperBound)
+        }
+        checkpoint(at: open.lowerBound)
+        text.replaceSubrange(close, with: Array(replacement?.close ?? ""))
+        text.replaceSubrange(open, with: Array(replacement?.open ?? ""))
+        cursor = open.lowerBound
+        clampCursor()
+    }
+
+    /// ys and visual S on characters: the pair goes around `range`, less
+    /// any blanks at its end when `trimming` (ysw leaves the space outside).
+    private mutating func wrap(_ range: Range<Int>, in pair: (open: String, close: String), trimming: Bool = false) {
+        var end = range.upperBound
+        if trimming { while end > range.lowerBound, text[end - 1] == " " || text[end - 1] == "\t" { end -= 1 } }
+        checkpoint(at: range.lowerBound)
+        text.insert(contentsOf: Array(pair.close), at: end)
+        text.insert(contentsOf: Array(pair.open), at: range.lowerBound)
+        cursor = range.lowerBound
+        wantedColumn = nil
+        clampCursor()
+    }
+
+    /// ys over lines and linewise visual S: the pair goes on lines of its own.
+    /// Visual S also indents the lines between one level; ys leaves them.
+    private mutating func wrapLines(_ first: Int, _ last: Int, in pair: (open: String, close: String), indenting: Bool) {
+        let starts = lineStarts
+        let start = starts[first]
+        let bodyEnd = lineEnd(starts[last])
+        let indent = String(text[start..<firstNonBlank(start)])
+        let block = String(text[start..<bodyEnd])
+        let inner = indenting ? TextTransforms.indent(block) : block
+        let open = pair.open.trimmingCharacters(in: .whitespaces), close = pair.close.trimmingCharacters(in: .whitespaces)
+        checkpoint(at: start)
+        text.replaceSubrange(start..<bodyEnd, with: Array(indent + open + "\n" + inner + "\n" + indent + close))
+        cursor = start
+        wantedColumn = nil
+        clampCursor()
     }
 
     // MARK: - Repeat
