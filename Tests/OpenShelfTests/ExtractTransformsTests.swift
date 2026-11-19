@@ -1,0 +1,39 @@
+import Testing
+@testable import OpenShelf
+
+struct ExtractTransformsTests {
+    typealias E = ExtractTransforms
+
+    @Test func links() {
+        let text = "See https://a.com/x?q=1 and www.b.org, mail me@c.io, again https://a.com/x?q=1."
+        #expect(E.extract(.links, from: text) == "https://a.com/x?q=1\nwww.b.org")
+    }
+
+    @Test func emails() {
+        #expect(E.extract(.emails, from: "To: Ann <ann.lee+news@mail.example.com>, bob@x.io; ann.lee+news@mail.example.com") == "ann.lee+news@mail.example.com\nbob@x.io")
+    }
+
+    @Test func numbers() {
+        #expect(E.extract(.numbers, from: "Paid 1,234.50 then -7 and 3.14; v2 and abc123 aren't; 42.") == "1,234.50\n-7\n3.14\n42")
+    }
+
+    @Test func phoneNumbers() {
+        let found = E.matches(.phoneNumbers, in: "Call (555) 123-4567 or +1 415 555 0100 today")
+        #expect(found.count == 2)
+        #expect(found.first?.contains("123-4567") == true)
+    }
+
+    @Test func dates() {
+        let found = E.matches(.dates, in: "Due 2026-11-19, then next Tuesday at 3pm. Nothing else.")
+        #expect(found.count == 2)
+        // The system's detector takes a word like "Due" into the date phrase.
+        #expect(found.first?.hasSuffix("2026-11-19") == true)
+    }
+
+    /// Nothing of that kind: the text stays as it is ("Nothing to change").
+    @Test(arguments: E.Kind.allCases)
+    func nothingFoundLeavesTheText(kind: E.Kind) {
+        #expect(E.extract(kind, from: "just words here") == "just words here")
+        #expect(E.extract(kind, from: "") == "")
+    }
+}

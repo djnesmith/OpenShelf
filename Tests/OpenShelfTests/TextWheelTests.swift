@@ -122,7 +122,7 @@ struct TextWheelTests {
         #expect(Self.commands(TextWheel.items(for: context, group: .indentation)).last == .back(.format))
         #expect(Self.commands(TextWheel.items(for: context, group: .code)) == [.open(.encode), .open(.decode), .open(.hash), .open(.generate), .tool(.jwt), .back(.more)])
         #expect(Self.commands(TextWheel.items(for: context, group: .hash)) == [.tool(.md5), .tool(.sha1), .tool(.sha256), .back(.code)])
-        #expect(Self.commands(TextWheel.items(for: context, group: .extract)) == [.tool(.count), .back(.more)])
+        #expect(Self.commands(TextWheel.items(for: context, group: .extract)) == [.tool(.extractLinks), .tool(.extractEmails), .tool(.extractNumbers), .tool(.extractPhoneNumbers), .tool(.extractDates), .tool(.count), .back(.more)])
         #expect(Self.commands(TextWheel.items(for: context, group: .lines)) == [
             .tool(.sortAZ), .tool(.removeDuplicates), .tool(.removeBlankLines), .open(.order), .open(.joinSplit), .open(.lists), .back(.more),
         ])

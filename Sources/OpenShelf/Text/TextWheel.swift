@@ -50,6 +50,8 @@ enum TextTool: CaseIterable, Hashable, Sendable {
     case decodeURL, decodeBase64, decodeHTML, decodeJSON, decodeHex, decodeUnicode
     case uuid, timestamp, loremIpsum, password
     case jwt
+    // Extract
+    case extractLinks, extractEmails, extractNumbers, extractPhoneNumbers, extractDates
     // Reports: they say something about the text and leave it as it is.
     case count
     case md5
@@ -109,6 +111,11 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .loremIpsum: "Lorem Ipsum"
         case .password: "Password"
         case .jwt: "JWT"
+        case .extractLinks: "Links"
+        case .extractEmails: "Emails"
+        case .extractNumbers: "Numbers"
+        case .extractPhoneNumbers: "Phone Numbers"
+        case .extractDates: "Dates"
         case .count: "Count"
         case .md5: "MD5"
         case .sha1: "SHA-1"
@@ -159,6 +166,11 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .loremIpsum: "text.quote"
         case .password: "key"
         case .jwt: "key.horizontal"
+        case .extractLinks: "link"
+        case .extractEmails: "at"
+        case .extractNumbers: "number"
+        case .extractPhoneNumbers: "phone"
+        case .extractDates: "calendar"
         case .count: "sum"
         case .md5, .sha1, .sha256: "number.square"
         }
@@ -249,6 +261,11 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .timestamp: CodeTransforms.timestamp()
         case .loremIpsum: CodeTransforms.loremIpsum
         case .password: CodeTransforms.password()
+        case .extractLinks: ExtractTransforms.extract(.links, from: text)
+        case .extractEmails: ExtractTransforms.extract(.emails, from: text)
+        case .extractNumbers: ExtractTransforms.extract(.numbers, from: text)
+        case .extractPhoneNumbers: ExtractTransforms.extract(.phoneNumbers, from: text)
+        case .extractDates: ExtractTransforms.extract(.dates, from: text)
         case .reindent, .toMarkdown, .count, .md5, .sha1, .sha256, .jwt: nil
         }
     }
@@ -352,7 +369,7 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .decode: [.tool(.decodeURL), .tool(.decodeBase64), .tool(.decodeHTML), .tool(.decodeJSON), .tool(.decodeHex), .tool(.decodeUnicode)]
         case .generate: [.tool(.uuid), .tool(.timestamp), .tool(.loremIpsum), .tool(.password)]
         case .hash: [.tool(.md5), .tool(.sha1), .tool(.sha256)]
-        case .extract: [.tool(.count)]
+        case .extract: [.tool(.extractLinks), .tool(.extractEmails), .tool(.extractNumbers), .tool(.extractPhoneNumbers), .tool(.extractDates), .tool(.count)]
         case .lines: [.tool(.sortAZ), .tool(.removeDuplicates), .tool(.removeBlankLines), .open(.order), .open(.joinSplit), .open(.lists)]
         case .order: [.tool(.sortNatural), .tool(.sortByLength), .tool(.reverseLines), .tool(.shuffleLines)]
         case .joinSplit: [.tool(.joinWithCommas), .tool(.joinWithSpaces), .tool(.splitAtCommas), .tool(.splitAtSpaces)]
@@ -416,6 +433,7 @@ extension TextCommand {
             case .decodeURL, .decodeBase64, .decodeHTML, .decodeJSON, .decodeHex, .decodeUnicode: "Decoded \(tool.title)"
             case .uuid, .timestamp, .loremIpsum, .password: "Made a \(tool.title.lowercased())"
             case .jwt: "JWT read and copied"
+            case .extractLinks, .extractEmails, .extractNumbers, .extractPhoneNumbers, .extractDates: "Extracted \(tool.title.lowercased())"
             case .count: "Counted"
             case .md5, .sha1, .sha256: "\(tool.title) copied"
             }
