@@ -27,6 +27,35 @@ the file on a wedge and it's done, saved right next to the original.
 
 <p align="center"><img src="docs/images/wheels.png" alt="The Convert, Tools and Actions wheels" width="900"></p>
 
+<!-- fork: djnesmith — one block, so upstream merges stay easy -->
+## What this fork adds
+
+`djnesmith/OpenShelf` adds these to upstream OpenShelf. Each has its details and checks in
+[FORK-FEATURES.md](FORK-FEATURES.md); planned work is in [ROADMAP.md](ROADMAP.md).
+
+- **Text wheel:** select text anywhere (or copy it) and press ⌃⌥Space for tools on it: fix,
+  case, lines, format, code (encode, decode, JWT, generate), extract, count and hash, with
+  search on the wheel. Password fields are refused.
+- **Edit window with vim keys:** the selection in a window with vim's motions, counts,
+  operators, text objects, registers (yank goes to the Mac clipboard), macros, `.` and
+  surround, checked against real vim; relative line numbers (⌥⌘L), wrap (⌥⌘Z), and a quiet
+  note when a command does nothing.
+- **Tools:** still frame, reverse, strip metadata, mono, even out loudness, volume, frame
+  rate, fit under a size, export in a chosen codec, transcribe, OCR, PDF pages to images,
+  crop to subject, GIF loop count, icons and animated PNGs, ebooks (calibre), markup
+  (pandoc), data files, EDN, Parquet and SQLite, archives, subtitles, JPEG XL, Make Fillable,
+  Check Safety, BPM, Pretty Print, and a metadata Clean that checks the file's own bytes.
+- **Actions and shelves:** Copy to a folder with a name-clash dialog, Move and Copy that
+  open on the last folder used, Copy Name, Open in iTerm2, Hide Shelves, ⌘-number wedges,
+  and the wheel on selected shelf items.
+- **Mail helpers** (not yet proven on real Mail): ⌃⌥S snoozes with Mail's own Remind Me,
+  ⌘↩ always sends and ⇧⌘↩ sends and archives, ⌃⌥M files to a mailbox by typing part of
+  its name, ⌃⌥K copies a link to the message, and optional Gmail-style single keys.
+- **Different from upstream:** no in-app updates (Sparkle is off), signed with the fork's
+  own identity, a minimal environment for helper processes, and locked-down data tools.
+  The text wheel and Mail helpers need Accessibility, unlike the file wheels below.
+<!-- /fork -->
+
 - **⇧ Convert wheel:** images, PDFs, documents, spreadsheets, slides, audio,
   video, subtitles and archives into the formats that make sense for them (JPG,
   PNG, HEIC, AVIF, WEBP, PDF, DOCX, Markdown, EPUB, PPTX, XLSX, CSV, MP3, OGG,

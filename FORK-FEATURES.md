@@ -3,7 +3,8 @@ Read this before merging upstream. Every item must still work after the merge.
 # Fork features
 
 What `djnesmith/OpenShelf` adds over `Manan-Santoki/OpenShelf`. The list comes from
-`git log upstream/main..djnesmith`. Each new feature adds a line here in the same commit.
+`git log upstream/main..djnesmith`. Rule: every new feature adds its entry here and a line to
+the "What this fork adds" block at the top of `README.md`, in the same commit.
 Planned features and the order to build them in are in `ROADMAP.md`.
 
 After any merge, run `swift test` (all tests must pass) and then `make app`. The checks
@@ -477,6 +478,7 @@ David, 2026-11-19: "it should remember the last directory a file was copied or m
 - Check: `swift test --filter MoveCopyFolderTests`. In the app: Move a file to a folder, then Move or Copy another file from somewhere else; the picker opens on the first folder.
 
 ### 58. Mail: snooze through Mail's own Remind Me (MAIL-PLAN slice A)
+**Not yet proven on real Mail** (built and tested against fakes; installed 2026-11-19 for David to try).
 David, 2026-11-19 (ROADMAP I4). While Mail is in front, ⌃⌥S opens a small prompt: David's presets (tomorrow morning 7am, this afternoon 2pm, tonight 5pm, in two days 7am, this weekend Saturday 7am, next week Monday 7am; ⌘1-⌘6 or click) or a typed time ("fri 2pm", "in 3 hours", "dec 3 9am"; a date with no time is 7am; a preset already past today is the next day's). It shows the time it understood before Return; Esc closes it; no sound. The time goes to Mail's Message › Remind Me › Remind Me Later…, found by exact title; in Mail's window OpenShelf sets the one date picker, reads it back, and presses Remind Me only if the time matches to the minute, otherwise it presses Cancel and says why. With David's Mail setting "Move to “Remind Me”" on, Mail takes the message out of the inbox itself. That setting can't be read (it is in no preference file), so Archive after Remind Me is an OpenShelf default, `MailSnoozeArchives`, off. The shortcut exists only while Mail is in front (registered and dropped as apps come forward); before the prompt opens it checks that the menu items exist and Remind Me Later… is enabled (a message is selected), and says what's wrong if not.
 - Menu bar › Check Mail (read only) writes `~/Library/Logs/OpenShelf/mail-check.txt`: the focused element's role, whether Message › Send, Archive and Remind Me Later… are enabled and their shortcuts, and the front window's controls (roles, ids, button titles, date pickers' dates). No message text: lists, bodies, text fields and static text are not read.
 - Not decided by David: the shortcut (`MailPromptShortcut`, default ⌃⌥S).
@@ -486,6 +488,7 @@ David, 2026-11-19 (ROADMAP I4). While Mail is in front, ⌃⌥S opens a small pr
 - Check: `swift test --filter 'SnoozeTimeTests|MailMenuTests'`. In the app: select a test message, ⌃⌥S, type "in 2 minutes", Return; the message leaves the inbox and comes back two minutes later.
 
 ### 59. Mail: ⌘↩ always sends, ⇧⌘↩ sends and archives (MAIL-PLAN slice B)
+**Not yet proven on real Mail** (built and tested against fakes; installed 2026-11-19 for David to try).
 David, 2026-11-19 (ROADMAP I5): "i would like command - enter to always work when i send an email ... command shift enter would send and Archive". While Mail is in front, ⌘↩ presses Message › Send by its title when Mail has it enabled (and does nothing otherwise, as before), so it no longer depends on the App Shortcut reaching the menu. ⇧⌘↩ notes the one message selected in Mail's viewer (its Message-ID and subject through AppleScript, never its text) and checks that the reply's window title is that subject (ignoring Re:, Fwd: and the like); it presses Send, waits for the reply's window to close, checks the same message is still selected, and presses Message › Archive. Anything uncertain sends without archiving and says so. Both shortcuts are registered only while Mail is in front; `MailSendKeys` (default on) turns them off. The first ⇧⌘↩ asks for Automation permission for Mail.
 - Why ⌘↩ sometimes failed, as far as can be read: Mail has one "Send" item (`MainMenu.loctable` 709) and David's App Shortcut is "@\U21a9" on it; an App Shortcut fires only when the item is enabled and no view in the window takes ⌘↩ first. Check Mail right after a failed ⌘↩ shows which.
 - Commits: this one
@@ -493,12 +496,14 @@ David, 2026-11-19 (ROADMAP I5): "i would like command - enter to always work whe
 - Check: `swift test --filter MailSendTests`. In the app: reply to a test message, ⇧⌘↩; the reply is in Sent and the original in Archive.
 
 ### 60. Mail: quick filing and message links (MAIL-PLAN slices C and D)
+**Not yet proven on real Mail** (built and tested against fakes; installed 2026-11-19 for David to try).
 While Mail is in front, ⌃⌥M opens a picker of every mailbox (On My Mac and each enabled account, nested ones as "Parent/Child"), listed through Mail's AppleScript. Typing part of a name narrows it (letters in order, counted more at a word's start, in a row and in the mailbox's own name; shorter names first on a tie), recently used mailboxes come first (the last 10, `MailFilingRecent`), ↑ ↓ choose and Return moves the viewer's selected messages there with AppleScript's move; Esc closes. ⌃⌥K copies a link to the one selected message, `message://%3C<Message-ID>%3E` with anything but letters, digits and `-._~@` escaped; Mail opens it. Both ask for Automation permission for Mail the first time. Until the single keys exist (slice E, where v and l open the same picker), ⌃⌥M and ⌃⌥K are not decided by David.
 - Commits: this one
 - Files: `Sources/OpenShelf/Mail/MailFiling.swift`, `Mail/MailboxPicker.swift`, `Mail/MailLinks.swift`, `Mail/MailHelpers.swift`, `App/GlobalHotKey.swift`
 - Check: `swift test --filter MailFilingTests`. In the app: select a test message, ⌃⌥M, type part of a folder's name, Return; the message is in that folder. ⌃⌥K, then paste in Notes and click the link.
 
 ### 61. Mail: single keys, off by default (MAIL-PLAN slice E)
+**Not yet proven on real Mail** (built and tested against fakes; installed 2026-11-19 for David to try).
 Menu bar › Mail Single Keys (off by default, `MailSingleKeys`) turns on Gmail-style keys in Mail: j k next and previous message, o open, / search, g i g s g t g d g a Inbox, Flagged, Sent, Drafts, Archive (Go to Favorite Mailbox), e or ] archive, [ archive then the message above, x Trash (Edit › Delete), r a f reply, reply all, forward, s flag, b snooze (#58), v or l move to a mailbox (#60), m mute, ! junk, ⇧I ⇧U read and unread, z undo, c new message, * a select all, ? the list (a panel that doesn't take focus; any key closes it). Each key presses Mail's menu item by its title, found anywhere under its menu; j and k move the message list's selection through Accessibility. A prefix waits one second for its second key. The keys come from a key tap installed only while the setting is on and Mail is in front, removed as soon as Mail isn't; while it is installed, a "Mail keys" item shows in the menu bar. It takes a key only when focus is Mail's message list or a message being read (not editable, and Message › Send disabled), with no modifier but ⇧; anything else, or anything it can't read within 0.1 s, goes to Mail untouched. It never records or logs keys. A tap that takes keys needs Accessibility, which OpenShelf holds; macOS may also ask for Input Monitoring.
 - Not decided by David, left out: u, n and p, * n; [ is archive then up.
 - Commits: this one
