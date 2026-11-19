@@ -692,6 +692,28 @@ back at the right time."
   “Remind Me”" is off. Then the single-key layer.
 - Tests without a screen: the phrase table and parsing (pure functions with a fixed "now").
 
+**I5. Send that always works, and Send and Archive** (S-M; not to be built yet)
+David, 2026-11-19: "i would like command - enter to always work when i send an email. it
+sometimes doesn't and i don't know why. so command shift enter would send and Archive".
+- Wanted: ⌘↩ always sends from a compose or reply window; ⇧⌘↩ sends, then archives the message
+  being replied to.
+- Read on his Mac (by orc, 2026-11-19): Mail has App Shortcuts set in Keyboard settings,
+  "Send" = ⌘↩, "Archive" = ⌘E, "Use Selection for Find" = ⌃⇧F (`NSUserKeyEquivalents` in
+  com.apple.mail). An App Shortcut fires only when a menu item with that exact title exists and
+  is enabled, which is the leading suspect for "sometimes doesn't". Not verified: which state Mail
+  is in when it fails. Mail's own Send key is ⇧⌘D.
+- Other Mail helpers to consider, from what such apps do publicly (no third-party code), each to
+  be decided with David:
+  - Snooze (I4).
+  - Quick filing: move the message to a mailbox chosen by typing part of its name.
+  - A command palette for Mail's actions.
+  - Message links: copy a link that opens the message in Mail.
+  - Snippets, shared with the Snippets wheel (C8).
+  - Send and Archive (above).
+  - Unsubscribe and block a sender in one step.
+  - Gmail-style single keys (needs Input Monitoring; last).
+  - Settings sync: skip.
+
 ### Considered and not a fit
 
 - **Moving and tiling windows.** A wheel for a dropped item has no window to act on.
