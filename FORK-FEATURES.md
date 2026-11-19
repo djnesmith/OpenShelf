@@ -438,6 +438,13 @@ Edit, on the text wheel's first ring after Undo, opens the selection (or the cop
 - Files: `Sources/OpenShelf/Text/Editor/VimEngine.swift`, `Text/Editor/VimEditorWindow.swift`, `Text/TextWheel.swift` (`TextCommand.edit`), `Text/SelectedTextController.swift` (`edit`, `canReplace`), `Wheel/WheelSearch.swift` (keywords vim, editor)
 - Check: `swift test --filter 'Vim|EditWriteBack|TextWheelTests'`. In the app: select a paragraph in Mail, ⌃⌥Space, Edit, `dw`, ⌘↩; then copy a line in a terminal, ⌃⌥Space, Edit, `A!` Esc, ⌘↩ and paste.
 
+### 54. Only a password field is refused
+The text wheel, Edit and the tools refuse only when the focused element is a password field: Accessibility's `AXSecureTextField` subrole, which a password input in a browser, 1Password and the Passwords app report. The toast says "Password field". Every other field and app works, including Terminal or iTerm2 with Secure Keyboard Entry and any app while macOS's system-wide secure-input flag is on (David, 2026-11-19: "everything else should be ok"). That flag is often left on by loginwindow after unlocking, and the pid macOS reports for it follows the frontmost app, so neither is used. At paste time the same rule holds: Edit's write-back and the tools' paste-back read the focused element again, and a password field that took focus meanwhile gets nothing (the result is copied instead). A refusal is logged at notice level with the flag and reported pid, never a field's value.
+- Not covered: a password a site or app has revealed ("show password") is a plain text field to Accessibility, so it reads like any other text.
+- Commits: 9e77d1a, a2274f1, 20d4e0a, 697a239
+- Files: `Sources/OpenShelf/Text/AccessibilityText.swift` (`read`, `secureInputDiagnostics`), `Text/HotkeyRouting.swift` (`choose`), `Text/SelectedTextController.swift` (`canReplace`, `toolMayReplace`), `Text/TextLog.swift`, `App/AppDelegate.swift` (toast)
+- Check: `swift test --filter 'HotkeyRouteTests|EditWriteBack'`. In the app, with iTerm2 in front holding secure input, select text in Mail, ⌃⌥Space: the wheel opens. In a browser's password field: "Password field". `log show --last 10m --predicate 'subsystem == "com.djnesmith.OpenShelf"'` shows any refusal.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.
