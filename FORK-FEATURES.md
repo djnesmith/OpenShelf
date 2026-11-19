@@ -50,13 +50,16 @@ verified: Word to PDF prints Quick Look's HTML preview in a WebKit view, which c
 picture a Word file links by web address.
 
 Upstream 1.10.0 added Developer ID signing and notarization (`scripts/sign.sh`,
-`scripts/notarize.sh`, `make notarize`), a Homebrew cask, a Sparkle feed on its `appcast`
-branch, and About OpenShelf in the menu-bar menu. The merge keeps About and the 1.10.0
-version number. It keeps the fork's Makefile, so builds still sign with the fork's identity
-and have no Sparkle (#1, #2); `sign.sh` and `notarize.sh` are in the tree but unused. The
-README is upstream's and describes upstream's releases: self-updating, notarized,
-installed with Homebrew. None of that applies to this fork. Don't `brew install` upstream's
-cask here: it installs to `/Applications/OpenShelf.app` too, over the fork's build.
+`scripts/notarize.sh`, and `make notarize` targets), a Homebrew cask, a Sparkle feed on its
+`appcast` branch, and About OpenShelf in the menu-bar menu. The merge keeps About and the
+1.10.0 version number. It keeps the fork's Makefile, so builds sign with the fork's identity
+(not ad-hoc) and have no Sparkle (#1, #2); the fork has no `notarize` targets, and `sign.sh`
+and `notarize.sh` are in the tree but unused. README.md, CHANGELOG.md, docs/SPEC.md and the
+DMG background are upstream's and describe upstream's builds and releases: ad-hoc local
+builds, self-updating, notarized, installed with Homebrew. None of that applies to this
+fork; where they disagree with this file, this file is right. Don't install upstream's
+Homebrew cask here: with `--force` it would replace the fork's app in
+`/Applications/OpenShelf.app` with upstream's self-updating one.
 
 ## Security
 
@@ -64,10 +67,10 @@ cask here: it installs to `/Applications/OpenShelf.app` too, over the fork's bui
 Sparkle is gone, so the app never downloads or installs updates by itself. Upstream 1.4.0's update reminder (a blue menu-bar icon and an "Update to Version…" item) needs Sparkle, so the merge leaves it out; `MenuBarIcon.updateAvailableImage` is unused.
 - Commits: 28bb48c, f036332 (the Makefile no longer fetches Sparkle)
 - Files: `Package.swift`, `Makefile`, `Support/Info.plist`, `Sources/OpenShelf/App/AppDelegate.swift`, `App/OpenShelfApp.swift`, `Settings/SettingsPanes.swift`, `Settings/SettingsTab.swift` (`App/Updater.swift` deleted)
-- Check: `grep -ri sparkle Package.swift Makefile Support Sources` finds nothing. With the app running, `lsof -nP -i -a -p $(pgrep -x OpenShelf)` shows no sockets.
+- Check: `grep -rw Sparkle Package.swift Makefile Support Sources` finds nothing. With the app running, `lsof -nP -i -a -p $(pgrep -x OpenShelf)` shows no sockets.
 
 ### 2. David's signing identity and bundle ID
-Builds are signed as "Apple Development: David Nesmith (JFGJA89Z8H)" with the hardened runtime. The bundle ID is `com.djnesmith.OpenShelf`. The only entitlement is `com.apple.security.automation.apple-events`, which is needed to read Finder's selection.
+Builds are signed as "Apple Development: David Nesmith (JFGJA89Z8H)" with the hardened runtime. The bundle ID is `com.djnesmith.OpenShelf`. The only entitlement is `com.apple.security.automation.apple-events`, which is needed to read Finder's selection and to ask Pages, Numbers and Keynote to export copies.
 - Commits: f036332
 - Files: `Makefile` (`SIGN_IDENTITY ?=`; `bundle_app` adds upstream's App Intents metadata before signing), `Support/Info.plist`, `Support/OpenShelf.entitlements`, `Sources/OpenShelf/Convert/ExternalTools.swift` (the `defaults` domain in a comment)
 - Check: `codesign -dv --verbose=2 /Applications/OpenShelf.app` shows `Identifier=com.djnesmith.OpenShelf`, `TeamIdentifier=CHJ32A2B4N`, and `flags=0x10000(runtime)`. `codesign -d --entitlements - /Applications/OpenShelf.app` lists only apple-events.
