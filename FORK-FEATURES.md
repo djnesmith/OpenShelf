@@ -492,6 +492,12 @@ David, 2026-11-19 (ROADMAP I5): "i would like command - enter to always work whe
 - Files: `Sources/OpenShelf/Mail/MailSend.swift`, `Mail/MailHelpers.swift`, `App/GlobalHotKey.swift`, `Support/Info.plist` (the Automation text names Mail)
 - Check: `swift test --filter MailSendTests`. In the app: reply to a test message, ⇧⌘↩; the reply is in Sent and the original in Archive.
 
+### 60. Mail: quick filing and message links (MAIL-PLAN slices C and D)
+While Mail is in front, ⌃⌥M opens a picker of every mailbox (On My Mac and each enabled account, nested ones as "Parent/Child"), listed through Mail's AppleScript. Typing part of a name narrows it (letters in order, counted more at a word's start, in a row and in the mailbox's own name; shorter names first on a tie), recently used mailboxes come first (the last 10, `MailFilingRecent`), ↑ ↓ choose and Return moves the viewer's selected messages there with AppleScript's move; Esc closes. ⌃⌥K copies a link to the one selected message, `message://%3C<Message-ID>%3E` with anything but letters, digits and `-._~@` escaped; Mail opens it. Both ask for Automation permission for Mail the first time. Until the single keys exist (slice E, where v and l open the same picker), ⌃⌥M and ⌃⌥K are not decided by David.
+- Commits: this one
+- Files: `Sources/OpenShelf/Mail/MailFiling.swift`, `Mail/MailboxPicker.swift`, `Mail/MailLinks.swift`, `Mail/MailHelpers.swift`, `App/GlobalHotKey.swift`
+- Check: `swift test --filter MailFilingTests`. In the app: select a test message, ⌃⌥M, type part of a folder's name, Return; the message is in that folder. ⌃⌥K, then paste in Notes and click the link.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

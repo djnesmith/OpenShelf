@@ -111,6 +111,9 @@ final class GlobalHotKey {
     /// ⌘↩ and ⇧⌘↩ in Mail (ROADMAP I5), also only while Mail is in front.
     static let mailSend = GlobalHotKey(id: 3)
     static let mailSendAndArchive = GlobalHotKey(id: 4)
+    /// Quick filing and message links (MAIL-PLAN C, D), while Mail is in front.
+    static let mailMove = GlobalHotKey(id: 5)
+    static let mailLink = GlobalHotKey(id: 6)
 
     var onPress: (() -> Void)?
 
