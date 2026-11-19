@@ -40,6 +40,11 @@ enum TextTool: CaseIterable, Hashable, Sendable {
     case snakeCase
     case kebabCase
     case constantCase
+    // Fix
+    case plainText
+    case stripTracking
+    case fixEncoding
+    case stripANSI
     // Reports: they say something about the text and leave it as it is.
     case count
     case md5
@@ -84,6 +89,10 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .snakeCase: "snake_case"
         case .kebabCase: "kebab-case"
         case .constantCase: "CONSTANT_CASE"
+        case .plainText: "Plain Text"
+        case .stripTracking: "Strip Tracking"
+        case .fixEncoding: "Fix Encoding"
+        case .stripANSI: "Strip ANSI"
         case .count: "Count"
         case .md5: "MD5"
         case .sha1: "SHA-1"
@@ -123,6 +132,10 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .titleCase: "textformat"
         case .sentenceCase: "text.alignleft"
         case .camelCase, .pascalCase, .snakeCase, .kebabCase, .constantCase: "chevron.left.forwardslash.chevron.right"
+        case .plainText: "doc.plaintext"
+        case .stripTracking: "link"
+        case .fixEncoding: "character"
+        case .stripANSI: "paintbrush"
         case .count: "sum"
         case .md5, .sha1, .sha256: "number.square"
         }
@@ -182,6 +195,10 @@ enum TextTool: CaseIterable, Hashable, Sendable {
         case .snakeCase: CaseTransforms.snake(text)
         case .kebabCase: CaseTransforms.kebab(text)
         case .constantCase: CaseTransforms.constant(text)
+        case .plainText: FixTransforms.plainText(text)
+        case .stripTracking: FixTransforms.stripTracking(text)
+        case .fixEncoding: FixTransforms.fixEncoding(text)
+        case .stripANSI: FixTransforms.stripANSI(text)
         case .reindent, .toMarkdown, .count, .md5, .sha1, .sha256: nil
         }
     }
@@ -269,7 +286,7 @@ enum TextGroup: CaseIterable, Hashable, Sendable {
         case .convert: []
         // More ▸ as David approved it (2026-11-18); Fix, Format, Code and Extract fill up as their tools are built.
         case .more: [.open(.lines), .open(.textCase), .open(.fix), .open(.format), .open(.code), .open(.extract)]
-        case .fix: [.tool(.trimLines), .tool(.straightenQuotes)]
+        case .fix: [.tool(.trimLines), .tool(.straightenQuotes), .tool(.plainText), .tool(.stripTracking), .tool(.fixEncoding), .tool(.stripANSI)]
         case .format: [.open(.indentation)]
         case .code: [.open(.hash)]
         case .hash: [.tool(.md5), .tool(.sha1), .tool(.sha256)]
@@ -329,6 +346,10 @@ extension TextCommand {
             case .addCommas: "Added commas"
             case .upperCase, .lowerCase, .titleCase, .sentenceCase, .camelCase, .pascalCase, .snakeCase, .kebabCase, .constantCase:
                 "Changed to \(tool.title)"
+            case .plainText: "Made plain text"
+            case .stripTracking: "Stripped tracking"
+            case .fixEncoding: "Fixed encoding"
+            case .stripANSI: "Stripped colour codes"
             case .count: "Counted"
             case .md5, .sha1, .sha256: "\(tool.title) copied"
             }

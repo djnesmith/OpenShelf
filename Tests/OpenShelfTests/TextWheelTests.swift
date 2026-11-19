@@ -117,7 +117,7 @@ struct TextWheelTests {
         #expect(Self.commands(TextWheel.items(for: context, group: .more)) == [
             .open(.lines), .open(.textCase), .open(.fix), .open(.format), .open(.code), .open(.extract), .back(nil),
         ])
-        #expect(Self.commands(TextWheel.items(for: context, group: .fix)) == [.tool(.trimLines), .tool(.straightenQuotes), .back(.more)])
+        #expect(Self.commands(TextWheel.items(for: context, group: .fix)) == [.tool(.trimLines), .tool(.straightenQuotes), .tool(.plainText), .tool(.stripTracking), .tool(.fixEncoding), .tool(.stripANSI), .back(.more)])
         #expect(Self.commands(TextWheel.items(for: context, group: .format)) == [.open(.indentation), .back(.more)])
         #expect(Self.commands(TextWheel.items(for: context, group: .indentation)).last == .back(.format))
         #expect(Self.commands(TextWheel.items(for: context, group: .code)) == [.open(.hash), .back(.more)])
