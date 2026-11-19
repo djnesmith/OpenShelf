@@ -56,6 +56,22 @@ struct VimEditorWindowTests {
         #expect(window.text == "one\r\nthree")
     }
 
+    /// Lines broken by CR alone or U+2028/U+2029/U+0085 (Notes, Mail and TextEdit use U+2028 for
+    /// Shift-Return) look like lines in the window, so they are lines to vim: j and d3j work, and
+    /// the same break goes back on at the end.
+    @Test(arguments: ["\r", "\u{2028}", "\u{2029}", "\u{0085}"])
+    func otherLineBreaksAreLines(lineBreak: String) {
+        let window = VimEditorWindow()
+        _ = window.makePanel()
+        window.load(["one", "two", "three", "four", "five"].joined(separator: lineBreak))
+        let view = window.panelTextView!
+        for c in "d3j" { view.keyDown(with: Self.key(String(c))) }
+        #expect(window.text == "five")
+        window.load(["one", "two", "three"].joined(separator: lineBreak))
+        for c in "jdd" { view.keyDown(with: Self.key(String(c))) }
+        #expect(window.text == "one" + lineBreak + "three")
+    }
+
     /// Mixed line breaks come back as "\n", rather than every line turning into "\r\n".
     @Test func mixedLineBreaksComeBackAsLF() {
         let window = VimEditorWindow()

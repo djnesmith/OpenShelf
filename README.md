@@ -485,6 +485,10 @@ them end to end against the tools installed on your Mac,
 `OPENSHELF_TOOL_TESTS=1 swift test` (they're opt-in because they keep every
 core busy).
 
+To compare the Edit window's vim keys with real vim after changing them,
+`scripts/vim-compare.py` runs random key sequences through `vim --clean` and
+writes a test with vim's results: run it, then `swift test --filter VimCompare`.
+
 You can also open `Package.swift` in Xcode.
 
 ## Project layout

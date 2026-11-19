@@ -5,3 +5,4 @@
 *.xcodeproj
 xcuserdata/
 .claude/
+/Tests/OpenShelfTests/VimCompareGenerated.swift

@@ -14,8 +14,8 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
     private var onFinish: ((String) -> Void)?
     private var onCancel: (() -> Void)?
     private var destination = ""
-    /// The text came with Windows line breaks, which go back on at the end.
-    private var usesCRLF = false
+    /// The line break the text came with, which goes back on at the end.
+    private var lineBreak = "\n"
     private var scroll: NSScrollView?
     /// Where the wrap choice is remembered between windows, like the window size.
     private let defaults: UserDefaults
@@ -55,10 +55,8 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
 
     /// Puts `text` in the window, in normal mode at the start.
     func load(_ text: String) {
-        // vim's lines end in "\n"; Swift reads "\r\n" as one character.
-        // Text that breaks every line with "\r\n" gets it back at the end; mixed text comes back with "\n".
-        let lf = text.replacingOccurrences(of: "\r\n", with: "\n")
-        usesCRLF = text.contains("\r\n") && !text.replacingOccurrences(of: "\r\n", with: "").contains("\n")
+        let (lf, lineBreak) = Self.splitLines(text)
+        self.lineBreak = lineBreak
         textView?.load(lf)
     }
 
@@ -71,7 +69,26 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
     /// The text as it stands, with the line breaks it came with.
     var text: String {
         let text = textView?.string ?? ""
-        return usesCRLF ? text.replacingOccurrences(of: "\n", with: "\r\n") : text
+        return lineBreak == "\n" ? text : text.replacingOccurrences(of: "\n", with: lineBreak)
+    }
+
+    /// The breaks the text view shows as new lines, besides "\n": Windows', old Mac's, and
+    /// Unicode's (Notes, Mail and TextEdit use U+2028 for Shift-Return).
+    static let otherLineBreaks = ["\r\n", "\r", "\u{2028}", "\u{2029}", "\u{0085}"]
+
+    /// The text with every line break as vim's "\n", and the break to put back at the
+    /// end: the one the text used, when it used only one kind; otherwise "\n".
+    /// Without this, lines the window shows apart are one line to vim, and j does nothing.
+    static func splitLines(_ text: String) -> (text: String, lineBreak: String) {
+        // "\r\n" goes first: searching for "\n" or "\r" alone would find it too.
+        var rest = text
+        var used: [String] = []
+        for lineBreak in otherLineBreaks + ["\n"] where rest.contains(lineBreak) {
+            used.append(lineBreak)
+            rest = rest.replacingOccurrences(of: lineBreak, with: "")
+        }
+        let lf = otherLineBreaks.reduce(text) { $0.replacingOccurrences(of: $1, with: "\n") }
+        return (lf, used.count == 1 ? used[0] : "\n")
     }
 
     /// Builds the window once; later opens reuse it, so it opens at once.

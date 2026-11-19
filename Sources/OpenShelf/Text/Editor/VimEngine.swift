@@ -104,6 +104,9 @@ struct VimEngine {
     private var failed = false
     /// How many old undo states have been dropped, so a macro's own can be found.
     private var undoTrimmed = 0
+    /// No lines at all, as vim's empty buffer: an empty text, or dd on the last line. One
+    /// empty line is different (dd on it still yanks it); both are "" here.
+    private var noLines: Bool
     /// Keys a macro may play in all, recursion included.
     static let macroKeyLimit = 100_000
 
@@ -115,6 +118,7 @@ struct VimEngine {
     init(_ text: String) {
         self.text = Array(text)
         original = self.text
+        noLines = text.isEmpty
     }
 
     var string: String { String(text) }
@@ -1263,8 +1267,8 @@ struct VimEngine {
             // An empty yank still yanks (nothing), as vim's does.
             guard high > low || op == .change || op == .yank else { return }
             // c$ (C) or ce on an empty line takes the empty text, so the register is emptied, as in
-            // vim; an empty text has nothing to take, and the register stays.
-            if op == .change, high == low, target.kind == .inclusive, !text.isEmpty { store(VimRegister(text: "", linewise: false), yank: false) }
+            // vim; with no lines there is nothing to take, and the register stays.
+            if op == .change, high == low, target.kind == .inclusive, !(noLines && text.isEmpty) { store(VimRegister(text: "", linewise: false), yank: false) }
             if op == .indent || op == .outdent {
                 applyLines(op, lineIndex(low), lineIndex(max(high - 1, low)))
             } else {
@@ -1300,17 +1304,20 @@ struct VimEngine {
             // yy and yj leave the cursor; yk takes it up to the first line.
             if lineIndex(cursor) != first { cursor = start + min(cursor - lineStart(cursor), max(bodyEnd - start, 0)) }
         case .delete:
+            // With no lines there is nothing to delete, and the register stays, as in vim.
+            guard !(noLines && text.isEmpty) else { return }
             store(VimRegister(text: taken, linewise: true), yank: op == .yank)
             checkpoint(at: start)
             if last + 1 < starts.count {
                 text.removeSubrange(start..<starts[last + 1])
             } else {
                 // The last line takes the line break before it.
+                noLines = first == 0
                 text.removeSubrange(max(start - 1, 0)..<text.count)
             }
             cursor = firstNonBlank(lineStarts[min(first, lineStarts.count - 1)])
         case .change:
-            store(VimRegister(text: taken, linewise: true), yank: op == .yank)
+            if !(noLines && text.isEmpty) { store(VimRegister(text: taken, linewise: true), yank: op == .yank) }
             checkpoint(at: start)
             // cc keeps one line, emptied but for its indentation.
             let indent = Array(text[start..<firstNonBlank(start)])
@@ -2134,6 +2141,7 @@ struct VimEngine {
     /// Saves the text for undo. `position` is where the change begins,
     /// where undo leaves the cursor, as vim does.
     private mutating func checkpoint(at position: Int? = nil) {
+        if !text.isEmpty { noLines = false }
         undoStack.append((string, position ?? cursor))
         if undoStack.count > Self.undoLimit {
             undoStack.removeFirst()
