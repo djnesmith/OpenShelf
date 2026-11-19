@@ -108,6 +108,9 @@ final class GlobalHotKey {
     static let shared = GlobalHotKey(id: 1)
     /// The Mail helpers' prompt (ROADMAP I4), registered only while Mail is in front.
     static let mail = GlobalHotKey(id: 2)
+    /// ⌘↩ and ⇧⌘↩ in Mail (ROADMAP I5), also only while Mail is in front.
+    static let mailSend = GlobalHotKey(id: 3)
+    static let mailSendAndArchive = GlobalHotKey(id: 4)
 
     var onPress: (() -> Void)?
 

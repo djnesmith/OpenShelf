@@ -15,6 +15,9 @@ final class MailHelpers {
     /// Archive after Remind Me: only for Mail without its "Move to “Remind Me”" setting,
     /// which can't be read (it isn't in Mail's preference files). David has it on, so off.
     static let archiveAfterRemindKey = "MailSnoozeArchives"
+    /// ⌘↩ sends and ⇧⌘↩ sends then archives (David: "i would like command - enter to always
+    /// work"). On unless turned off here.
+    static let sendKeysKey = "MailSendKeys"
 
     private let defaults: UserDefaults
     private var observer: NSObjectProtocol?
@@ -29,9 +32,13 @@ final class MailHelpers {
 
     var archivesAfterRemind: Bool { defaults.bool(forKey: Self.archiveAfterRemindKey) }
 
+    var sendKeys: Bool { defaults.object(forKey: Self.sendKeysKey) as? Bool ?? true }
+
     /// Watches which app is in front, so the shortcut exists only while Mail is.
     func start() {
         GlobalHotKey.mail.onPress = { [weak self] in self?.showPrompt() }
+        GlobalHotKey.mailSend.onPress = { MailSend.send() }
+        GlobalHotKey.mailSendAndArchive.onPress = { MailSend.sendAndArchive() }
         observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             MainActor.assumeIsolated { self?.frontAppChanged(to: app?.bundleIdentifier) }
@@ -42,10 +49,14 @@ final class MailHelpers {
     /// Registers the shortcut while Mail is in front, and only then. While the prompt is
     /// open, OpenShelf is in front and the shortcut stays off.
     func frontAppChanged(to bundleID: String?) {
-        if Self.shouldListen(front: bundleID) {
-            GlobalHotKey.mail.register(promptShortcut)
+        let listen = Self.shouldListen(front: bundleID)
+        if listen { GlobalHotKey.mail.register(promptShortcut) } else { GlobalHotKey.mail.unregister() }
+        if listen, sendKeys {
+            GlobalHotKey.mailSend.register(MailSend.sendShortcut)
+            GlobalHotKey.mailSendAndArchive.register(MailSend.sendAndArchiveShortcut)
         } else {
-            GlobalHotKey.mail.unregister()
+            GlobalHotKey.mailSend.unregister()
+            GlobalHotKey.mailSendAndArchive.unregister()
         }
     }
 

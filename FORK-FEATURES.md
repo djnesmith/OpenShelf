@@ -485,6 +485,13 @@ David, 2026-11-19 (ROADMAP I4). While Mail is in front, ⌃⌥S opens a small pr
 - Files: `Sources/OpenShelf/Mail/` (`SnoozeTime`, `SnoozePrompt`, `MailMenu`, `RemindDialog`, `MailHelpers`, `MailCheck`), `App/GlobalHotKey.swift` (several shortcuts by id), `App/AppDelegate.swift`, `App/OpenShelfApp.swift`
 - Check: `swift test --filter 'SnoozeTimeTests|MailMenuTests'`. In the app: select a test message, ⌃⌥S, type "in 2 minutes", Return; the message leaves the inbox and comes back two minutes later.
 
+### 59. Mail: ⌘↩ always sends, ⇧⌘↩ sends and archives (MAIL-PLAN slice B)
+David, 2026-11-19 (ROADMAP I5): "i would like command - enter to always work when i send an email ... command shift enter would send and Archive". While Mail is in front, ⌘↩ presses Message › Send by its title when Mail has it enabled (and does nothing otherwise, as before), so it no longer depends on the App Shortcut reaching the menu. ⇧⌘↩ notes the one message selected in Mail's viewer (its Message-ID and subject through AppleScript, never its text) and checks that the reply's window title is that subject (ignoring Re:, Fwd: and the like); it presses Send, waits for the reply's window to close, checks the same message is still selected, and presses Message › Archive. Anything uncertain sends without archiving and says so. Both shortcuts are registered only while Mail is in front; `MailSendKeys` (default on) turns them off. The first ⇧⌘↩ asks for Automation permission for Mail.
+- Why ⌘↩ sometimes failed, as far as can be read: Mail has one "Send" item (`MainMenu.loctable` 709) and David's App Shortcut is "@\U21a9" on it; an App Shortcut fires only when the item is enabled and no view in the window takes ⌘↩ first. Check Mail right after a failed ⌘↩ shows which.
+- Commits: this one
+- Files: `Sources/OpenShelf/Mail/MailSend.swift`, `Mail/MailHelpers.swift`, `App/GlobalHotKey.swift`, `Support/Info.plist` (the Automation text names Mail)
+- Check: `swift test --filter MailSendTests`. In the app: reply to a test message, ⇧⌘↩; the reply is in Sent and the original in Archive.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.
