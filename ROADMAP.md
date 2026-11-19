@@ -641,6 +641,48 @@ report is in the result panel and can be copied.
 - A `.http` file is sent with curl, and the response is saved next to it.
 - Risk: it sends network requests, so it asks first.
 
+**I4. Mail shortcuts and snooze** (M; first slice S-M)
+David, 2026-11-19, after looking at a third-party Mail helper: "i feel like i wouldn't want the
+openshelf wheel popping up", and "the snooze feature should work like it does now, the only
+difference would be the natural language would set it to the right time/date and then archive the
+message because it stays in the inbox even though it has a reminder. if you archive it it comes
+back at the right time."
+- Not on the wheel: keys that act only while Mail's message list or reading pane has focus,
+  never in a compose window or another app.
+- Snooze is Mail's own Remind Me at the chosen date and time, then the message leaves the inbox;
+  Mail brings it back. No mailbox or timer of OpenShelf's own.
+- Presets: tomorrow morning (7am), this afternoon (2pm), tonight (5pm), in two days (7am:
+  David to confirm), this weekend (Saturday 7am), next week (Monday 7am). Free text ("fri 2pm",
+  "in 3 hours", "dec 3 9am") in a one-line prompt that shows the date it understood before
+  Return. Proposed rule for a preset whose time has passed today ("this afternoon" at 4pm): the
+  next day at that time, shown in the prompt before it is used.
+- Found 2026-11-19 (read-only, Mail 16 on macOS 27.2):
+  - Mail's AppleScript dictionary (`sdef`) has no reminder and no archive: Remind Me can only be
+    driven through its menu (Message › Remind Me › Remind Me in 1 Hour, Tonight, Tomorrow, Remind
+    Me Later…; "Later…" opens a date picker with a Remind Me button) with Accessibility, which
+    OpenShelf holds. Archive is a menu item too (⌃⌘A).
+  - Mail has its own setting for David's premise: Settings › General › Remind Me behavior, with
+    "Move to “Remind Me”" (strings in Mail's PreferencesWindow.loctable). Turned on, a reminded
+    message leaves the inbox until its time without archiving. Apple's Mail guide says a reminded
+    message returns to the top of the inbox at the time; it doesn't say an archived one does, and
+    users report a reminder being lost when the message is moved out of the inbox. So snooze
+    should use that setting, not Archive, unless David's test by hand says Archive keeps it
+    (remind a test message in 2 minutes, archive it, wait).
+  - NSDataDetector reads "tomorrow morning" (9am), "this afternoon" (3pm), "tonight" (7pm),
+    "saturday morning", "next monday morning", "fri 2pm", "in 2 days", "dec 3 9am" and "monday
+    7am"; it reads nothing for "in two days", "this weekend", "next week", "in 3 hours" or "eod",
+    and only "tomorrow" of "tomorrow 9". So the presets need a small table of David's meanings,
+    with relative times ("in 3 hours", "in two days") parsed by us; the detector for the rest.
+  - Single keys only in Mail: an event tap active only while Mail is in front and focus isn't a
+    text field (needs Input Monitoring; it sees key presses while active, so: installed only then,
+    never logs keys, off by default, an indicator while on). App Shortcuts in Keyboard settings
+    take a key only with a modifier (not verified here). A global NSEvent monitor can't stop the
+    key reaching Mail.
+- First slice: snooze only, behind one hotkey while Mail is in front: presets and free text, then
+  Remind Me Later… through Accessibility at that date and time (and Archive only if David's test
+  says so). Then the single-key layer.
+- Tests without a screen: the phrase table and parsing (pure functions with a fixed "now").
+
 ### Considered and not a fit
 
 - **Moving and tiling windows.** A wheel for a dropped item has no window to act on.
