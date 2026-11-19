@@ -649,8 +649,8 @@ message because it stays in the inbox even though it has a reminder. if you arch
 back at the right time."
 - Not on the wheel: keys that act only while Mail's message list or reading pane has focus,
   never in a compose window or another app.
-- Snooze is Mail's own Remind Me at the chosen date and time, then the message leaves the inbox;
-  Mail brings it back. No mailbox or timer of OpenShelf's own.
+- Snooze is Mail's own Remind Me at the chosen date and time, then Archive (⌃⌘A); Mail brings
+  the message back at that time. No mailbox or timer of OpenShelf's own.
 - Presets: tomorrow morning (7am), this afternoon (2pm), tonight (5pm), in two days (7am:
   David to confirm), this weekend (Saturday 7am), next week (Monday 7am). Free text ("fri 2pm",
   "in 3 hours", "dec 3 9am") in a one-line prompt that shows the date it understood before
@@ -661,13 +661,11 @@ back at the right time."
     driven through its menu (Message › Remind Me › Remind Me in 1 Hour, Tonight, Tomorrow, Remind
     Me Later…; "Later…" opens a date picker with a Remind Me button) with Accessibility, which
     OpenShelf holds. Archive is a menu item too (⌃⌘A).
-  - Mail has its own setting for David's premise: Settings › General › Remind Me behavior, with
-    "Move to “Remind Me”" (strings in Mail's PreferencesWindow.loctable). Turned on, a reminded
-    message leaves the inbox until its time without archiving. Apple's Mail guide says a reminded
-    message returns to the top of the inbox at the time; it doesn't say an archived one does, and
-    users report a reminder being lost when the message is moved out of the inbox. So snooze
-    should use that setting, not Archive, unless David's test by hand says Archive keeps it
-    (remind a test message in 2 minutes, archive it, wait).
+  - Archive keeps the reminder: confirmed by David's daily use on this Mac (2026-11-19: "i have
+    seen it work with archive. that's how i do it all the time"). Apple's Mail guide is silent on
+    archived messages, and some users report reminders lost when a message leaves the inbox on
+    other setups. An alternative, noted only: Mail's Settings › General › Remind Me behavior,
+    "Move to “Remind Me”", moves a reminded message out of the inbox without archiving.
   - NSDataDetector reads "tomorrow morning" (9am), "this afternoon" (3pm), "tonight" (7pm),
     "saturday morning", "next monday morning", "fri 2pm", "in 2 days", "dec 3 9am" and "monday
     7am"; it reads nothing for "in two days", "this weekend", "next week", "in 3 hours" or "eod",
@@ -679,8 +677,8 @@ back at the right time."
     take a key only with a modifier (not verified here). A global NSEvent monitor can't stop the
     key reaching Mail.
 - First slice: snooze only, behind one hotkey while Mail is in front: presets and free text, then
-  Remind Me Later… through Accessibility at that date and time (and Archive only if David's test
-  says so). Then the single-key layer.
+  Remind Me Later… through Accessibility at that date and time, then Archive. Then the
+  single-key layer.
 - Tests without a screen: the phrase table and parsing (pure functions with a fixed "now").
 
 ### Considered and not a fit
