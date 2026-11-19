@@ -1875,6 +1875,12 @@ struct VimEngine {
     private mutating func replaceSelection() {
         guard let range = selection else { return }
         let replacement = fetch()
+        // Nothing to put (an empty clipboard, or a picture on it): the selection stays, as in vim.
+        guard !replacement.text.isEmpty else {
+            message = "E353: Nothing in register"
+            failed = true
+            return
+        }
         let linewise = mode == .visualLine
         let (first, last) = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
         mode = .normal

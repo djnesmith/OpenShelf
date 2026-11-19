@@ -182,12 +182,16 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
         scroll?.hasHorizontalScroller = !wraps
         textView.isHorizontallyResizable = !wraps
         container.widthTracksTextView = wraps
+        let visibleWidth = scroll?.contentSize.width ?? textView.frame.width
         if wraps {
+            // Tracking the text view's width sets the container's, less the inset.
             textView.autoresizingMask = [.width]
-            textView.setFrameSize(NSSize(width: scroll?.contentSize.width ?? textView.frame.width, height: textView.frame.height))
-            container.containerSize = NSSize(width: textView.frame.width, height: .greatestFiniteMagnitude)
+            textView.minSize.width = 0
+            textView.setFrameSize(NSSize(width: visibleWidth, height: textView.frame.height))
         } else {
+            // At least as wide as the window, so clicks right of short lines still land.
             textView.autoresizingMask = []
+            textView.minSize.width = visibleWidth
             container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
         }
         textView.sizeToFit()
@@ -255,7 +259,7 @@ final class EditorPanel: NSPanel {
             if event.charactersIgnoringModifiers == "w" { onCancel(); return true }
         }
         // ⌥⌘Z toggles wrapping: with ⌘ it never types, and it is no vim key.
-        if flags == [.command, .option], event.keyCode == 6 {
+        if flags == [.command, .option], event.charactersIgnoringModifiers?.lowercased() == "z" {
             onToggleWrap()
             return true
         }

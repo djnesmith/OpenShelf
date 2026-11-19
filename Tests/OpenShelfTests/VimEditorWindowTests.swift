@@ -133,8 +133,14 @@ struct VimEditorWindowTests {
         let next = VimEditorWindow(defaults: defaults)
         _ = next.makePanel()
         #expect(!next.textViewWraps)
+        // Off, the text view is at least as wide as the window.
+        let view = next.panelTextView!
+        #expect(view.frame.width >= view.enclosingScrollView!.contentSize.width)
         next.setWrap(true)
         #expect(next.textViewWraps)
+        // Back on, the text wraps inside the visible width, inset included.
+        let container = view.textContainer!.containerSize.width
+        #expect(container <= view.enclosingScrollView!.contentSize.width - 2 * view.textContainerInset.width + 0.5)
     }
 
     /// :set wrap, :set nowrap, :set wrap! and :set invwrap.

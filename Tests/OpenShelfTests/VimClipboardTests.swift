@@ -105,4 +105,18 @@ struct VimClipboardTests {
         _ = engine.handle(VimEngineTests.keys("@a"))
         #expect(engine.string == "firsta\nsecondb")
     }
+
+    /// Nothing on the clipboard (or only a picture): p says so, and visual p
+    /// leaves the selection, as vim does with an empty register.
+    @Test func anEmptyClipboardPutsNothing() {
+        let board = Board()
+        var plain = Self.engine("|ab", board: board)
+        _ = plain.handle(VimEngineTests.keys("p"))
+        #expect(plain.string == "ab")
+        #expect(plain.message == "E353: Nothing in register")
+        var visual = Self.engine("|ab cd", board: board)
+        _ = visual.handle(VimEngineTests.keys("viwp"))
+        #expect(visual.string == "ab cd")
+        #expect(visual.message == "E353: Nothing in register")
+    }
 }
