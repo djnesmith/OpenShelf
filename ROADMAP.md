@@ -711,12 +711,16 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
   - Snippets, shared with the Snippets wheel (C8).
   - Send and Archive (above).
   - Unsubscribe and block a sender in one step.
-  - Gmail-style single keys (needs Input Monitoring; last). First wanted key (David, 2026-11-19:
-    "i think i would like x to trash"): `x` moves the selected message(s) to Trash, only while
-    the message list or reading pane has focus, never in a compose window or any text field. A
+  - Gmail-style single keys (needs Input Monitoring; last). Every key acts only while the
+    message list or reading pane has focus, never in a compose window or any text field. A
     plain-letter App Shortcut set in Keyboard settings (or `NSUserKeyEquivalents`) might fire
-    while typing an "x" in a compose window, so it is not a safe substitute unless tested; the
-    OpenShelf layer exists to scope the key to the list.
+    while typing that letter in a compose window, so it is not a safe substitute unless tested;
+    the OpenShelf layer exists to scope the keys to the list. Keys David wants so far:
+
+    | Key | Action | David (2026-11-19) |
+    |---|---|---|
+    | `x` | Move the selected message(s) to Trash | "i think i would like x to trash" |
+    | `c` | Open a new message | "c for compose" |
   - Settings sync: skip.
 
 ### Considered and not a fit
