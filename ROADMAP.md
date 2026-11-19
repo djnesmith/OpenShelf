@@ -715,13 +715,48 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     message list or reading pane has focus, never in a compose window or any text field. A
     plain-letter App Shortcut set in Keyboard settings (or `NSUserKeyEquivalents`) might fire
     while typing that letter in a compose window, so it is not a safe substitute unless tested;
-    the OpenShelf layer exists to scope the keys to the list. Keys David wants so far:
+    the OpenShelf layer exists to scope the keys to the list.
 
-    | Key | Action | David (2026-11-19) |
+    Wanted, not built. David, 2026-11-19, after the Gmail set was listed to him: "yeah i like
+    all those other shortcuts except for the x vs #". So Gmail's keys, except that `x` is Trash
+    (his choice) and Gmail's `#` (delete) and `x` (select) are not used. Earlier rows: "i think i
+    would like x to trash", "c for compose", "DuperMail has ? to bring them up". The Mail column
+    is what Mail's standard menus offer, from memory, not checked on this Mac.
+
+    | Key | Action | In Apple Mail today, or the nearest thing |
     |---|---|---|
-    | `x` | Move the selected message(s) to Trash | "i think i would like x to trash" |
-    | `c` | Open a new message | "c for compose" |
-    | `?` | Show the list of these shortcuts (an overlay; Esc or any key closes it) | "DuperMail has ? to bring them up" |
+    | `j` / `k` | Next (older) / previous (newer) message | ↓ / ↑ in the message list |
+    | `o` or Return | Open the message | Message › Open (⌘O) |
+    | `u` | Back to the list | No direct equivalent; close a message window (⌘W) or focus the list |
+    | `n` / `p` | Next / previous message in a conversation | No direct key; arrows within an expanded conversation |
+    | `/` | Search | Edit › Find › Mailbox Search (⌥⌘F) |
+    | `g i` | Inbox | Go to Favorite Mailbox (⌘1) |
+    | `g s` | Flagged (Gmail: starred) | The Flagged mailbox; a favourite number if added |
+    | `g t` | Sent | The Sent mailbox; a favourite number if added |
+    | `g d` | Drafts | The Drafts mailbox; a favourite number if added |
+    | `g a` | Archive (Gmail: All Mail) | The Archive mailbox; a favourite number if added |
+    | `e` | Archive | Message › Archive (⌃⌘A) |
+    | `x` | Move to Trash | Delete |
+    | `r` | Reply | ⌘R |
+    | `a` | Reply all | ⇧⌘R |
+    | `f` | Forward | ⇧⌘F |
+    | `s` | Flag (Gmail: star) | ⇧⌘L |
+    | `b` | Snooze | I4 |
+    | `v` | Move to a mailbox | Message › Move to; quick filing (above) |
+    | `l` | Label | Open question: Mail has no labels; nearest is flag colours or moving |
+    | `m` | Mute the conversation | Message › Mute |
+    | `!` | Junk | Mark as Junk (⇧⌘J) |
+    | `Shift-i` / `Shift-u` | Mark read / unread | ⇧⌘U toggles |
+    | `z` | Undo | ⌘Z |
+    | `[` / `]` | Archive, then the previous / next message | Archive moves to the next message by itself; no "previous" form |
+    | `c` | New message | ⌘N |
+    | ⌘↩ | Send | Today an App Shortcut on "Send"; Mail's own key is ⇧⌘D (above) |
+    | ⇧⌘↩ | Send and archive | Not in Mail (above) |
+    | `* a` / `* n` | Select all / none | Select all is ⌘A; no direct "none" |
+    | `?` | Show this list (an overlay; Esc or any key closes it) | Not in Mail |
+
+    Design point: two-key sequences (`g i`, `* a`) need a short prefix timeout (about a second),
+    after which the first key does nothing, and the overlay or a small hint shows the pending prefix.
   - Settings sync: skip.
 
 ### Considered and not a fit
