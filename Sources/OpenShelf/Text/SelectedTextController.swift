@@ -109,6 +109,8 @@ final class SelectedTextController {
             Task { await deliver(entry.original, done: "Original", fileExtension: "txt", modifiers: modifiers, recordsHistory: false) }
         case .tool(let tool):
             Task { await run(tool, on: session, modifiers: modifiers) }
+        case .edit:
+            edit(session, modifiers: modifiers.subtracting(.shift))
         case .convert(let target):
             guard let source = session.context.dataFormat else { return }
             Task {
@@ -116,6 +118,39 @@ final class SelectedTextController {
                     try await TextConversion.convert(session.text, from: source, to: target, tools: .current)
                 }
             }
+        }
+    }
+
+    /// Opens the Edit window. ⌘↩ there puts the text where a tool's result
+    /// would go (⌥ held on the wedge copies it); nothing is written to disk.
+    private func edit(_ session: Session, modifiers: NSEvent.ModifierFlags) {
+        let appName = session.app.localizedName ?? "the app"
+        let delivery = TextDelivery(modifiers: modifiers, strategy: session.strategy, source: session.source)
+        let opened = VimEditorWindow.shared.open(
+            session.text,
+            title: session.source == .recentClipboard ? "Edit Copied Text" : "Edit Text from \(appName)",
+            destination: delivery == .replace ? "back into \(appName)" : "on the clipboard",
+            near: session.location,
+            onFinish: { [weak self] result in
+                guard let self else { return }
+                self.session = session
+                Task {
+                    // Minutes may have passed, so only a selection read back
+                    // unchanged is replaced; anything else is copied.
+                    await self.deliver(result, done: TextCommand.edit.doneTitle, fileExtension: "txt", modifiers: modifiers, mustConfirmSelection: true)
+                    // Copying leaves OpenShelf in front, with no window of its own.
+                    if NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+                        session.app.activate()
+                    }
+                }
+            },
+            onCancel: { [weak self] in
+                self?.session = nil
+                session.app.activate()
+            }
+        )
+        if !opened {
+            ToastController.shared.show(Toast(systemImage: "character.cursor.ibeam", title: "Already editing", subtitle: "Finish (⌘↩) or cancel (⌘W) that edit first"))
         }
     }
 
@@ -165,7 +200,7 @@ final class SelectedTextController {
 
     /// Puts `result` where the app and the modifiers say: over the selection,
     /// on the clipboard (⌥, and always in a terminal), or in a file on a shelf (⇧).
-    private func deliver(_ result: String, done: String, fileExtension: String, modifiers: NSEvent.ModifierFlags, recordsHistory: Bool = true) async {
+    private func deliver(_ result: String, done: String, fileExtension: String, modifiers: NSEvent.ModifierFlags, recordsHistory: Bool = true, mustConfirmSelection: Bool = false) async {
         guard let session else { return }
         switch TextDelivery(modifiers: modifiers, strategy: session.strategy, source: session.source) {
         case .copy:
@@ -189,9 +224,12 @@ final class SelectedTextController {
                 await replaceInEmacs(result, done: done, recordsHistory: recordsHistory)
                 return
             }
-            guard await activate(session.app), selectionIsUnchanged(session) else {
+            var activated = false
+            if !session.app.isTerminated { activated = await activate(session.app) }
+            guard activated, mustConfirmSelection ? Self.canReplace(session, now: Self.currentSelection(of: session)) : selectionIsUnchanged(session) else {
                 relay.pasteboard.writeText(result)
-                ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "Copied instead", subtitle: "The selection changed, so nothing was replaced"), for: .seconds(3))
+                let reason = session.app.isTerminated ? "\(session.app.localizedName ?? "The app") quit" : "The selection changed"
+                ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "Copied instead", subtitle: "\(reason), so nothing was replaced"), for: .seconds(3))
                 return
             }
             await waitForModifierRelease()
@@ -218,6 +256,24 @@ final class SelectedTextController {
             ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "\(done) and copied instead", subtitle: reason), for: .seconds(3))
         }
         self.session = nil
+    }
+
+    /// What is selected in the session's app now, for the Edit window's check.
+    private static func currentSelection(of session: Session) -> SelectedTextRead {
+        guard AccessibilityText.isTrusted else { return .notPermitted }
+        return AccessibilityText.read(pid: session.app.processIdentifier)
+    }
+
+    /// Whether Edit may paste over the selection: only when it reads back as
+    /// the same text, and secure input is off. A field that is gone, a caret
+    /// with nothing selected or a password field all copy instead. Apps read
+    /// with ⌘C can't be read back, so they are trusted as tools are; copied
+    /// text and terminals (⌃ held) paste at the cursor, as the tools do.
+    static func canReplace(_ session: Session, now: SelectedTextRead, isSecureInputOn: Bool = AccessibilityText.isSecureInputOn) -> Bool {
+        guard !isSecureInputOn else { return false }
+        if session.strategy.isCopyOnly(from: session.source) { return true }
+        if case .text(let text) = now { return text == session.text }
+        return session.source == .copyShortcut && now == .unavailable
     }
 
     /// Whether the app still has the same text selected, where Accessibility

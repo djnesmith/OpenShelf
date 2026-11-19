@@ -247,6 +247,8 @@ enum TextCommand: Hashable, Sendable {
     case back(TextGroup?)
     /// Puts the original back over what OpenShelf wrote (⌥ copies it instead).
     case undo
+    /// Opens the selection in the Edit window, with vim keys.
+    case edit
 }
 
 extension TextCommand {
@@ -283,6 +285,7 @@ extension TextCommand {
             }
         case .convert(let format): "Converted to \(format.title)"
         case .undo: "Original"
+        case .edit: "Edited"
         case .open, .back: ""
         }
     }
@@ -321,7 +324,7 @@ enum TextWheel {
         case nil:
             var commands: [TextCommand] = []
             if context.canUndo { commands.append(.undo) }
-            commands += [.tool(.trim), .tool(.cleanUp)]
+            commands += [.edit, .tool(.trim), .tool(.cleanUp)]
             if context.codeExtension != nil { commands.append(.tool(.reindent)) }
             if context.dataFormat != nil { commands.append(.open(.convert)) }
             // Formatted prose, not data or code, is what To Markdown is for.
@@ -347,7 +350,7 @@ extension TextWheel {
             // More is only a way in; the path starts at the group under it.
             case .open(let child): return searchCandidates(for: context, from: child, path: child == .more ? path : path + [child.title])
             case .back: return []
-            case .tool, .convert, .undo: return [WheelSearchCandidate(item: item, path: path)]
+            case .tool, .convert, .undo, .edit: return [WheelSearchCandidate(item: item, path: path)]
             }
         }
     }
@@ -366,6 +369,8 @@ extension WheelItem {
             WheelItem(command: .text(command), title: "Back", systemImage: "chevron.backward")
         case .undo:
             WheelItem(command: .text(command), title: "Undo", systemImage: "arrow.uturn.backward")
+        case .edit:
+            WheelItem(command: .text(command), title: "Edit", systemImage: "character.cursor.ibeam")
         }
     }
 }

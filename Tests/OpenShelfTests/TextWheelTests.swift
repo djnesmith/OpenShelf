@@ -48,19 +48,33 @@ struct TextWheelTests {
         items.compactMap { if case .text(let command) = $0.command { command } else { nil } }
     }
 
-    @Test func proseGetsTrimCleanUpMarkdownAndMore() {
+    @Test func proseGetsEditTrimCleanUpMarkdownAndMore() {
         let context = TextContext(text: "Some words here.", hasRichText: true, canUndo: false)
-        #expect(Self.commands(TextWheel.items(for: context)) == [.tool(.trim), .tool(.cleanUp), .tool(.toMarkdown), .open(.more)])
+        #expect(Self.commands(TextWheel.items(for: context)) == [.edit, .tool(.trim), .tool(.cleanUp), .tool(.toMarkdown), .open(.more)])
     }
 
     @Test func dataGetsReindentAndConvertButNotMarkdown() {
         let context = TextContext(text: #"{"a":1}"#, hasRichText: true, canUndo: false)
-        #expect(Self.commands(TextWheel.items(for: context)) == [.tool(.trim), .tool(.cleanUp), .tool(.reindent), .open(.convert), .open(.more)])
+        #expect(Self.commands(TextWheel.items(for: context)) == [.edit, .tool(.trim), .tool(.cleanUp), .tool(.reindent), .open(.convert), .open(.more)])
     }
 
     @Test func undoComesFirstWhenTheSelectionIsTheLastResult() {
         let context = TextContext(text: "x", hasRichText: false, canUndo: true)
-        #expect(Self.commands(TextWheel.items(for: context)).first == .undo)
+        #expect(Self.commands(TextWheel.items(for: context)).prefix(2) == [.undo, .edit])
+    }
+
+    /// The fullest first ring: Undo, Edit, Trim, Clean Up, Re-indent, Convert and More.
+    @Test func theFullestFirstRingIsExactlySeven() {
+        let context = TextContext(text: #"{"a":1}"#, hasRichText: true, canUndo: true)
+        #expect(Self.commands(TextWheel.items(for: context)) == [.undo, .edit, .tool(.trim), .tool(.cleanUp), .tool(.reindent), .open(.convert), .open(.more)])
+        #expect(TextWheel.items(for: context).count == WheelPaging.slotCount)
+    }
+
+    @Test func editIsFoundBySearchByNameAndAsVim() {
+        let candidates = TextWheel.searchCandidates(for: TextContext(text: "prose", hasRichText: false, canUndo: false))
+        for query in ["edit", "vim"] {
+            #expect(WheelSearch.results(for: query, in: candidates).first?.item.command == .text(.edit), "\(query)")
+        }
     }
 
     @Test func everyTextWheelFitsWithoutPaging() {

@@ -94,6 +94,7 @@ enum WheelSearch {
         switch command {
         case .text(.tool(let tool)): textKeywords[tool] ?? []
         case .text(.convert(let format)): [format.title, format.fileExtension]
+        case .text(.edit): ["vim", "editor", "window"]
         case .convert(let format): [format.fileExtension, format == .jpg ? "jpeg" : nil, format == .md ? "markdown" : nil].compactMap { $0 }
         case .text, .action, .tool: []
         }
