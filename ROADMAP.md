@@ -431,6 +431,23 @@ Left out for now:
 - David's vim or Doom config and plugins: the price of a built-in engine.
 - Keeping macros between windows.
 
+**C13. Live preview beside the text wheel** (David, 2026-11-19: "a preview of the text changing
+in a edit window to the right of the wheel, when you hover over the button that would change the
+text it would automatically show the change, if you click the button it would make the change and
+post it back as normal")
+- A pane to the right of the text wheel shows the text as it would be after the hovered tool
+  runs. Hovering a wedge, or moving to it with the arrow keys, updates it live. Clicking applies
+  the tool and writes back exactly as today.
+- To settle when it is built:
+  - Which tools preview: pure text tools show their result; Generate, Hash, Count and JWT show
+    what they would make or copy; Edit says it opens the editor; Re-indent and To Markdown run
+    external tools, so they preview only if fast enough.
+  - Show a diff (what changed, highlighted) or the plain result.
+  - Long text: scroll, or show the part around the first change.
+  - Sub-wheel wedges (▸) preview nothing; only tools do.
+  - Speed: compute off the main thread and cancel when the hover moves.
+  - A preview never touches the source app or the clipboard.
+
 ### D. Links and the web
 
 **D1. Drop links** (M)
