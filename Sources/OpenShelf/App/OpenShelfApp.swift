@@ -3,6 +3,8 @@ import SwiftUI
 @main
 struct OpenShelfApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    /// Mail's single keys (MAIL-PLAN slice E): off until turned on here.
+    @AppStorage(MailKeyTap.enabledKey) private var mailSingleKeys = false
 
     var body: some Scene {
         MenuBarExtra {
@@ -21,6 +23,8 @@ struct OpenShelfApp: App {
             }
             Divider()
             openWheelButton
+            Toggle("Mail Single Keys", isOn: $mailSingleKeys)
+                .onChange(of: mailSingleKeys) { MailKeyTap.shared.update(front: NSWorkspace.shared.frontmostApplication?.bundleIdentifier) }
             Button("Check Mail (read only)") { MailHelpers.writeCheck() }
             Button("Take the Tour…") { TourWindowController.present() }
             Button("Settings…") { SettingsWindowController.shared.show() }

@@ -498,6 +498,13 @@ While Mail is in front, ⌃⌥M opens a picker of every mailbox (On My Mac and e
 - Files: `Sources/OpenShelf/Mail/MailFiling.swift`, `Mail/MailboxPicker.swift`, `Mail/MailLinks.swift`, `Mail/MailHelpers.swift`, `App/GlobalHotKey.swift`
 - Check: `swift test --filter MailFilingTests`. In the app: select a test message, ⌃⌥M, type part of a folder's name, Return; the message is in that folder. ⌃⌥K, then paste in Notes and click the link.
 
+### 61. Mail: single keys, off by default (MAIL-PLAN slice E)
+Menu bar › Mail Single Keys (off by default, `MailSingleKeys`) turns on Gmail-style keys in Mail: j k next and previous message, o open, / search, g i g s g t g d g a Inbox, Flagged, Sent, Drafts, Archive (Go to Favorite Mailbox), e or ] archive, [ archive then the message above, x Trash (Edit › Delete), r a f reply, reply all, forward, s flag, b snooze (#58), v or l move to a mailbox (#60), m mute, ! junk, ⇧I ⇧U read and unread, z undo, c new message, * a select all, ? the list (a panel that doesn't take focus; any key closes it). Each key presses Mail's menu item by its title, found anywhere under its menu; j and k move the message list's selection through Accessibility. A prefix waits one second for its second key. The keys come from a key tap installed only while the setting is on and Mail is in front, removed as soon as Mail isn't; while it is installed, a "Mail keys" item shows in the menu bar. It takes a key only when focus is Mail's message list or a message being read (not editable, and Message › Send disabled), with no modifier but ⇧; anything else, or anything it can't read within 0.1 s, goes to Mail untouched. It never records or logs keys. A tap that takes keys needs Accessibility, which OpenShelf holds; macOS may also ask for Input Monitoring.
+- Not decided by David, left out: u, n and p, * n; [ is archive then up.
+- Commits: this one
+- Files: `Sources/OpenShelf/Mail/MailKeys.swift`, `Mail/MailKeyTap.swift`, `Mail/MailHelpers.swift`, `App/OpenShelfApp.swift`
+- Check: `swift test --filter MailKeysTests`. In the app: turn Mail Single Keys on, click Mail's message list, j and k move, ? shows the list; then type in a reply, the To field and the search field: no letter may be swallowed.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

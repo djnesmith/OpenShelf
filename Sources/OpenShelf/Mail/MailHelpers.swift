@@ -55,6 +55,7 @@ final class MailHelpers {
     /// Registers the shortcut while Mail is in front, and only then. While the prompt is
     /// open, OpenShelf is in front and the shortcut stays off.
     func frontAppChanged(to bundleID: String?) {
+        MailKeyTap.shared.update(front: bundleID)
         let listen = Self.shouldListen(front: bundleID)
         if listen {
             GlobalHotKey.mail.register(promptShortcut)
