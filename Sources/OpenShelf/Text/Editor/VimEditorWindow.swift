@@ -459,8 +459,22 @@ final class VimTextView: NSTextView {
         render()
     }
 
+    /// `jk` typed quickly leaves insert mode (ROADMAP C12), as Doom's evil-escape does.
+    var insertEscape = InsertEscape()
+
     override func keyDown(with event: NSEvent) {
         let key = Self.vimKey(for: event)
+        if engine.mode == .insert, !hasMarkedText(), event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+           let typed = event.characters, typed.count == 1, let character = typed.first,
+           insertEscape.typed(character, at: event.timestamp) {
+            // The first key of the pair went in as text: take it back, then leave insert mode.
+            deleteBackward(nil)
+            engine.syncInsert(text: string, cursor: characterIndex(utf16: selectedRange().location))
+            let effect = engine.handle(.escape)
+            render()
+            if let effect { onEffect(effect) }
+            return
+        }
         if engine.mode == .insert {
             // Esc while an input method is composing belongs to the input method.
             guard !hasMarkedText(), key == .escape || key == .ctrl("[") || key == .ctrl("c") else {
