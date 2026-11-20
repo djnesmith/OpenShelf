@@ -387,6 +387,38 @@ struct HotkeyRouteTests {
             #expect(strategy.hint(for: .recentClipboard) == "Return copies · ⌃ pastes · ⇧ to shelf")
         }
         #expect(TextDelivery(modifiers: [], strategy: .standard, source: .copyShortcut) == .replace)
+    }
+
+    /// The three rules (David, 2026-11-20): a selection that can be changed is replaced; one
+    /// that can't (a web page, a PDF, a message being read) goes on the clipboard; text from
+    /// the clipboard goes back on the clipboard. "Can't tell" pastes, as before.
+    @Test func whereTheResultGoes() {
+        for source in [TextReader.accessibility, .copyShortcut] {
+            #expect(TextDelivery(modifiers: [], source: source, editable: true) == .replace)
+            #expect(TextDelivery(modifiers: [], source: source, editable: nil) == .replace)
+            #expect(TextDelivery(modifiers: [], source: source, editable: false) == .copy)
+            // ⇧ still saves to a shelf; ⌥ still copies.
+            #expect(TextDelivery(modifiers: .shift, source: source, editable: false) == .shelf)
+            #expect(TextDelivery(modifiers: .option, source: source, editable: true) == .copy)
+        }
+        #expect(TextDelivery(modifiers: [], source: .recentClipboard, editable: nil) == .copy)
+        #expect(TextDelivery(modifiers: [], source: .recentClipboard, editable: true) == .copy)
+        // The toast says which happened.
+        #expect(SelectedTextController.doneToast(.replace, done: "Sorted", editable: true).title == "Replaced")
+        #expect(SelectedTextController.doneToast(.copy, done: "Sorted", editable: nil).title == "On the clipboard")
+        #expect(SelectedTextController.doneToast(.copy, done: "Sorted", editable: nil).subtitle == "Sorted")
+        #expect(SelectedTextController.doneToast(.copy, done: "Sorted", editable: false).subtitle == "Sorted; this text can't be changed here")
+    }
+
+    /// Editable when any answer says so; read-only only on a no with no yes; unknown with none.
+    @Test func editabilityFromAccessibility() {
+        #expect(AccessibilityText.isEditable(editable: nil, valueSettable: true, selectionSettable: nil) == true)
+        #expect(AccessibilityText.isEditable(editable: true, valueSettable: false, selectionSettable: false) == true)
+        #expect(AccessibilityText.isEditable(editable: nil, valueSettable: nil, selectionSettable: true) == true)
+        #expect(AccessibilityText.isEditable(editable: false, valueSettable: nil, selectionSettable: true) == true)
+        #expect(AccessibilityText.isEditable(editable: false, valueSettable: false, selectionSettable: false) == false)
+        #expect(AccessibilityText.isEditable(editable: nil, valueSettable: false, selectionSettable: nil) == false)
+        #expect(AccessibilityText.isEditable(editable: nil, valueSettable: nil, selectionSettable: nil) == nil)
         #expect(TextAppStrategy.standard.hint(for: .accessibility) == "Return replaces · ⌥ copies · ⇧ to shelf")
         #expect(TextAppStrategy.terminal.hint(for: .accessibility) == "Return copies · ⌃ pastes · ⇧ to shelf")
     }

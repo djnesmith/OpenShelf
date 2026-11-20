@@ -15,6 +15,8 @@ final class SelectedTextController {
         var source: TextReader
         var context: TextContext
         var location: NSPoint
+        /// Whether the selection can be changed where it is (nil: can't tell, or copied text).
+        var editable: Bool? = nil
     }
 
     private let wheel: WheelController
@@ -75,7 +77,8 @@ final class SelectedTextController {
         let canUndo = history.undoable(for: text, in: app.bundleIdentifier) != nil
         let context = TextContext(text: text, hasRichText: source != .recentClipboard, canUndo: canUndo)
         let strategy = TextAppStrategy.for(bundleID: app.bundleIdentifier)
-        session = Session(text: text, rich: lastRich, app: app, strategy: strategy, source: source, context: context, location: location)
+        let editable = source == .recentClipboard ? nil : AccessibilityText.selectionIsEditable(pid: app.processIdentifier)
+        session = Session(text: text, rich: lastRich, app: app, strategy: strategy, source: source, context: context, location: location, editable: editable)
         show(group: nil, at: location)
     }
 
@@ -219,7 +222,7 @@ final class SelectedTextController {
     /// would go (⌥ held on the wedge copies it); nothing is written to disk.
     private func edit(_ session: Session, modifiers: NSEvent.ModifierFlags) {
         let appName = session.app.localizedName ?? "the app"
-        let delivery = TextDelivery(modifiers: modifiers, strategy: session.strategy, source: session.source)
+        let delivery = TextDelivery(modifiers: modifiers, strategy: session.strategy, source: session.source, editable: session.editable)
         let opened = VimEditorWindow.shared.open(
             session.text,
             title: session.source == .recentClipboard ? "Edit Copied Text" : "Edit Text from \(appName)",
@@ -327,13 +330,13 @@ final class SelectedTextController {
     /// on the clipboard (⌥, and always in a terminal), or in a file on a shelf (⇧).
     private func deliver(_ result: String, done: String, fileExtension: String, modifiers: NSEvent.ModifierFlags, recordsHistory: Bool = true, mustConfirmSelection: Bool = false) async {
         guard let session else { return }
-        switch TextDelivery(modifiers: modifiers, strategy: session.strategy, source: session.source) {
+        switch TextDelivery(modifiers: modifiers, strategy: session.strategy, source: session.source, editable: session.editable) {
         case .copy:
             relay.pasteboard.writeText(result)
             if recordsHistory {
                 history.record(original: session.text, result: result, bundleID: session.app.bundleIdentifier)
             }
-            ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "\(done) and copied"))
+            ToastController.shared.show(Self.doneToast(.copy, done: done, editable: session.editable), for: .milliseconds(1500))
         case .shelf:
             do {
                 addToShelf([try TextFiles.save(result, fileExtension: fileExtension)])
@@ -354,7 +357,7 @@ final class SelectedTextController {
             guard activated, mustConfirmSelection ? Self.canReplace(session, now: Self.currentSelection(of: session)) : selectionIsUnchanged(session) else {
                 relay.pasteboard.writeText(result)
                 let reason = session.app.isTerminated ? "\(session.app.localizedName ?? "The app") quit" : "The selection changed"
-                ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "Copied instead", subtitle: "\(reason), so nothing was replaced"), for: .seconds(3))
+                ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "On the clipboard", subtitle: "\(reason), so nothing was replaced"), for: .seconds(3))
                 return
             }
             await waitForModifierRelease()
@@ -362,8 +365,20 @@ final class SelectedTextController {
             if recordsHistory {
                 history.record(original: session.text, result: result, bundleID: session.app.bundleIdentifier)
             }
+            ToastController.shared.show(Self.doneToast(.replace, done: done, editable: session.editable), for: .milliseconds(1500))
         }
         self.session = nil
+    }
+
+    /// Where the result went, in the toast's title: "Replaced" or "On the clipboard"
+    /// (David, 2026-11-20), with what was done under it.
+    static func doneToast(_ delivery: TextDelivery, done: String, editable: Bool?) -> Toast {
+        switch delivery {
+        case .replace:
+            Toast(systemImage: "checkmark", title: "Replaced", subtitle: done)
+        case .copy, .shelf:
+            Toast(systemImage: "doc.on.clipboard", title: "On the clipboard", subtitle: editable == false ? "\(done); this text can't be changed here" : done)
+        }
     }
 
     /// Replaces the region through emacsclient, as one change Emacs can undo.
@@ -378,7 +393,7 @@ final class SelectedTextController {
         } else {
             relay.pasteboard.writeText(result)
             let reason = outcome == .changed ? "The region changed in Emacs, so nothing was replaced" : "Emacs didn’t answer, so nothing was replaced"
-            ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "\(done) and copied instead", subtitle: reason), for: .seconds(3))
+            ToastController.shared.show(Toast(systemImage: "doc.on.clipboard", title: "On the clipboard", subtitle: reason), for: .seconds(3))
         }
         self.session = nil
     }

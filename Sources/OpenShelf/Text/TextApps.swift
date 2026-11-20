@@ -81,11 +81,17 @@ enum TextDelivery: Equatable {
     case copy
     case shelf
 
-    init(modifiers: NSEvent.ModifierFlags, strategy: TextAppStrategy = .standard, source: TextReader = .accessibility) {
+    /// `editable` is whether the selection can be changed where it is: false for text on
+    /// a web page, a PDF or a message being read, nil when Accessibility can't tell (then
+    /// it is pasted over, as before). A selection that can't be changed goes on the
+    /// clipboard (David, 2026-11-20).
+    init(modifiers: NSEvent.ModifierFlags, strategy: TextAppStrategy = .standard, source: TextReader = .accessibility, editable: Bool? = nil) {
         if modifiers.contains(.shift) && !modifiers.contains(.option) {
             self = .shelf
         } else if strategy.isCopyOnly(from: source) {
             self = modifiers.contains(.control) ? .replace : .copy
+        } else if editable == false {
+            self = .copy
         } else {
             self = modifiers.contains(.option) ? .copy : .replace
         }
