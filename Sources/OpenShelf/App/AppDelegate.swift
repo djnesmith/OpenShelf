@@ -46,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.openWheelForSelection()
         }
         GlobalHotKey.shared.register(Preferences.shared.openWheelShortcut)
+        GlobalHotKey.snippets.onPress = { [weak self] in self?.openSnippetsWheel() }
+        GlobalHotKey.snippets.register(SnippetWheel.shortcut)
         dragMonitor.onTrigger = { [weak self] kind, location, urls in
             self?.showWheel(kind, at: location, for: urls)
         }
@@ -112,6 +114,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Finder's files exactly as before; in any other app, the text wheel for
     /// its selected text.
+    /// The Snippets wheel, for the app in front (ROADMAP C8).
+    func openSnippetsWheel() {
+        guard let app = NSWorkspace.shared.frontmostApplication, app != NSRunningApplication.current else { return }
+        selectedText.openSnippets(in: app, at: NSEvent.mouseLocation)
+    }
+
     private func openWheelForFrontmostApp() {
         let location = NSEvent.mouseLocation
         // OpenShelf's own windows (Settings, an editor) aren't a source of text.

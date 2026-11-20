@@ -376,6 +376,7 @@ item on a shelf.
 - **Its own wheel and hotkey (David, 2026-11-18):** "i like the idea of a new wheel and
   hotkey for snippets". A second hotkey that opens the Snippets wheel directly is the
   planned way in, no longer optional.
+- **Built 2026-11-19 (FORK-FEATURES #63)**, with the proposal below: snippets only from their own hotkey (⌃⌥I, not yet decided by David).
 - **To settle when C8 is built:** B2 step 4 sends "cursor, nothing selected" to Snippets,
   but Stage 2 sends that case to text copied in the last 60 s (copy-only). Proposed: the
   main hotkey goes selection, then recent copy, then a "nothing selected" toast that names

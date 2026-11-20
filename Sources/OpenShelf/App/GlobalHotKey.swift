@@ -116,6 +116,8 @@ final class GlobalHotKey {
     static let mailLink = GlobalHotKey(id: 6)
     /// Unsubscribe and block (MAIL-PLAN G), while Mail is in front.
     static let mailUnsubscribe = GlobalHotKey(id: 7)
+    /// The Snippets wheel's own hotkey (ROADMAP C8), in every app.
+    static let snippets = GlobalHotKey(id: 8)
 
     var onPress: (() -> Void)?
 

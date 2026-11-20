@@ -28,7 +28,10 @@ Not Mail:
    from somewhere else: the picker opens on the first folder. (#57)
 9. **Edit window.** The keys in the bottom line read clearly; line numbers, ⌥⌘L, and a gray
    italic note such as "d3j: no line below" when a command does nothing. (#53)
+10. **Snippets.** Cursor in a TextEdit document, ⌃⌥I, Dates & Times ▸, ISO Date: today's
+   date appears. Settings › Wheels › Snippets folder › Show, add `Reply.txt` holding
+   `Dear {cursor},`, then ⌃⌥I › Reply: the cursor lands before the comma. (#63)
 
 Open decisions (built with these defaults, easy to change): ⌃⌥S, ⌃⌥M, ⌃⌥K and ⌃⌥U while Mail
-is in front; single keys off by default; `u`, `n`/`p` and `* n` left out; `[` archives then
+is in front; ⌃⌥I for Snippets; single keys off by default; `u`, `n`/`p` and `* n` left out; `[` archives then
 goes up.

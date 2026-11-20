@@ -110,6 +110,10 @@ final class SelectedTextController {
             Task { await run(tool, on: session, modifiers: modifiers) }
         case .edit:
             edit(session, modifiers: modifiers.subtracting(.shift))
+        case .snippetGroup(let path), .snippetBack(let path):
+            showSnippets(at: path, location: nil)
+        case .snippet(let entry):
+            Task { await insert(entry, into: session) }
         case .convert(let target):
             guard let source = session.context.dataFormat else { return }
             Task {
@@ -118,6 +122,56 @@ final class SelectedTextController {
                 }
             }
         }
+    }
+
+    // MARK: - Snippets (ROADMAP C8)
+
+    /// The snippet library behind the open Snippets wheel.
+    private var snippetLibrary = Snippets.Group(name: "Snippets", path: "", entries: [], groups: [])
+
+    /// Opens the Snippets wheel for `app`, whatever is selected there (it fills `{selection}`).
+    func openSnippets(in app: NSRunningApplication, at location: NSPoint) {
+        let selection: String = if case .text(let text) = AccessibilityText.read(pid: app.processIdentifier) { text } else { "" }
+        if case .secure = AccessibilityText.read(pid: app.processIdentifier) {
+            ToastController.shared.show(Toast(systemImage: "lock", title: "Password field", subtitle: "OpenShelf doesn't type into password fields"), near: location, for: .seconds(3))
+            return
+        }
+        snippetLibrary = Snippets.load(folder: SnippetWheel.folder())
+        let strategy = TextAppStrategy.for(bundleID: app.bundleIdentifier)
+        session = Session(text: selection, rich: nil, app: app, strategy: strategy, source: .accessibility,
+                          context: TextContext(text: selection, hasRichText: false, canUndo: false), location: location)
+        showSnippets(at: "", location: location)
+    }
+
+    private func showSnippets(at path: String, location: NSPoint?) {
+        let commands = SnippetWheel.commands(for: snippetLibrary, at: path)
+        wheel.presentForKeyboard(
+            items: commands.map(WheelItem.text),
+            title: path.isEmpty ? "Snippets" : (path == SnippetWheel.datesPath ? "Dates & Times" : path),
+            summary: "",
+            hint: "",
+            at: location,
+            searchCandidates: commands.compactMap { command in
+                guard case .snippet = command else { return nil }
+                return WheelSearchCandidate(item: WheelItem.text(command), path: [])
+            }
+        )
+    }
+
+    /// Fills in the snippet and pastes it at the cursor (over the selection, if any), then
+    /// moves the cursor to `{cursor}`. A bad placeholder says which file and line.
+    private func insert(_ entry: Snippets.Entry, into session: Session) async {
+        let context = Snippets.Context(now: .now, calendar: .current, clipboard: relay.pasteboard.string(), selection: session.text)
+        switch SnippetWheel.expand(entry, context: context) {
+        case .failure(let problem):
+            ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Snippet not used", subtitle: problem.description), for: .seconds(5))
+        case .success(let expanded):
+            guard !session.app.isTerminated, await activate(session.app) else { return }
+            await waitForModifierRelease()
+            await relay.paste(expanded.text)
+            SnippetWheel.pressLeft(expanded.charactersAfterCursor)
+        }
+        self.session = nil
     }
 
     /// Opens the Edit window. ⌘↩ there puts the text where a tool's result

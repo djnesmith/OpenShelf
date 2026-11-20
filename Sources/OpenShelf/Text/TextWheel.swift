@@ -439,6 +439,12 @@ enum TextCommand: Hashable, Sendable {
     case undo
     /// Opens the selection in the Edit window, with vim keys.
     case edit
+    /// Puts a snippet in (ROADMAP C8).
+    case snippet(Snippets.Entry)
+    /// Opens a snippet group, by its path ("" is the Snippets wheel itself).
+    case snippetGroup(String)
+    /// Back from a snippet group to the group at this path.
+    case snippetBack(String)
 }
 
 extension TextCommand {
@@ -495,7 +501,8 @@ extension TextCommand {
         case .convert(let format): "Converted to \(format.title)"
         case .undo: "Original"
         case .edit: "Edited"
-        case .open, .back: ""
+        case .snippet(let entry): entry.name
+        case .open, .back, .snippetGroup, .snippetBack: ""
         }
     }
 }
@@ -558,8 +565,8 @@ extension TextWheel {
             switch command {
             // More is only a way in; the path starts at the group under it.
             case .open(let child): return searchCandidates(for: context, from: child, path: child == .more ? path : path + [child.title])
-            case .back: return []
-            case .tool, .convert, .undo, .edit: return [WheelSearchCandidate(item: item, path: path)]
+            case .back, .snippetGroup, .snippetBack: return []
+            case .tool, .convert, .undo, .edit, .snippet: return [WheelSearchCandidate(item: item, path: path)]
             }
         }
     }
@@ -580,6 +587,12 @@ extension WheelItem {
             WheelItem(command: .text(command), title: "Undo", systemImage: "arrow.uturn.backward")
         case .edit:
             WheelItem(command: .text(command), title: "Edit", systemImage: "character.cursor.ibeam")
+        case .snippet(let entry):
+            WheelItem(command: .text(command), title: entry.name, systemImage: entry.systemImage)
+        case .snippetGroup(let path):
+            WheelItem(command: .text(command), title: "\(path == SnippetWheel.datesPath ? "Dates & Times" : path.split(separator: "/").last.map(String.init) ?? "Snippets") ▸", systemImage: path == SnippetWheel.datesPath ? "calendar" : "folder")
+        case .snippetBack:
+            WheelItem(command: .text(command), title: "Back", systemImage: "chevron.backward")
         }
     }
 }

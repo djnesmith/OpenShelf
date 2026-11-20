@@ -78,8 +78,50 @@ struct WheelsSettingsPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            SnippetsFolderSection()
         }
         .settingsPane()
+    }
+}
+
+/// Settings → Wheels → Snippets: where the snippet files are (ROADMAP C8).
+private struct SnippetsFolderSection: View {
+    @State private var folder = SnippetWheel.folder()
+
+    var body: some View {
+        Section {
+            LabeledContent("Snippets folder") {
+                HStack {
+                    Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .foregroundStyle(.secondary)
+                    Button("Choose Folder…", action: choose)
+                    Button("Show") {
+                        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        NSWorkspace.shared.open(folder)
+                    }
+                }
+            }
+        } header: {
+            Text("Snippets (\(SnippetWheel.shortcut.displayString))")
+        } footer: {
+            Text("One snippet per text file; subfolders are groups. A file can hold {date format=\"yyyy-MM-dd\" offset=\"+3d\"}, {time}, {clipboard}, {selection}, {uuid}, {epoch} and one {cursor}.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func choose() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.directoryURL = folder
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        UserDefaults.standard.set(url.path, forKey: SnippetWheel.folderKey)
+        folder = url
     }
 }
 

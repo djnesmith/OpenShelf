@@ -36,6 +36,8 @@ the file on a wedge and it's done, saved right next to the original.
 - **Text wheel:** select text anywhere (or copy it) and press ⌃⌥Space for tools on it: fix,
   case, lines, format, code (encode, decode, JWT, generate), extract, count and hash, with
   search on the wheel. Password fields are refused.
+- **Snippets wheel:** ⌃⌥I in any app for dates, times and your own snippets: plain text files
+  in a folder, with placeholders like `{date offset="+3d"}`, `{clipboard}` and `{cursor}`.
 - **Edit window with vim keys:** the selection in a window with vim's motions, counts,
   operators, text objects, registers (yank goes to the Mac clipboard), macros, `.` and
   surround, checked against real vim; relative line numbers (⌥⌘L), wrap (⌥⌘Z), and a quiet
