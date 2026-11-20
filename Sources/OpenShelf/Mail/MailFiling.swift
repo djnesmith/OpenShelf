@@ -69,6 +69,28 @@ enum MailFiling {
     /// Which opening of the picker a listing belongs to; an answer for an older one is dropped.
     static var opening = 0
 
+    /// Per account, how many mailboxes were read and how many skipped with which error:
+    /// "On My Mac 2 read; account 2 14 read, 1 skipped (-1700); account 1 off". Account
+    /// names stay out of the log.
+    static func listingSummary(_ lines: [String]) -> String {
+        var parts: [String] = [], read = 0, skips: [String] = []
+        for line in lines {
+            let fields = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            guard fields.count == 2 else { continue }
+            switch fields[0] {
+            case "#SKIP": skips.append(String(fields[1].split(separator: " ").last ?? "?"))
+            case "#DONE":
+                parts.append("\(fields[1]) \(read) read" + (skips.isEmpty ? "" : ", \(skips.count) skipped (\(Set(skips).sorted().joined(separator: ", ")))"))
+                read = 0
+                skips = []
+            case "#OFF": parts.append("\(fields[1]) off")
+            case "#ERR": read = 0; skips = []
+            default: read += 1
+            }
+        }
+        return parts.isEmpty ? "nothing listed" : parts.joined(separator: "; ")
+    }
+
     /// What a listing that arrives does.
     enum Arrival: Equatable {
         /// The picker is open for this listing: show these mailboxes.
@@ -139,21 +161,38 @@ struct AppleScriptMailFiling: MailFilingScripting {
     static let problemBox = Box()
 
     func mailboxes() async -> [MailFiling.Mailbox] {
-        let source = """
-        on walk(boxes, prefix, accountName)
-            set out to ""
-            repeat with b in boxes
-                set p to prefix & (name of b)
-                set out to out & accountName & tab & p & linefeed
-                set out to out & my walk(mailboxes of b, p & "/", accountName)
-            end repeat
-            return out
+        let source = Self.listingSource
+        return await list(source)
+    }
+
+    /// The listing script; its handler talks to Mail inside its own tell block.
+    static let listingSource = """
+        -- The handler talks to Mail itself: outside a tell block "mailboxes" compiled as a
+        -- plain name, so "mailboxes of b" failed with -1700 for every account (2026-11-20).
+        -- Each mailbox has its own try, so one odd mailbox doesn't empty an account.
+        on walk(boxes, prefix, accountName, scope)
+            tell application id "com.apple.mail"
+                set out to ""
+                repeat with b in boxes
+                    try
+                        set n to name of b
+                        if n is not missing value then
+                            set p to prefix & (n as text)
+                            set out to out & accountName & tab & p & linefeed
+                            set out to out & my walk(mailboxes of b, p & "/", accountName, scope)
+                        end if
+                    on error number e
+                        set out to out & "#SKIP" & tab & scope & " " & e & linefeed
+                    end try
+                end repeat
+                return out
+            end tell
         end walk
         tell application id "com.apple.mail"
             with timeout of 20 seconds
                 set out to ""
                 try
-                    set out to my walk(mailboxes, "", "")
+                    set out to my walk(mailboxes, "", "", "On My Mac") & "#DONE" & tab & "On My Mac" & linefeed
                 on error number n
                     set out to out & "#ERR" & tab & "On My Mac " & n & linefeed
                 end try
@@ -163,7 +202,11 @@ struct AppleScriptMailFiling: MailFilingScripting {
                 repeat with a in accounts
                     set i to i + 1
                     try
-                        if enabled of a then set out to out & my walk(mailboxes of a, "", name of a)
+                        if enabled of a then
+                            set out to out & my walk(mailboxes of a, "", name of a, "account " & i) & "#DONE" & tab & "account " & i & linefeed
+                        else
+                            set out to out & "#OFF" & tab & "account " & i & linefeed
+                        end if
                     on error number n
                         set out to out & "#ERR" & tab & "account " & i & " " & n & linefeed
                     end try
@@ -172,12 +215,17 @@ struct AppleScriptMailFiling: MailFilingScripting {
             end timeout
         end tell
         """
+
+    private func list(_ source: String) async -> [MailFiling.Mailbox] {
         let outcome = await MailScript.run("list mailboxes", source)
         Self.problemBox.value = MailScript.problem(outcome)
         guard let text = outcome.text else { return [] }
-        let failures = text.split(separator: "\n").filter { $0.hasPrefix("#ERR\t") }.map { $0.dropFirst(5) }
+        let lines = text.split(separator: "\n")
+        let failures = lines.filter { $0.hasPrefix("#ERR\t") }.map { $0.dropFirst(5) }
         if !failures.isEmpty { SnoozeLog.append(["list mailboxes: not read: \(failures.joined(separator: ", "))"], to: MailScript.logURL) }
-        let boxes: [MailFiling.Mailbox] = text.split(separator: "\n").filter { !$0.hasPrefix("#ERR\t") }.compactMap { line in
+        let summary = MailFiling.listingSummary(lines.map(String.init))
+        SnoozeLog.append(["list mailboxes: \(summary)"], to: MailScript.logURL)
+        let boxes: [MailFiling.Mailbox] = lines.filter { !$0.hasPrefix("#") }.compactMap { line in
             let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2, !parts[1].isEmpty else { return nil }
             return MailFiling.Mailbox(account: String(parts[0]), path: String(parts[1]))

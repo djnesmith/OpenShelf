@@ -350,7 +350,9 @@ enum MailKeyActions {
         guard let bar = MailMenu.menuBar() else { return notPressed(title, "Mail's menus can't be read") }
         guard let item = item(title, under: top, within: submenu, in: bar) else { return notPressed(title, "no “\(title)” in Mail's \(top) menu") }
         guard item.isEnabled else { return notPressed(title, "“\(title)” is off here") }
-        return item.press() || notPressed(title, "“\(title)” didn't respond")
+        guard item.press() else { return notPressed(title, "“\(title)” didn't respond") }
+        KeysLog.note("menu \(top) › \(title): pressed")
+        return true
     }
 
     /// Presses Mail's item titled `title` in whichever top menu has it.
@@ -371,6 +373,10 @@ enum MailKeyActions {
     /// The item titled `title` anywhere under the menu bar's `top` menu, and under its
     /// `within` submenu when given.
     static func item(_ title: String, under top: String, within submenu: String? = nil, in bar: [MenuNode]) -> MenuNode? {
+        // The item in the menu itself comes first: a deep search alone found a same-titled
+        // item in a submenu earlier in the menu (2026-11-20: `e` pressed nothing visible;
+        // "Move to" lists a mailbox named "Archive" before Message › Archive).
+        if let exact = MailMenu.find(submenu.map { [top, $0, title] } ?? [top, title], in: bar) { return exact }
         guard var menu = bar.first(where: { $0.title == top }) else { return nil }
         if let submenu {
             guard let inner = MailMenu.findAnywhere(submenu, in: menu.children) else { return nil }
@@ -500,7 +506,9 @@ enum MailKeyActions {
         let facts = MailKeyTap.facts(window, app: app)
         let focusInList = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) }.map(MailKeys.listRoles.contains) ?? false
         let sendEnabled = MailKeys.sendIsOn(menuRead: MailMenu.menuBar() != nil, send: MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled)
-        switch MailKeys.backToList(facts, focusInList: focusInList, sendEnabled: sendEnabled) {
+        let plan = MailKeys.backToList(facts, focusInList: focusInList, sendEnabled: sendEnabled)
+        KeysLog.note("u: \(plan)")
+        switch plan {
         case .close: close(window)
         case .focusList:
             if let list = AXSelectableList.inViewer(window) {
@@ -517,8 +525,12 @@ enum MailKeyActions {
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.5)
         guard let window = AXMenuNode.element(app, kAXFocusedWindowAttribute),
-              let list = AXSelectableList.inViewer(window), !list.rows.isEmpty else { return }
+              let list = AXSelectableList.inViewer(window), !list.rows.isEmpty else {
+            KeysLog.note("\(last ? "G" : "g g"): no message list in front")
+            return
+        }
         let row = last ? list.rows.count - 1 : 0
+        KeysLog.note("\(last ? "G" : "g g"): row \(row + 1) of \(list.rows.count)")
         _ = list.select([row])
         AXUIElementPerformAction(list.rows[row], "AXScrollToVisible" as CFString)
         AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
@@ -543,8 +555,11 @@ enum MailKeyActions {
         guard let mail = MailMenu.running else { return }
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.5)
-        guard let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute), let list = AXSelectableList(focused: focused) else { return }
-        _ = MailKeys.clearSelection(list)
+        guard let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute), let list = AXSelectableList(focused: focused) else {
+            KeysLog.note("select none: no list in focus")
+            return
+        }
+        KeysLog.note("select none: \(MailKeys.clearSelection(list))")
     }
 
     /// j and k: the message list's selection moves one row, through Accessibility.
@@ -566,7 +581,8 @@ enum MailKeyActions {
         let selected = (selectedValue as? [AXUIElement]) ?? []
         let current = selected.first.flatMap { row in rows.firstIndex { CFEqual($0, row) } }
         let target = MailKeys.row(after: current, by: step, count: rows.count)
-        AXUIElementSetAttributeValue(list, kAXSelectedRowsAttribute as CFString, [rows[target]] as CFArray)
+        let result = AXUIElementSetAttributeValue(list, kAXSelectedRowsAttribute as CFString, [rows[target]] as CFArray)
+        KeysLog.note("\(step > 0 ? "j" : "k"): row \(target + 1) of \(rows.count), \(result == .success ? "selected" : "AXError \(result.rawValue)")")
     }
 }
 

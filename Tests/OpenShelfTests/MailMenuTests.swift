@@ -268,4 +268,16 @@ struct MailMenuTests {
         _ = prompt.control(prompt.promptField, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:)))
         #expect(chosen.count == 2)
     }
+
+    /// A key's menu item is the one in the menu itself before any same-titled item in a
+    /// submenu above it (2026-11-20: "Move to" lists a mailbox named "Archive").
+    @Test func theMenusOwnItemComesBeforeASubmenus() {
+        let mailbox = FakeItem("Archive")
+        let real = FakeItem("Archive")
+        let bar: [MenuNode] = [FakeItem("Message", [FakeItem("Move to", [mailbox]), FakeItem("Reply"), real])]
+        #expect(MailKeyActions.item("Archive", under: "Message", in: bar) as? FakeItem === real)
+        // Only in a submenu: still found there.
+        let nested = FakeItem("Mute")
+        #expect(MailKeyActions.item("Mute", under: "Message", in: [FakeItem("Message", [FakeItem("More", [nested])])]) as? FakeItem === nested)
+    }
 }

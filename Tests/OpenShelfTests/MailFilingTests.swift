@@ -196,4 +196,25 @@ struct MailFilingTests {
             #expect(url.path.hasPrefix(temp), "\(url.lastPathComponent)")
         }
     }
+
+    /// The listing's log line from the shape Mail returns: per account, read and skipped
+    /// with which error, accounts that are off; no names (2026-11-20).
+    @Test func listingSummaryPerAccount() {
+        let lines = ["\tInbox", "\tInbox/Old", "#DONE\tOn My Mac", "#OFF\taccount 1",
+                     "Work\tINBOX", "#SKIP\taccount 2 -1700", "#DONE\taccount 2",
+                     "#ERR\taccount 3 -1712"]
+        #expect(MailFiling.listingSummary(lines) == "On My Mac 2 read; account 1 off; account 2 1 read, 1 skipped (-1700)")
+        #expect(MailFiling.listingSummary([]) == "nothing listed")
+    }
+
+    /// The handler that walks mailboxes talks to Mail inside its own tell block: outside one,
+    /// "mailboxes" compiled as a plain name and every account failed with -1700.
+    @Test func theListingHandlerTalksToMail() throws {
+        let source = AppleScriptMailFiling.listingSource
+        let start = try #require(source.range(of: "on walk("))
+        let end = try #require(source.range(of: "end walk"))
+        let handler = source[start.upperBound..<end.lowerBound]
+        #expect(handler.contains("tell application id \"com.apple.mail\""))
+        #expect(handler.contains("on error number e"))
+    }
 }
