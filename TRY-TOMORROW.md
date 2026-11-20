@@ -54,8 +54,11 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     Mail reply. (#63)
 11. **Audio tags.** Drag an MP3, M4A or FLAC, Tools › **Tags**, change the title, add a cover, Save.
     *Expect:* the "… tagged" copy shows them in Finder's Get Info and in Music. (#64)
-12. **Live preview.** Select a few lines, ⌃⌥Space, More ▸ Lines ▸, move over Sort A to Z.
-    *Expect:* the sorted lines beside the wheel; nothing changes until you choose it. (#65)
+12. **Live preview** (changed 2026-11-20). Select a few lines (or copy them and select nothing),
+    ⌃⌥Space. *Expect:* the pane is there at once, "Now" over your text; it stays on Edit, More
+    and in sub-wheels; More ▸ Lines ▸ Sort A to Z shows "After Sort A to Z" and the sorted
+    lines; nothing changes until you choose. If it doesn't show, send
+    `~/Library/Logs/OpenShelf/preview.log` (no text in it). (#65)
 13. **Recent first.** Run Sort A to Z on some lines, then ⌃⌥Space again.
     *Expect:* Sort A to Z is the first wedge. Settings › Wheels › Text wheel's first page picks up
     to four tools. (#66)

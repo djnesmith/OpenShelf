@@ -72,7 +72,9 @@ final class WheelController {
     /// were dragged or selected from, if any.
     var onDrop: ((WheelItem, [URL], NSEvent.ModifierFlags, Shelf.ID?) -> Void)?
     /// The highlighted wedge changed (nil: none, or the wheel closed), with the wheel's frame.
-    var onHighlightChange: ((WheelItem?, NSRect?) -> Void)?
+    /// The highlighted wedge, the wheel's frame while it is open (nil once closing), and
+    /// whether the wheel shows text tools.
+    var onHighlightChange: ((WheelItem?, NSRect?, Bool) -> Void)?
     /// Supplies each wheel's wedges for the files of a keyboard session.
     var itemsProvider: ((WheelKind, [URL]) -> [WheelItem])?
 
@@ -682,7 +684,8 @@ final class WheelController {
     /// The one place the highlight changes, so the text wheel's preview follows it.
     private func assignHighlight(_ slot: Int?) {
         model.highlightedSlot = slot
-        onHighlightChange?(model.highlighted?.item, panel.isVisible ? panel.frame : nil)
+        let isTextWheel = model.items.contains { if case .text = $0.command { true } else { false } }
+        onHighlightChange?(model.highlighted?.item, model.isPresented && panel.isVisible ? panel.frame : nil, isTextWheel)
     }
 
     /// Summarises the dragged files for the hub: the size of a single file (or of

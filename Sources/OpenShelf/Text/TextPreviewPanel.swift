@@ -11,6 +11,7 @@ final class TextPreviewPanel {
     private var panel: NSPanel?
     private let textView = NSTextView()
     private let caption = NSTextField(labelWithString: "")
+    private let noteLabel = NSTextField(wrappingLabelWithString: "")
 
     var isVisible: Bool { panel?.isVisible == true }
     /// Whether a preview is up (on screen, or would be in a test that keeps it off).
@@ -18,26 +19,21 @@ final class TextPreviewPanel {
     /// The text shown, for tests.
     var shownText: String { textView.string }
     var shownCaption: String { caption.stringValue }
+    /// The note under the caption, empty when there is none, for tests.
+    var shownNote: String { noteLabel.isHidden ? "" : noteLabel.stringValue }
 
     static var isEnabled: Bool { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
 
-    /// Shows `preview` beside `wheelFrame`, scrolled to `line`.
-    func show(_ preview: TextPreview, title: String, beside wheelFrame: NSRect, line: Int = 0, onScreen: Bool = true) {
-        guard preview != .none else { return hide() }
+    /// Shows `pane` beside `wheelFrame`. Returns what happened, for the preview log.
+    @discardableResult
+    func show(_ pane: TextPreview.Pane, beside wheelFrame: NSRect, onScreen: Bool = true) -> String {
         let panel = self.panel ?? make()
-        switch preview {
-        case .result(let text):
-            caption.stringValue = "After \(title)"
-            textView.string = text
-            textView.textColor = .labelColor
-        case .note(let note):
-            caption.stringValue = title
-            textView.string = note
-            textView.textColor = .secondaryLabelColor
-        case .none:
-            break
-        }
-        scroll(to: line)
+        caption.stringValue = pane.caption
+        noteLabel.stringValue = pane.note ?? ""
+        noteLabel.isHidden = pane.note == nil
+        textView.string = pane.body
+        textView.textColor = .labelColor
+        scroll(to: pane.line)
         let screen = NSScreen.screens.first { $0.frame.intersects(wheelFrame) }?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         var origin = NSPoint(x: wheelFrame.maxX + 8, y: wheelFrame.midY - Self.size.height / 2)
         // No room on the right: the left side instead.
@@ -46,6 +42,7 @@ final class TextPreviewPanel {
         panel.setFrame(NSRect(origin: origin, size: Self.size), display: false)
         isShowing = true
         if onScreen { panel.orderFrontRegardless() }
+        return "shown (\(pane.caption)\(pane.note == nil ? "" : ", with a note")) at \(Int(origin.x)),\(Int(origin.y)) on screen \(Int(screen.minX)),\(Int(screen.minY)) \(Int(screen.width))x\(Int(screen.height)), on screen now: \(panel.isVisible)"
     }
 
     func hide() {
@@ -99,7 +96,10 @@ final class TextPreviewPanel {
         scroll.hasVerticalScroller = true
         textView.autoresizingMask = [.width]
         textView.isVerticallyResizable = true
-        let stack = NSStackView(views: [caption, scroll])
+        noteLabel.font = .systemFont(ofSize: 11)
+        noteLabel.textColor = .secondaryLabelColor
+        noteLabel.isHidden = true
+        let stack = NSStackView(views: [caption, noteLabel, scroll])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)

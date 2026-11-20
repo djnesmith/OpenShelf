@@ -31,12 +31,37 @@ enum TextPreview: Equatable {
             }
         case .convert(let format):
             return .note("Converts the text to \(format.title) when chosen.")
-        case .undo:
-            return .note("Puts back the text from before OpenShelf's last change.")
-        case .edit:
-            return .note("Opens the text in the Edit window, with vim keys.")
-        case .open, .back, .snippet, .snippetGroup, .snippetBack:
+        case .undo, .edit, .open, .back, .snippet, .snippetGroup, .snippetBack:
             return .none
+        }
+    }
+
+    /// What the pane shows: the text now, or a tool's result; a note only where it says
+    /// something the text can't (Count, Hash, a tool that runs another program).
+    struct Pane: Equatable {
+        /// "Now", or "After <tool>".
+        var caption: String
+        var note: String?
+        var body: String
+        /// The line to scroll to (0-based).
+        var line: Int
+    }
+
+    /// The pane for the highlighted wedge (`command` nil: nothing highlighted). Anything
+    /// that isn't a one-shot tool shows the text as it is now (David, 2026-11-20: "it
+    /// should have the text in it for all text selections or clipboard editing").
+    static func pane(for command: TextCommand?, title: String?, text: String) -> Pane {
+        let now = Pane(caption: "Now", note: nil, body: text, line: 0)
+        guard let command else { return now }
+        switch make(for: command, text: text) {
+        case .result(let result):
+            return Pane(caption: "After \(title ?? "this")", note: nil, body: result, line: max(firstChangedLine(from: text, to: result) - 2, 0))
+        case .note(let note):
+            var pane = now
+            pane.note = title.map { "\($0): \(note)" } ?? note
+            return pane
+        case .none:
+            return now
         }
     }
 

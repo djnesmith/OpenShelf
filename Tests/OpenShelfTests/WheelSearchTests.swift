@@ -144,6 +144,22 @@ struct WheelSearchKeyTests {
         return items
     }
 
+    /// The preview follows the text wheel: told on opening, on every move and through
+    /// More, with the wheel's frame and that it is a text wheel; told "closed" (no frame)
+    /// as it closes (David, 2026-11-20: the pane must be there the whole time).
+    @Test func thePreviewIsToldWhileTheTextWheelIsOpen() {
+        let controller = WheelController()
+        var calls: [(WheelItem?, NSRect?, Bool)] = []
+        controller.onHighlightChange = { calls.append(($0, $1, $2)) }
+        _ = openTextWheel(controller)
+        #expect(calls.last?.1 != nil)
+        #expect(calls.last?.2 == true)
+        #expect(controller.handleKey(key("", kVK_RightArrow)))
+        #expect(calls.last?.1 != nil)
+        controller.endKeyboardMode(hidingWheel: true)
+        #expect(calls.last?.1 == nil)
+    }
+
     @Test func typingStartsASearchAndReturnRunsTheTopMatch() {
         let controller = WheelController()
         var ran: [WheelItem] = []

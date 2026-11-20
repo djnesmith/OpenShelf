@@ -129,22 +129,39 @@ final class SelectedTextController {
 
     private var previewTask: Task<Void, Never>?
 
-    /// The wheel's highlight moved: shows what the highlighted tool would make, beside the
-    /// wheel, computed off the main thread and dropped when the highlight moves on.
-    func previewHighlight(_ item: WheelItem?, wheelFrame: NSRect?) {
+    /// Why the pane isn't shown, or nil when it is. The text's source (selection, copied
+    /// text, the clipboard) plays no part, and neither does the wedge: while a text wheel
+    /// is open the pane is there, from its opening, through More, sub-wheels and Back.
+    static func previewBlocker(enabled: Bool, text: String?, isTextWheel: Bool, wheelVisible: Bool) -> String? {
+        guard enabled else { return "setting off" }
+        guard let text else { return "no text session" }
+        guard !text.isEmpty else { return "empty text" }
+        guard wheelVisible else { return "wheel closed" }
+        guard isTextWheel else { return "not a text wheel" }
+        return nil
+    }
+
+    /// The wheel's highlight moved, or the wheel opened or closed: the pane beside it shows
+    /// the text now, or what the highlighted tool would make (computed off the main thread
+    /// and dropped when the highlight moves on). Never the clipboard or the source app.
+    func previewHighlight(_ item: WheelItem?, wheelFrame: NSRect?, isTextWheel: Bool) {
         previewTask?.cancel()
-        guard TextPreviewPanel.isEnabled, let session, !session.text.isEmpty, let item, let wheelFrame,
-              case .text(let command) = item.command else {
+        let why = Self.previewBlocker(enabled: TextPreviewPanel.isEnabled, text: session?.text, isTextWheel: isTextWheel, wheelVisible: wheelFrame != nil)
+        guard why == nil, let session, let wheelFrame else {
+            if TextPreviewPanel.shared.isShowing || (isTextWheel && wheelFrame != nil) {
+                PreviewLog.note("\(session.map { "\($0.source)" } ?? "-"): hidden, \(why ?? "?")")
+            }
             TextPreviewPanel.shared.hide()
             return
         }
         let text = session.text
-        let title = item.title
+        let title = item?.title
+        let command: TextCommand? = if case .text(let command) = item?.command { command } else { nil }
         previewTask = Task {
-            let preview = await Task.detached(priority: .userInitiated) { TextPreview.make(for: command, text: text) }.value
+            let pane = await Task.detached(priority: .userInitiated) { TextPreview.pane(for: command, title: title, text: text) }.value
             guard !Task.isCancelled else { return }
-            let line = if case .result(let result) = preview { TextPreview.firstChangedLine(from: text, to: result) } else { 0 }
-            TextPreviewPanel.shared.show(preview, title: title, beside: wheelFrame, line: max(line - 2, 0))
+            let shown = TextPreviewPanel.shared.show(pane, beside: wheelFrame)
+            PreviewLog.note("\(session.source) \(title ?? "nothing highlighted"): \(shown)")
         }
     }
 

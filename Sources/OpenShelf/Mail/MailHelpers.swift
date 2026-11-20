@@ -212,3 +212,21 @@ enum SnoozeLog {
         try? data.write(to: url, options: .atomic)
     }
 }
+
+/// The text wheel's preview steps (ROADMAP C13), appended to
+/// ~/Library/Logs/OpenShelf/preview.log: the text's source, the wedge's title, and
+/// whether the pane was shown, where, or why not. Never the text. A line the same as
+/// the one before is skipped.
+@MainActor
+enum PreviewLog {
+    static var fileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/preview.log")
+    }
+    private static var last = ""
+
+    static func note(_ line: String, to url: URL = fileURL) {
+        guard line != last else { return }
+        last = line
+        SnoozeLog.append([line], to: url)
+    }
+}
