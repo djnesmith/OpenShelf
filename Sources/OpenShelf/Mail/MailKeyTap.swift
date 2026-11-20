@@ -70,6 +70,11 @@ final class MailKeyTap {
             return true
         }
         if Date().timeIntervalSince(pendingSince) > MailKeys.prefixTimeout { pending = nil }
+        if key == MailKeys.escape, pending == nil, !ownPanelHasKeyboard, let window = closesMessageWindow(event) {
+            // After the tap returns, so the key is gone before the window is closed.
+            DispatchQueue.main.async { MainActor.assumeIsolated { MailKeyActions.close(window) } }
+            return true
+        }
         let outcome = MailKeys.outcome(for: key, pending: pending)
         pending = nil
         guard outcome != .pass, focusAllows(event, outcome) else { return false }
@@ -152,6 +157,48 @@ final class MailKeyTap {
 }
 
 extension MailKeyTap {
+    /// Mail's front window when Esc should close it (a message open on its own), or nil.
+    func closesMessageWindow(_ event: CGEvent) -> AXUIElement? {
+        guard let mail = MailMenu.running else { return nil }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.1)
+        guard let window = AXMenuNode.element(app, kAXFocusedWindowAttribute),
+              let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute) else { return nil }
+        var editable: CFTypeRef?
+        AXUIElementCopyAttributeValue(focused, "AXEditable" as CFString, &editable)
+        let sendEnabled = MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? false
+        let facts = Self.facts(window, app: app)
+        let allowed = MailKeys.mayCloseWithEscape(
+            facts, focusedRole: AXMenuNode.string(focused, kAXRoleAttribute), isEditable: (editable as? Bool) ?? false,
+            sendEnabled: sendEnabled, modifiers: event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn]).isEmpty ? [] : .other,
+            mailHasFocus: MailMenu.hasKeyboardFocus()
+        )
+        return allowed ? window : nil
+    }
+
+    /// The front window's facts for the Esc rule, read a few levels deep (no text).
+    static func facts(_ window: AXUIElement, app: AXUIElement) -> MailKeys.WindowFacts {
+        var composeControls = false, textFields = 0
+        func walk(_ element: AXUIElement, depth: Int) {
+            guard depth < 4, !composeControls else { return }
+            for child in AXMenuNode.childElements(element) {
+                let role = AXMenuNode.string(child, kAXRoleAttribute) ?? ""
+                let id = AXMenuNode.string(child, kAXIdentifierAttribute) ?? ""
+                if ["send", "popup_from", "sendLater"].contains(id) { composeControls = true; return }
+                if role == kAXTextFieldRole && depth == 0 { textFields += 1 }
+                if !["AXWebArea", "AXScrollArea", "AXTable", "AXOutline"].contains(role) { walk(child, depth: depth + 1) }
+            }
+        }
+        walk(window, depth: 0)
+        return MailKeys.WindowFacts(
+            isStandardWindow: AXMenuNode.string(window, kAXSubroleAttribute) == kAXStandardWindowSubrole,
+            isViewer: AXMenuNode.string(window, kAXIdentifierAttribute)?.hasPrefix("Mail.messageViewer.window") == true,
+            hasSheetOrPopover: hasSheetOrPopover(app),
+            hasComposeControls: composeControls,
+            textFieldCount: textFields
+        )
+    }
+
     /// A sheet on Mail's front window, or a popover anywhere in Mail. Unreadable counts
     /// as yes, so Esc goes to Mail.
     static func hasSheetOrPopover(_ app: AXUIElement) -> Bool {
@@ -186,6 +233,21 @@ struct AXSelectableList: MailKeys.SelectableList {
         self.list = list
         self.rows = rows
         self.focused = focused
+    }
+
+    init(list: AXUIElement, rows: [AXUIElement]) {
+        self.list = list
+        self.rows = rows
+        self.focused = list
+    }
+
+    /// The message list of Mail's viewer window (MailKeys.messageList).
+    static func inViewer(_ window: AXUIElement) -> AXSelectableList? {
+        guard let node = MailKeys.messageList(in: AXDialogNode(element: window)) as? AXDialogNode else { return nil }
+        var rowsValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(node.element, kAXRowsAttribute as CFString, &rowsValue) == .success,
+              let rows = rowsValue as? [AXUIElement] else { return nil }
+        return AXSelectableList(list: node.element, rows: rows)
     }
 
     var selectedRows: [Int] {
@@ -233,6 +295,12 @@ enum MailKeyActions {
             MailKeyHelp.shared.show()
         case .clearSelection:
             clearSelection()
+        case .backToList:
+            backToList()
+        case .firstMessage:
+            selectEnd(last: false)
+        case .lastMessage:
+            selectEnd(last: true)
         }
     }
 
@@ -252,6 +320,47 @@ enum MailKeyActions {
             menu = inner
         }
         return MailMenu.findAnywhere(title, in: menu.children)
+    }
+
+    /// `u`: a message open in its own window closes, as Esc does; in the viewer the keyboard
+    /// goes back to the message list, on the selected message (the selection is unchanged).
+    static func backToList() {
+        guard let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        guard let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return }
+        let facts = MailKeyTap.facts(window, app: app)
+        let focusInList = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) }.map(MailKeys.listRoles.contains) ?? false
+        let sendEnabled = MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? true
+        switch MailKeys.backToList(facts, focusInList: focusInList, sendEnabled: sendEnabled) {
+        case .close: close(window)
+        case .focusList:
+            if let list = AXSelectableList.inViewer(window) {
+                AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            }
+        case .nothing: break
+        }
+    }
+
+    /// `g g` and `G`: selects the first or last row Mail's list has, shows it, and gives the
+    /// list the keyboard.
+    static func selectEnd(last: Bool) {
+        guard let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        guard let window = AXMenuNode.element(app, kAXFocusedWindowAttribute),
+              let list = AXSelectableList.inViewer(window), !list.rows.isEmpty else { return }
+        let row = last ? list.rows.count - 1 : 0
+        _ = list.select([row])
+        AXUIElementPerformAction(list.rows[row], "AXScrollToVisible" as CFString)
+        AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    }
+
+    /// Esc on a message open in its own window: its close button, else File › Close.
+    static func close(_ window: AXUIElement) {
+        if let button = AXMenuNode.element(window, kAXCloseButtonAttribute),
+           AXUIElementPerformAction(button, kAXPressAction as CFString) == .success { return }
+        press("Close", under: "File")
     }
 
     /// Esc and `* n`: select none in the focused message list.

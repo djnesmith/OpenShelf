@@ -6,6 +6,8 @@ import ApplicationServices
 protocol DialogNode {
     var role: String { get }
     var title: String? { get }
+    /// The Accessibility identifier, where there is one.
+    var identifier: String? { get }
     var children: [DialogNode] { get }
     /// A date picker's date; nil for anything else.
     var date: Date? { get }
@@ -19,6 +21,7 @@ protocol DialogNode {
 }
 
 extension DialogNode {
+    var identifier: String? { nil }
     var valueDescription: String { date.map { "date " + ISO8601DateFormatter().string(from: $0) } ?? "no date" }
     func pressReporting() -> (ok: Bool, detail: String) {
         let ok = press()
@@ -126,6 +129,7 @@ struct AXDialogNode: DialogNode {
 
     var role: String { AXMenuNode.string(element, kAXRoleAttribute) ?? "" }
     var title: String? { AXMenuNode.string(element, kAXTitleAttribute) }
+    var identifier: String? { AXMenuNode.string(element, kAXIdentifierAttribute) }
     var children: [DialogNode] { AXMenuNode.childElements(element).map(AXDialogNode.init) }
 
     var date: Date? {

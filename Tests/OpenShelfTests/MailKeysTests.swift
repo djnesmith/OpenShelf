@@ -17,8 +17,8 @@ struct MailKeysTests {
         #expect(MailKeys.outcome(for: "j", pending: nil) == .act(.nextMessage))
         #expect(MailKeys.outcome(for: "[", pending: nil) == .act(.archiveThenPrevious))
         #expect(MailKeys.outcome(for: "I", pending: nil) == .act(.menu("Message", "Mark as Read")))
-        // Not decided, so left out: u, n, p, # and anything else.
-        for key: Character in ["u", "n", "p", "#", "q", "1", " "] {
+        // Left out: n, p, # and anything else (u is back to the list since 2026-11-20).
+        for key: Character in ["n", "p", "#", "q", "1", " "] {
             #expect(MailKeys.outcome(for: key, pending: nil) == .pass, "\(key)")
         }
     }
@@ -195,5 +195,105 @@ struct MailKeysTests {
         let one = FakeList([5])
         #expect(MailKeys.clearSelection(one) == .refused)
         #expect(one.calls.isEmpty)
+    }
+
+    /// Esc closes a message open in its own window; never the viewer, a message being
+    /// written, a sheet or popover, a field, or with Send on (David, 2026-11-20).
+    @Test func escapeClosesOnlyAMessageWindow() {
+        typealias F = MailKeys.WindowFacts
+        let message = F(isStandardWindow: true, isViewer: false, hasSheetOrPopover: false, hasComposeControls: false, textFieldCount: 0)
+        func may(_ window: F?, role: String? = "AXWebArea", editable: Bool = false, send: Bool = false,
+                 _ modifiers: MailKeys.Modifiers = [], focus: Bool = true) -> Bool {
+            MailKeys.mayCloseWithEscape(window, focusedRole: role, isEditable: editable, sendEnabled: send, modifiers: modifiers, mailHasFocus: focus)
+        }
+        #expect(may(message))
+        #expect(may(message, role: "AXGroup"))
+        var viewer = message; viewer.isViewer = true
+        #expect(!may(viewer))
+        // A message being written, as Check Mail saw one: Send, From, To/Cc/Subject fields.
+        var compose = message; compose.hasComposeControls = true; compose.textFieldCount = 3
+        #expect(!may(compose))
+        // A Send button alone (fields nested out of reach) is enough to leave it alone.
+        var sendOnly = message; sendOnly.hasComposeControls = true
+        #expect(!may(sendOnly))
+        var fieldsOnly = message; fieldsOnly.textFieldCount = 1
+        #expect(!may(fieldsOnly))
+        var sheet = message; sheet.hasSheetOrPopover = true
+        #expect(!may(sheet))
+        var panel = message; panel.isStandardWindow = false
+        #expect(!may(panel))
+        #expect(!may(nil))
+        #expect(!may(message, editable: true))
+        #expect(!may(message, send: true))
+        #expect(!may(message, role: "AXTextField"))
+        #expect(!may(message, role: "AXSearchField"))
+        #expect(!may(message, .other))
+        #expect(!may(message, .shift))
+        #expect(!may(message, focus: false))
+        #expect(MailKeys.help.contains { $0.0 == "Esc" && $0.1.contains("close") })
+    }
+
+    final class Node: DialogNode {
+        let role: String
+        let title: String? = nil
+        let identifier: String?
+        let children: [DialogNode]
+        let date: Date? = nil
+        init(_ role: String, id: String? = nil, _ children: [DialogNode] = []) {
+            self.role = role
+            identifier = id
+            self.children = children
+        }
+        func setDate(_ date: Date) -> Bool { false }
+        func press() -> Bool { false }
+    }
+
+    /// Mail's viewer as Check Mail saw it (2026-11-20): the mailbox sidebar's outline comes
+    /// first; the message list is in "Main Window Preview Pane Vertical".
+    @MainActor @Test func findsTheMessageListNotTheSidebar() {
+        let list = Node("AXTable")
+        let viewer = Node("AXWindow", id: "Mail.messageViewer.window.1", [
+            Node("AXSplitGroup", id: "Main Window", [
+                Node("AXScrollArea", [Node("AXOutline")]),
+                Node("AXStaticText"), Node("AXSplitter"),
+                Node("AXSplitGroup", id: "Main Window Preview Pane Vertical", [
+                    Node("AXScrollArea", [list]), Node("AXSplitter"), Node("AXGroup"),
+                    Node("AXScrollArea", [Node("AXWebArea", [Node("AXTable")])]),
+                ]),
+            ]),
+            Node("AXToolbar"),
+        ])
+        #expect(MailKeys.messageList(in: viewer) as? Node === list)
+        #expect(MailKeys.messageList(in: Node("AXWindow", id: "_NS:41", [Node("AXTable")])) == nil)
+    }
+
+    /// `u`: a message window closes, the viewer's reading pane gives the list the keyboard,
+    /// the list itself does nothing; a message being written or a sheet: nothing.
+    @Test func backToListInEachState() {
+        typealias F = MailKeys.WindowFacts
+        let message = F(isStandardWindow: true, isViewer: false, hasSheetOrPopover: false, hasComposeControls: false, textFieldCount: 0)
+        var viewer = message; viewer.isViewer = true
+        var compose = message; compose.hasComposeControls = true; compose.textFieldCount = 3
+        var sheet = viewer; sheet.hasSheetOrPopover = true
+        #expect(MailKeys.backToList(message, focusInList: false, sendEnabled: false) == .close)
+        #expect(MailKeys.backToList(viewer, focusInList: false, sendEnabled: false) == .focusList)
+        #expect(MailKeys.backToList(viewer, focusInList: true, sendEnabled: false) == .nothing)
+        #expect(MailKeys.backToList(compose, focusInList: false, sendEnabled: false) == .nothing)
+        #expect(MailKeys.backToList(message, focusInList: false, sendEnabled: true) == .nothing)
+        #expect(MailKeys.backToList(sheet, focusInList: false, sendEnabled: false) == .nothing)
+        #expect(MailKeys.backToList(nil, focusInList: false, sendEnabled: false) == .nothing)
+    }
+
+    /// u, g g and G are in the table and the list; g g and G only act from the list.
+    @Test func uAndFirstAndLast() {
+        #expect(MailKeys.outcome(for: "u", pending: nil) == .act(.backToList))
+        #expect(MailKeys.outcome(for: "g", pending: "g") == .act(.firstMessage))
+        #expect(MailKeys.outcome(for: "G", pending: nil) == .act(.lastMessage))
+        #expect(MailKeys.outcome(for: "g", pending: nil) == .prefix("g"))
+        #expect(MailKeys.actsOnOneMessage(.backToList))
+        #expect(!MailKeys.actsOnOneMessage(.firstMessage))
+        #expect(!MailKeys.actsOnOneMessage(.lastMessage))
+        #expect(MailKeys.help.contains { $0.0 == "u" })
+        #expect(MailKeys.help.contains { $0.0.contains("g g") && $0.0.contains("G") })
     }
 }
