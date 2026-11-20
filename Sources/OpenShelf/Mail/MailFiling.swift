@@ -63,21 +63,60 @@ enum MailFiling {
         defaults.set(recent.map { [$0.account, $0.path] }, forKey: recentKey)
     }
 
-    /// Opens the picker over Mail's mailboxes; the choice moves Mail's selected messages.
+    /// The mailboxes listed this session, so `v` opens at once after the first time; the
+    /// list is refreshed in the background each time the picker opens.
+    static var cache: [Mailbox]?
+    /// Which opening of the picker a listing belongs to; an answer for an older one is dropped.
+    static var opening = 0
+
+    /// What a listing that arrives does.
+    enum Arrival: Equatable {
+        /// The picker is open for this listing: show these mailboxes.
+        case show([Mailbox])
+        /// The picker closed or opened again since: nothing changes on screen.
+        case dropped
+        /// Nothing to show at all: close the picker and say why.
+        case fail
+    }
+
+    /// A listing has arrived for `opening`; `boxes` empty when it failed. The cache is
+    /// updated either way when the listing has mailboxes.
+    static func arrival(boxes: [Mailbox], for opening: Int, current: Int, pickerOpen: Bool, cached: [Mailbox]?) -> Arrival {
+        guard opening == current, pickerOpen else { return .dropped }
+        if !boxes.isEmpty { return .show(boxes) }
+        if let cached, !cached.isEmpty { return .show(cached) }
+        return .fail
+    }
+
+    /// Opens the picker over Mail's mailboxes at once (from this session's list, or a short
+    /// "Listing mailboxes…") and fills it when Mail answers, off the main thread. The choice
+    /// moves Mail's selected messages; the move checks the selection when it runs.
     static func showPicker(scripting: MailFilingScripting = AppleScriptMailFiling()) {
-        let mailboxes = scripting.mailboxes()
-        guard !mailboxes.isEmpty else {
-            let problem = scripting.lastProblem ?? (title: "Can't file", subtitle: "Mail returned no mailboxes")
-            ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: problem.title, subtitle: problem.subtitle), for: .seconds(8))
-            return
-        }
-        MailboxPicker.shared.show(mailboxes: mailboxes, recent: loadRecent()) { chosen in
+        opening += 1
+        let mine = opening
+        MailboxPicker.shared.show(mailboxes: cache ?? [], recent: loadRecent(), loading: cache == nil) { chosen in
             MailMenu.running?.activate()
-            if let problem = scripting.moveSelection(to: chosen) {
-                ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Not moved", subtitle: problem), for: .seconds(4))
-            } else {
-                saveRecent(remember(chosen, in: loadRecent()))
-                ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Moved", subtitle: chosen.display), for: MailHelpers.successToast)
+            Task { @MainActor in
+                if let problem = await scripting.moveSelection(to: chosen) {
+                    ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Not moved", subtitle: problem), for: .seconds(4))
+                } else {
+                    saveRecent(remember(chosen, in: loadRecent()))
+                    ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Moved", subtitle: chosen.display), for: MailHelpers.successToast)
+                }
+            }
+        }
+        Task { @MainActor in
+            let boxes = await scripting.mailboxes()
+            if !boxes.isEmpty { cache = boxes }
+            switch arrival(boxes: boxes, for: mine, current: opening, pickerOpen: MailboxPicker.shared.isOpen, cached: cache) {
+            case .show(let list):
+                MailboxPicker.shared.update(mailboxes: list)
+            case .dropped:
+                break
+            case .fail:
+                MailboxPicker.shared.close()
+                let problem = scripting.lastProblem ?? (title: "Can't file", subtitle: "Mail returned no mailboxes")
+                ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: problem.title, subtitle: problem.subtitle), for: .seconds(8))
             }
         }
     }
@@ -86,11 +125,11 @@ enum MailFiling {
 /// What filing asks Mail. A protocol, so tests use a fake and never move mail.
 @MainActor
 protocol MailFilingScripting {
-    func mailboxes() -> [MailFiling.Mailbox]
+    func mailboxes() async -> [MailFiling.Mailbox]
     /// Why the last listing came back empty, when Mail's script said so.
     var lastProblem: (title: String, subtitle: String)? { get }
     /// Moves the viewer's selected messages; nil when done, or why not.
-    func moveSelection(to mailbox: MailFiling.Mailbox) -> String?
+    func moveSelection(to mailbox: MailFiling.Mailbox) async -> String?
 }
 
 struct AppleScriptMailFiling: MailFilingScripting {
@@ -99,7 +138,7 @@ struct AppleScriptMailFiling: MailFilingScripting {
     final class Box { var value: (title: String, subtitle: String)? }
     static let problemBox = Box()
 
-    func mailboxes() -> [MailFiling.Mailbox] {
+    func mailboxes() async -> [MailFiling.Mailbox] {
         let source = """
         on walk(boxes, prefix, accountName)
             set out to ""
@@ -133,7 +172,7 @@ struct AppleScriptMailFiling: MailFilingScripting {
             end timeout
         end tell
         """
-        let outcome = MailScript.run("list mailboxes", source)
+        let outcome = await MailScript.run("list mailboxes", source)
         Self.problemBox.value = MailScript.problem(outcome)
         guard let text = outcome.text else { return [] }
         let failures = text.split(separator: "\n").filter { $0.hasPrefix("#ERR\t") }.map { $0.dropFirst(5) }
@@ -151,7 +190,7 @@ struct AppleScriptMailFiling: MailFilingScripting {
         return boxes
     }
 
-    func moveSelection(to mailbox: MailFiling.Mailbox) -> String? {
+    func moveSelection(to mailbox: MailFiling.Mailbox) async -> String? {
         func quoted(_ text: String) -> String { "\"" + text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
         let target = mailbox.account.isEmpty ? "mailbox \(quoted(mailbox.path))" : "mailbox \(quoted(mailbox.path)) of account \(quoted(mailbox.account))"
         let source = """
@@ -162,7 +201,7 @@ struct AppleScriptMailFiling: MailFilingScripting {
             return ""
         end tell
         """
-        let outcome = MailScript.run("move selection", source)
+        let outcome = await MailScript.run("move selection", source)
         if let problem = MailScript.problem(outcome) { return "\(problem.title): \(problem.subtitle)" }
         let text = outcome.text ?? ""
         return text.isEmpty ? nil : text

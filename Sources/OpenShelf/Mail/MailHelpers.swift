@@ -44,7 +44,7 @@ final class MailHelpers {
         GlobalHotKey.mailSend.onPress = { MailSend.send() }
         GlobalHotKey.mailSendAndArchive.onPress = { MailSend.sendAndArchive() }
         GlobalHotKey.mailMove.onPress = { MailFiling.showPicker() }
-        GlobalHotKey.mailLink.onPress = { MailLinks.copyLink() }
+        GlobalHotKey.mailLink.onPress = { Task { await MailLinks.copyLink() } }
         GlobalHotKey.mailUnsubscribe.onPress = { MailUnsubscribe.run() }
         observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication

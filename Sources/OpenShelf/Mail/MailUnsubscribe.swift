@@ -47,14 +47,20 @@ enum MailUnsubscribe {
 
     /// The one selected message's sender, its right-click menu, a confirm, then Mail's items.
     static func run(scripting: MailScripting = AppleScriptMail()) {
+        Task { @MainActor in await runChecked(scripting: scripting) }
+    }
+
+    /// Mail answers on the scripts' queue; every step checks Mail again after its answer.
+    private static func runChecked(scripting: MailScripting) async {
         guard let mail = MailMenu.running, let row = selectedRow(pid: mail.processIdentifier) else {
             tell("Nothing done", "Select one message in Mail's list first")
             return
         }
-        let sender = scripting.selectedSenders().first ?? "this sender"
+        let sender = await scripting.selectedSenders().first ?? "this sender"
         // The message asked about; after the question it must still be the one selected.
-        let asked = scripting.selectedMessages()
-        guard let items = openMenu(on: row) else {
+        let asked = await scripting.selectedMessages()
+        // The row is read again after Mail's answers, which took time.
+        guard selectedRow(pid: mail.processIdentifier).map({ CFEqual($0, row) }) == true, let items = openMenu(on: row) else {
             tell("Nothing done", "Mail's message menu didn't open")
             return
         }
@@ -70,7 +76,7 @@ enum MailUnsubscribe {
         alert.addButton(withTitle: "Cancel")
         NSApp.activate()
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        guard stillSame(asked: asked, now: scripting.selectedMessages()) else {
+        guard stillSame(asked: asked, now: await scripting.selectedMessages()) else {
             tell("Nothing done", "A different message is selected now")
             return
         }
@@ -78,7 +84,7 @@ enum MailUnsubscribe {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(300))
             for title in plan == .unsubscribeAndBlock ? [unsubscribeTitle, blockTitle] : [blockTitle] {
-                guard stillSame(asked: asked, now: scripting.selectedMessages()) else {
+                guard stillSame(asked: asked, now: await scripting.selectedMessages()) else {
                     tell("Stopped", "A different message is selected now")
                     return
                 }
@@ -136,7 +142,7 @@ enum MailUnsubscribe {
 
 extension MailScripting {
     /// The selected messages' senders, through Mail's AppleScript.
-    func selectedSenders() -> [String] {
+    func selectedSenders() async -> [String] {
         let source = """
         tell application id "com.apple.mail"
             set out to ""
@@ -146,7 +152,7 @@ extension MailScripting {
             return out
         end tell
         """
-        guard let text = MailScript.run("selected senders", source).text else { return [] }
+        guard let text = await MailScript.run("selected senders", source).text else { return [] }
         return text.split(separator: "\n").map(String.init)
     }
 }

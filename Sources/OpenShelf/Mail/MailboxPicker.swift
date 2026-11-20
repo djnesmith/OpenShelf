@@ -15,8 +15,12 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
     private(set) var highlighted = 0
     private var onChoose: ((MailFiling.Mailbox) -> Void)?
 
-    func show(mailboxes: [MailFiling.Mailbox], recent: [MailFiling.Mailbox], onChoose: @escaping (MailFiling.Mailbox) -> Void) {
-        let panel = prepare(mailboxes: mailboxes, recent: recent, onChoose: onChoose)
+    /// Whether Mail's mailboxes are still being listed (the picker says so until they come).
+    private(set) var loading = false
+    var isOpen: Bool { panel?.isVisible == true && onChoose != nil }
+
+    func show(mailboxes: [MailFiling.Mailbox], recent: [MailFiling.Mailbox], loading: Bool = false, onChoose: @escaping (MailFiling.Mailbox) -> Void) {
+        let panel = prepare(mailboxes: mailboxes, recent: recent, loading: loading, onChoose: onChoose)
         panel.center()
         // Takes the keyboard without activating OpenShelf, as the snooze prompt does: macOS
         // may refuse to activate an app from a key tap or hotkey.
@@ -26,7 +30,8 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
 
     /// Builds and resets the picker without putting it on screen (tests use this alone).
     @discardableResult
-    func prepare(mailboxes: [MailFiling.Mailbox], recent: [MailFiling.Mailbox], onChoose: @escaping (MailFiling.Mailbox) -> Void) -> NSPanel {
+    func prepare(mailboxes: [MailFiling.Mailbox], recent: [MailFiling.Mailbox], loading: Bool = false, onChoose: @escaping (MailFiling.Mailbox) -> Void) -> NSPanel {
+        self.loading = loading
         self.mailboxes = mailboxes
         self.recent = recent
         self.onChoose = onChoose
@@ -37,6 +42,16 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
     }
 
     var pickerField: NSTextField { field }
+
+    /// Mail's list has arrived: the picker shows it, keeping what was typed.
+    func update(mailboxes: [MailFiling.Mailbox]) {
+        self.mailboxes = mailboxes
+        loading = false
+        update()
+    }
+
+    /// The text of the list's rows, for tests.
+    var rowTexts: [String] { list.arrangedSubviews.compactMap { ($0 as? NSTextField)?.stringValue } }
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -70,7 +85,7 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
             row.textColor = index == highlighted ? .labelColor : .secondaryLabelColor
             list.addArrangedSubview(row)
         }
-        if matches.isEmpty { list.addArrangedSubview(NSTextField(labelWithString: "No mailbox matches")) }
+        if matches.isEmpty { list.addArrangedSubview(NSTextField(labelWithString: loading ? "Listing mailboxes…" : "No mailbox matches")) }
     }
 
     func controlTextDidChange(_ notification: Notification) {

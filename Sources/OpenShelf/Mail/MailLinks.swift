@@ -19,8 +19,8 @@ enum MailLinks {
         scripting: MailScripting = AppleScriptMail(),
         pasteboard: NSPasteboard = .general,
         tell: (Toast, Duration) -> Void = { ToastController.shared.show($0, for: $1) }
-    ) {
-        let selected = scripting.selectedMessages()
+    ) async {
+        let selected = await scripting.selectedMessages()
         guard selected.count == 1, let message = selected.first, let url = link(forMessageID: message.id) else {
             tell(Toast(systemImage: "link", title: "No link copied", subtitle: selected.isEmpty ? "Select a message in Mail first" : "Select one message"), .seconds(3))
             return

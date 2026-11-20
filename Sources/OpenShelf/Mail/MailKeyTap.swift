@@ -387,41 +387,46 @@ enum MailKeyActions {
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.5)
         guard MailKeyTap.isMessageWindow(app), let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return false }
-        var windowsValue: CFTypeRef?
-        AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsValue)
-        // The main viewer by its structure; a message window shares its id prefix.
-        let viewer = ((windowsValue as? [AXUIElement]) ?? []).first { MailKeys.isMainViewer(AXDialogNode(element: $0)) }
-        let list = viewer.flatMap(AXSelectableList.inViewer)
-        let current = Set(scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
-        let bound = MailWindowBindings.ids(for: window)
-        let plan = MailKeys.conversationPlan(bound: bound, selectedRows: list?.selectedRows.count ?? 0, current: current)
-        switch plan {
-        case .viaList(let count):
-            close(window)
-            if let viewer { AXUIElementPerformAction(viewer, kAXRaiseAction as CFString) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                MainActor.assumeIsolated {
-                    // Checked from the elements now, never from the close press's answer.
-                    let gone = AXMenuNode.string(window, kAXRoleAttribute) == nil
-                    let front = AXMenuNode.element(app, kAXFocusedWindowAttribute)
-                    let frontIsViewer = front.map { MailKeys.isMainViewer(AXDialogNode(element: $0)) } ?? false
-                    let now = Set(scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
-                    let ok = MailKeys.mayPressInViewer(messageWindowGone: gone, frontIsMainViewer: frontIsViewer, bound: bound, current: now)
-                    KeysLog.note("\(archive ? "e" : "x") via the list: window gone \(gone), viewer in front \(frontIsViewer), same selection \(bound == now): \(ok ? "pressing" : "not pressing")")
-                    guard ok else {
-                        if !gone { actOnOpenMessage(window, archive: archive, reason: "conversation not confirmed") } else {
-                            ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Nothing \(archive ? "archived" : "trashed")",
-                                                              subtitle: "The list changed after the window closed"), for: .seconds(4))
-                        }
-                        return
-                    }
-                    guard press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit") else { return }
-                    ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(archive ? "Archived" : "Trashed") the conversation",
-                                                      subtitle: "As from the list: \(count) message\(count == 1 ? "" : "s") selected there"), for: MailHelpers.successToast)
-                }
+        Task { @MainActor in
+            // Mail answers on the scripts' queue; the window is checked again afterwards.
+            let current = Set(await scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
+            guard let front = AXMenuNode.element(app, kAXFocusedWindowAttribute), CFEqual(front, window), MailKeyTap.isMessageWindow(app) else {
+                KeysLog.note("\(archive ? "e" : "x"): the message window left the front while Mail answered; nothing done")
+                ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Nothing \(archive ? "archived" : "trashed")",
+                                                  subtitle: "The message window changed while Mail answered"), for: .seconds(4))
+                return
             }
-        case .thisMessage:
-            actOnOpenMessage(window, archive: archive, reason: "conversation not confirmed")
+            var windowsValue: CFTypeRef?
+            AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsValue)
+            // The main viewer by its structure; a message window shares its id prefix.
+            let viewer = ((windowsValue as? [AXUIElement]) ?? []).first { MailKeys.isMainViewer(AXDialogNode(element: $0)) }
+            let list = viewer.flatMap(AXSelectableList.inViewer)
+            let bound = MailWindowBindings.ids(for: window)
+            switch MailKeys.conversationPlan(bound: bound, selectedRows: list?.selectedRows.count ?? 0, current: current) {
+            case .viaList(let count):
+                close(window)
+                if let viewer { AXUIElementPerformAction(viewer, kAXRaiseAction as CFString) }
+                try? await Task.sleep(for: .milliseconds(400))
+                // Checked from the elements now, never from the close press's answer.
+                let gone = AXMenuNode.string(window, kAXRoleAttribute) == nil
+                let frontNow = AXMenuNode.element(app, kAXFocusedWindowAttribute)
+                let frontIsViewer = frontNow.map { MailKeys.isMainViewer(AXDialogNode(element: $0)) } ?? false
+                let now = Set(await scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
+                let ok = MailKeys.mayPressInViewer(messageWindowGone: gone, frontIsMainViewer: frontIsViewer, bound: bound, current: now)
+                KeysLog.note("\(archive ? "e" : "x") via the list: window gone \(gone), viewer in front \(frontIsViewer), same selection \(bound == now): \(ok ? "pressing" : "not pressing")")
+                guard ok else {
+                    if !gone { actOnOpenMessage(window, archive: archive, reason: "conversation not confirmed") } else {
+                        ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Nothing \(archive ? "archived" : "trashed")",
+                                                          subtitle: "The list changed after the window closed"), for: .seconds(4))
+                    }
+                    return
+                }
+                guard press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit") else { return }
+                ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(archive ? "Archived" : "Trashed") the conversation",
+                                                  subtitle: "As from the list: \(count) message\(count == 1 ? "" : "s") selected there"), for: MailHelpers.successToast)
+            case .thisMessage:
+                actOnOpenMessage(window, archive: archive, reason: "conversation not confirmed")
+            }
         }
         return true
     }
@@ -461,13 +466,20 @@ enum MailKeyActions {
     /// `o`: opens the selected message, and remembers which Message-IDs were selected for
     /// the window it opens, so `e` and `x` there can tell the list still holds that row.
     static func openAndBind(scripting: MailScripting = AppleScriptMail()) {
-        let ids = Set(scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
-        // Mail's "Open Message" (MainMenu.loctable 1772) is looked for in every menu.
-        guard pressAnywhere("Open Message") else { return }
-        guard !ids.isEmpty, let mail = MailMenu.running else { return }
+        guard let mail = MailMenu.running else { return }
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.5)
+        guard let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return }
         Task { @MainActor in
+            let ids = Set(await scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
+            // Opened only from the same viewer still in front, now that Mail has answered.
+            guard let front = AXMenuNode.element(app, kAXFocusedWindowAttribute), CFEqual(front, viewer),
+                  MailKeys.isMainViewer(AXDialogNode(element: front)) else {
+                KeysLog.note("o: the viewer left the front while Mail answered; nothing opened")
+                return
+            }
+            // Mail's "Open Message" (MainMenu.loctable 1772) is looked for in every menu.
+            guard pressAnywhere("Open Message"), !ids.isEmpty else { return }
             for _ in 0..<20 {
                 try? await Task.sleep(for: .milliseconds(100))
                 if let window = AXMenuNode.element(app, kAXFocusedWindowAttribute), MailKeyTap.isMessageWindow(app) {

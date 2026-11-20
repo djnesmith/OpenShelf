@@ -89,25 +89,35 @@ enum MailSend {
 
     /// ⇧⌘↩: Send, then Archive the message the reply answers.
     static func sendAndArchive(scripting: MailScripting = AppleScriptMail()) {
-        guard let mail = MailMenu.running, case (.press, let sendItem?) = check("⇧⌘↩") else { return }
+        guard let mail = MailMenu.running, case (.press, _?) = check("⇧⌘↩") else { return }
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 1)
         guard let compose = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return }
         let title = AXMenuNode.string(compose, kAXTitleAttribute) ?? ""
-        let original = original(forReply: title, selected: scripting.selectedMessages())
-        guard sendItem.press() else { return }
-        guard let original else {
-            toast("Sent, not archived", "Couldn't tell which message this answers")
-            return
-        }
         Task { @MainActor in
+            // Mail answers on the scripts' queue; what the key was pressed on is checked again
+            // when the answer arrives: the same message in front, Send still on.
+            let selected = await scripting.selectedMessages()
+            guard let front = AXMenuNode.element(app, kAXFocusedWindowAttribute), CFEqual(front, compose),
+                  let sendItem = MailMenu.menuBar().flatMap({ MailMenu.find(MailMenu.send, in: $0) }),
+                  mayPress(sendEnabled: sendItem.isEnabled, mailHasFocus: MailMenu.hasKeyboardFocus()) else {
+                toast("Not sent", "Mail changed while it answered")
+                return
+            }
+            let original = original(forReply: title, selected: selected)
+            guard sendItem.press() else { return }
+            guard let original else {
+                toast("Sent, not archived", "Couldn't tell which message this answers")
+                return
+            }
             // Archive only once the reply's window is gone (sent), and only the same message.
             guard await windowCloses(compose) else {
                 toast("Not archived", "The message wasn't sent yet")
                 return
             }
             try? await Task.sleep(for: .milliseconds(300))
-            guard scripting.selectedMessages() == [original],
+            let now = await scripting.selectedMessages()
+            guard now == [original],
                   let archive = MailMenu.find(MailMenu.archive, in: MailMenu.menuBar() ?? []), archive.isEnabled, archive.press() else {
                 toast("Sent, not archived", "The message isn't selected any more")
                 return
@@ -134,13 +144,14 @@ enum MailSend {
 /// What the Mail helpers ask Mail through AppleScript. A protocol, so tests use a fake.
 @MainActor
 protocol MailScripting {
-    func selectedMessages() -> [MailSend.Selected]
+    /// Asked on the scripts' queue; a fake may answer at once.
+    func selectedMessages() async -> [MailSend.Selected]
 }
 
 /// Mail's AppleScript: the viewer's selected messages' Message-IDs and subjects. Needs
 /// Automation permission for Mail, asked the first time.
 struct AppleScriptMail: MailScripting {
-    func selectedMessages() -> [MailSend.Selected] {
+    func selectedMessages() async -> [MailSend.Selected] {
         let source = """
         tell application id "com.apple.mail"
             set out to ""
@@ -150,7 +161,7 @@ struct AppleScriptMail: MailScripting {
             return out
         end tell
         """
-        guard let text = MailScript.run("selected messages", source).text else { return [] }
+        guard let text = await MailScript.run("selected messages", source).text else { return [] }
         return text.split(separator: "\n").compactMap { line in
             let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2 else { return nil }

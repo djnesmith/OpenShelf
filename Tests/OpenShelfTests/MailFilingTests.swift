@@ -102,27 +102,27 @@ struct MailFilingTests {
     }
 
     /// The link goes on the clipboard only for exactly one selected message.
-    @Test func copiesTheLinkOfOneSelectedMessage() {
+    @Test func copiesTheLinkOfOneSelectedMessage() async {
         let board = NSPasteboard(name: NSPasteboard.Name("OpenShelfTests.link.\(UUID())"))
         board.clearContents()
         board.setString("before", forType: .string)
-        MailLinks.copyLink(scripting: FakeScripting(selected: []), pasteboard: board, tell: { _, _ in })
+        await MailLinks.copyLink(scripting: FakeScripting(selected: []), pasteboard: board, tell: { _, _ in })
         #expect(board.string(forType: .string) == "before")
-        MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A"), .init(id: "b@x", subject: "B")]), pasteboard: board, tell: { _, _ in })
+        await MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A"), .init(id: "b@x", subject: "B")]), pasteboard: board, tell: { _, _ in })
         #expect(board.string(forType: .string) == "before")
-        MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A")]), pasteboard: board, tell: { _, _ in })
+        await MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A")]), pasteboard: board, tell: { _, _ in })
         #expect(board.string(forType: .string) == "message://%3Ca@x%3E")
         board.releaseGlobally()
     }
 
     /// A success toast goes quickly; one to read stays longer (David, 2026-11-20).
-    @Test func successToastsAreShort() {
+    @Test func successToastsAreShort() async {
         #expect(MailHelpers.successToast == .milliseconds(1500))
         #expect(MailHelpers.problemToast >= .seconds(4))
         let board = NSPasteboard(name: NSPasteboard.Name("OpenShelfTests.linkToast.\(UUID())"))
         var shown: [(String, Duration)] = []
-        MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A")]), pasteboard: board, tell: { shown.append(($0.title, $1)) })
-        MailLinks.copyLink(scripting: FakeScripting(selected: []), pasteboard: board, tell: { shown.append(($0.title, $1)) })
+        await MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A")]), pasteboard: board, tell: { shown.append(($0.title, $1)) })
+        await MailLinks.copyLink(scripting: FakeScripting(selected: []), pasteboard: board, tell: { shown.append(($0.title, $1)) })
         #expect(shown.map(\.0) == ["Link copied", "No link copied"])
         #expect(shown.map(\.1) == [MailHelpers.successToast, .seconds(3)])
         board.releaseGlobally()
@@ -148,5 +148,43 @@ struct MailFilingTests {
         #expect(ToastText.looksLikePath("Inbox/Receipts"))
         #expect(!ToastText.looksLikePath("Mail returned no mailboxes (account 2 -1712)"))
         #expect(!ToastText.looksLikePath("System Settings › Privacy & Security › Automation › OpenShelf › Mail"))
+    }
+
+    /// A listing that arrives late: shown when the picker it was for is still open; dropped
+    /// when the picker closed or opened again; a failed one (a timeout) keeps this
+    /// session's list, and fails only with nothing to show (2026-11-20).
+    @Test func listingsArriveLateDroppedOrFailed() {
+        let boxes = Array(Self.boxes.prefix(2))
+        let cached = Array(Self.boxes.suffix(2))
+        #expect(MailFiling.arrival(boxes: boxes, for: 3, current: 3, pickerOpen: true, cached: nil) == .show(boxes))
+        #expect(MailFiling.arrival(boxes: boxes, for: 3, current: 3, pickerOpen: false, cached: nil) == .dropped)
+        #expect(MailFiling.arrival(boxes: boxes, for: 3, current: 4, pickerOpen: true, cached: nil) == .dropped)
+        // A timeout (nothing listed): the session's list stays, or the picker closes.
+        #expect(MailFiling.arrival(boxes: [], for: 3, current: 3, pickerOpen: true, cached: cached) == .show(cached))
+        #expect(MailFiling.arrival(boxes: [], for: 3, current: 3, pickerOpen: true, cached: nil) == .fail)
+        #expect(MailFiling.arrival(boxes: [], for: 3, current: 3, pickerOpen: false, cached: nil) == .dropped)
+    }
+
+    /// The picker opens at once saying it is listing, then shows Mail's list when it comes.
+    @Test func thePickerFillsWhenTheListArrives() {
+        let picker = MailboxPicker()
+        picker.prepare(mailboxes: [], recent: [], loading: true) { _ in }
+        #expect(picker.rowTexts == ["Listing mailboxes…"])
+        picker.update(mailboxes: Self.boxes)
+        #expect(picker.rowTexts.count == Self.boxes.count)
+        #expect(!picker.loading)
+        picker.prepare(mailboxes: [], recent: [], loading: false) { _ in }
+        #expect(picker.rowTexts == ["No mailbox matches"])
+    }
+
+    /// Mail scripts run on their own queue and come back with their text or error number.
+    /// Plain AppleScript only: nothing here talks to Mail.
+    @Test func scriptsRunOffTheMainThread() async {
+        let ok = await MailScript.run("test", "return \"x\"")
+        #expect(ok.text == "x")
+        #expect(ok.error == nil)
+        let bad = await MailScript.run("test", "this is not applescript (((")
+        #expect(bad.error != nil)
+        #expect(bad.text == nil)
     }
 }
