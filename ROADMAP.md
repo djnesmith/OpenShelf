@@ -903,6 +903,13 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     after which the first key does nothing, and the overlay or a small hint shows the pending prefix.
   - Settings sync: skip.
 
+**I6. Single keys and helpers for Reminders and Notes** (M-L, a guess) — an idea, not designed (David, 2026-11-20: "this is future feature list, shortcut keys for Reminders and Notes potentially")
+- Could cover, for David to pick from later:
+  - Reminders: j/k move, x complete, e edit, b or s a due date through the snooze prompt's typed times, v move to a list, c new reminder, / search, ? the list.
+  - Notes: j/k move, c new note, v move to a folder, / search, pin, ? the list.
+- Would reuse the Mail key layer (I4): the same fail-open rules, off by default, only while that app has the keyboard, never while typing in a note or a reminder's text.
+- Unknown: whether Reminders and Notes expose enough through their menus and Accessibility. Needs first a read-only check like Check Mail for each app.
+
 ### Considered and not a fit
 
 - **Moving and tiling windows.** A wheel for a dropped item has no window to act on.

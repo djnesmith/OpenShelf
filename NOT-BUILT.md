@@ -21,7 +21,9 @@ What is left of ROADMAP.md, MAIL-PLAN.md and TRY-TOMORROW.md, checked against th
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 1 | 1 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| **Total** | 19 | 7 | 39 |
+| Vim features (C16–C43; C24 and C30 partly) and the Edit window surviving a relaunch (C44) | — | 2 | 27 |
+| Reminders and Notes keys (I6, an idea) | — | — | 1 |
+| **Total** | 19 | 9 | 67 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
 ## Stage 1: select, press, fix it
@@ -197,6 +199,11 @@ Edit window only puts text back into an app or on the clipboard; "nothing is wri
 | Id | What it is | Size | Needs first |
 |---|---|---|---|
 | C15 | Color the Edit window's text by file type when editing a file, with tree-sitter (chosen 2026-11-19). | M | C14; the spike (size, speed) and a security read of each grammar; open question: also for selected text |
+
+## Reminders and Notes keys (ROADMAP I6)
+
+An idea, not designed: single keys in Reminders and Notes in the style of the Mail keys. Needs
+a read-only check of each app's menus and Accessibility first. Size M-L, a guess.
 
 ## Mail leftovers
 
