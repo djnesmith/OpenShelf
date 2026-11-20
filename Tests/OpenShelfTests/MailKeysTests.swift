@@ -416,4 +416,16 @@ struct MailKeysTests {
         #expect(!body.contains("pressAnywhere("))
         #expect(!body.contains("\"Close\""))
     }
+
+    /// After closing the message window, Archive or Delete is pressed in the viewer only when
+    /// the window is gone, the viewer is in front and its selection is still the bound one.
+    @Test func theViewerIsPressedOnlyWhenAllThreeHold() {
+        let ids: Set<String> = ["a@x", "b@x"]
+        #expect(MailKeys.mayPressInViewer(messageWindowGone: true, frontIsMainViewer: true, bound: ids, current: ids))
+        #expect(!MailKeys.mayPressInViewer(messageWindowGone: false, frontIsMainViewer: true, bound: ids, current: ids))
+        #expect(!MailKeys.mayPressInViewer(messageWindowGone: true, frontIsMainViewer: false, bound: ids, current: ids))
+        #expect(!MailKeys.mayPressInViewer(messageWindowGone: true, frontIsMainViewer: true, bound: ids, current: ["a@x"]))
+        #expect(!MailKeys.mayPressInViewer(messageWindowGone: true, frontIsMainViewer: true, bound: nil, current: ids))
+        #expect(!MailKeys.mayPressInViewer(messageWindowGone: true, frontIsMainViewer: true, bound: [], current: []))
+    }
 }

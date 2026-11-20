@@ -389,30 +389,73 @@ enum MailKeyActions {
         guard MailKeyTap.isMessageWindow(app), let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return false }
         var windowsValue: CFTypeRef?
         AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsValue)
-        let viewer = ((windowsValue as? [AXUIElement]) ?? []).first {
-            AXMenuNode.string($0, kAXIdentifierAttribute)?.hasPrefix("Mail.messageViewer.window") == true
-        }
+        // The main viewer by its structure; a message window shares its id prefix.
+        let viewer = ((windowsValue as? [AXUIElement]) ?? []).first { MailKeys.isMainViewer(AXDialogNode(element: $0)) }
         let list = viewer.flatMap(AXSelectableList.inViewer)
         let current = Set(scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
-        let plan = MailKeys.conversationPlan(bound: MailWindowBindings.ids(for: window), selectedRows: list?.selectedRows.count ?? 0, current: current)
-        let verb = archive ? "Archived" : "Trashed"
+        let bound = MailWindowBindings.ids(for: window)
+        let plan = MailKeys.conversationPlan(bound: bound, selectedRows: list?.selectedRows.count ?? 0, current: current)
         switch plan {
         case .viaList(let count):
             close(window)
             if let viewer { AXUIElementPerformAction(viewer, kAXRaiseAction as CFString) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 MainActor.assumeIsolated {
-                    press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit")
-                    ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(verb) the conversation",
+                    // Checked from the elements now, never from the close press's answer.
+                    let gone = AXMenuNode.string(window, kAXRoleAttribute) == nil
+                    let front = AXMenuNode.element(app, kAXFocusedWindowAttribute)
+                    let frontIsViewer = front.map { MailKeys.isMainViewer(AXDialogNode(element: $0)) } ?? false
+                    let now = Set(scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
+                    let ok = MailKeys.mayPressInViewer(messageWindowGone: gone, frontIsMainViewer: frontIsViewer, bound: bound, current: now)
+                    KeysLog.note("\(archive ? "e" : "x") via the list: window gone \(gone), viewer in front \(frontIsViewer), same selection \(bound == now): \(ok ? "pressing" : "not pressing")")
+                    guard ok else {
+                        if !gone { actOnOpenMessage(window, archive: archive, reason: "conversation not confirmed") } else {
+                            ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Nothing \(archive ? "archived" : "trashed")",
+                                                              subtitle: "The list changed after the window closed"), for: .seconds(4))
+                        }
+                        return
+                    }
+                    guard press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit") else { return }
+                    ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(archive ? "Archived" : "Trashed") the conversation",
                                                       subtitle: "As from the list: \(count) message\(count == 1 ? "" : "s") selected there"), for: MailHelpers.successToast)
                 }
             }
         case .thisMessage:
-            press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit")
-            ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(verb) 1 message",
-                                              subtitle: "Conversation not confirmed, so only this one"), for: .seconds(4))
+            actOnOpenMessage(window, archive: archive, reason: "conversation not confirmed")
         }
         return true
+    }
+
+    /// Archive or Delete on the open message through its window's own toolbar button,
+    /// never a menu item that acts on whatever is in front.
+    static func actOnOpenMessage(_ window: AXUIElement, archive: Bool, reason: String) {
+        let title = archive ? "Archive" : "Delete"
+        let verb = archive ? "Archived" : "Trashed"
+        guard let button = toolbarButton(title, in: window), AXUIElementPerformAction(button, kAXPressAction as CFString) == .success || AXMenuNode.string(window, kAXRoleAttribute) == nil else {
+            KeysLog.note("\(title) on the open message: no \(title) button in its window")
+            ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Nothing \(archive ? "archived" : "trashed")",
+                                              subtitle: "The message window has no \(title) button"), for: .seconds(4))
+            return
+        }
+        ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(verb) 1 message",
+                                          subtitle: "\(reason.prefix(1).uppercased() + reason.dropFirst()), so only this one"), for: .seconds(4))
+    }
+
+    /// The button titled `title` in `window`'s toolbar (Archive and Delete in a message
+    /// window, David's Check Mail of 2026-11-20).
+    static func toolbarButton(_ title: String, in window: AXUIElement) -> AXUIElement? {
+        guard let toolbar = AXMenuNode.childElements(window).first(where: { AXMenuNode.string($0, kAXRoleAttribute) == "AXToolbar" }) else { return nil }
+        func find(_ element: AXUIElement, depth: Int) -> AXUIElement? {
+            guard depth < 4 else { return nil }
+            for child in AXMenuNode.childElements(element) {
+                // Check Mail prints a title, or the description when there is none.
+                let label = AXMenuNode.string(child, kAXTitleAttribute) ?? AXMenuNode.string(child, kAXDescriptionAttribute)
+                if AXMenuNode.string(child, kAXRoleAttribute) == kAXButtonRole, label == title { return child }
+                if let found = find(child, depth: depth + 1) { return found }
+            }
+            return nil
+        }
+        return find(toolbar, depth: 0)
     }
 
     /// `o`: opens the selected message, and remembers which Message-IDs were selected for

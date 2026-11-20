@@ -214,6 +214,15 @@ enum MailKeys {
         return .viaList(messages: current.count)
     }
 
+    /// Whether Archive or Delete may be pressed in the viewer after the message window was
+    /// closed, from what the elements show then, never from the close press's answer: the
+    /// message window is gone, the window in front is the main viewer, and its selection is
+    /// still exactly the Message-IDs bound at `o` (2026-11-20).
+    static func mayPressInViewer(messageWindowGone: Bool, frontIsMainViewer: Bool, bound: Set<String>?, current: Set<String>) -> Bool {
+        guard messageWindowGone, frontIsMainViewer, let bound, !bound.isEmpty else { return false }
+        return bound == current
+    }
+
     /// A window a key may close, as the close rule sees it. A protocol, so tests use a fake.
     @MainActor
     protocol ClosableWindow {
