@@ -29,7 +29,7 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    *Expect:* the reply in Sent, the original in Archive. The first time, macOS asks to let
    OpenShelf control Mail: allow it. A new message (not a reply) with ⇧⌘↩ sends and says
    "Sent, not archived". (#59)
-4. **Filing** (into a folder works on your Mail; moving back to the Inbox left a copy and is fixed, try it again: the toast now says "Moved to …" or "Copied to …"). The picker now lists only the selected message's account (On My Mac's folders after it) and opens at once after the first time. Select a test message, **⌃⌥M** (or **v**; the cursor is in the field), type part of a folder's name, **Return**.
+4. **Filing** (into a folder works on your Mail; on Gmail the old move left the messages in the Inbox too. The move now sets each message's folder and checks it: try 1-4 messages into [Info] again. The toast says "Moved to [Info]" only when they left the Inbox, else "Copied to [Info]; still in the Inbox"). The picker now lists only the selected message's account (On My Mac's folders after it) and opens at once after the first time. Select a test message, **⌃⌥M** (or **v**; the cursor is in the field), type part of a folder's name, **Return**.
    *Expect:* the message is in that folder; recent folders come first next time. (#60)
 5. **Message link.** Select a message, **⌃⌥K**, paste into Notes, click the link.
    *Expect:* Mail opens that message. (#60)

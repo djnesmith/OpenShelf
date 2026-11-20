@@ -232,18 +232,8 @@ struct MailFilingTests {
         #expect(MailFiling.moveOutcome(total: 0, inSource: 0, inDestination: 0) == .notMoved)
         let inbox = MailFiling.Mailbox(account: "Gmail", path: "INBOX")
         #expect(MailFiling.report(.moved, total: 1, to: inbox).title == "Moved to INBOX")
-        #expect(MailFiling.report(.copied, total: 1, to: inbox) == MailFiling.MoveReport(outcome: .copied, title: "Copied to INBOX", subtitle: "1 message still in the folder it was in"))
+        #expect(MailFiling.report(.copied, total: 1, to: inbox) == MailFiling.MoveReport(outcome: .copied, title: "Copied to INBOX", subtitle: "1 message; still in the folder it was in"))
         #expect(MailFiling.report(.notMoved, total: 1, to: inbox, problem: "It is already there").subtitle == "It is already there")
-    }
-
-    /// Mail's Move to menu: the account (or On My Mac), then each part of the path, and an
-    /// IMAP INBOX as "Inbox".
-    @Test func moveMenuPaths() {
-        #expect(MailFiling.moveMenuPaths(for: .init(account: "Gmail", path: "INBOX")) ==
-                [["Message", "Move to", "Gmail", "INBOX"], ["Message", "Move to", "Gmail", "Inbox"]])
-        #expect(MailFiling.moveMenuPaths(for: .init(account: "", path: "Projects/2026")) == [["Message", "Move to", "On My Mac", "Projects", "2026"]])
-        #expect(MailScripts.specifier(account: "Work", path: "A \"B\"") == "mailbox \"A \\\"B\\\"\" of account \"Work\"")
-        #expect(MailScripts.specifier(account: "", path: "Old") == "mailbox \"Old\"")
     }
 
     /// The bulk listing's lines become paths in Mail's order, nested ones under their parent;
@@ -283,27 +273,114 @@ struct MailFilingTests {
         #expect(MailFiling.loadCache(UserDefaults(suiteName: "OpenShelfTests.empty.\(UUID())")!).isEmpty)
     }
 
-    /// The script's move takes one message per statement (a list of two failed with -1700)
-    /// and answers how many moved and failed; anything else is a reason, shown as such.
-    @Test func theScriptsMoveGoesOneByOne() {
-        let script = MailScripts.move(to: "mailbox \"INBOX\" of account \"Gmail\"")
-        #expect(script.contains("move osMessage to osDestination"))
-        #expect(!script.contains("move osPicked"))
-        #expect(MailFiling.scriptMoveCounts("#MOVED\t2\t0") ?? (0, 9) == (2, 0))
-        #expect(MailFiling.scriptMoveCounts("#MOVED\t2\t1\n") ?? (0, 9) == (2, 1))
-        #expect(MailFiling.scriptMoveCounts("Select a message in Mail first") == nil)
-        #expect(MailFiling.scriptMoveCounts("") == nil)
-        #expect(MailFiling.scriptMoveCounts("Error\t1\t2") == nil)
+    /// Mail's answer to the move: the folder that didn't resolve, nothing selected, or the
+    /// per-message counts read back from Mail. Anything else claims nothing.
+    @Test func moveAnswersAreRead() {
+        #expect(MailFiling.moveResult("#NOFOLDER\t-1728\t1\t1\n") == .folderNotFound(error: -1728, level: 1, of: 1))
+        #expect(MailFiling.moveResult("#NOFOLDER\t-1728\t2\t3") == .folderNotFound(error: -1728, level: 2, of: 3))
+        #expect(MailFiling.moveResult("#NONE") == .nothingSelected)
+        #expect(MailFiling.moveResult("#RESULT\t0\t4\t0\t0\t0\tINBOX") == .counted(moved: 0, copied: 4, unchanged: 0, neither: 0, fellBack: 0, source: "INBOX"))
+        #expect(MailFiling.moveResult("#RESULT\t2\t0\t0\t0\t1\t") == .counted(moved: 2, copied: 0, unchanged: 0, neither: 0, fellBack: 1, source: ""))
+        #expect(MailFiling.moveResult("#RESULT\t1\t0\t0\t0\t0\tA\tB") == .counted(moved: 1, copied: 0, unchanged: 0, neither: 0, fellBack: 0, source: "A\tB"))
+        #expect(MailFiling.moveResult("#RESULT\t4\t0\t0\t0") == .unreadable)
+        #expect(MailFiling.moveResult("#RESULT\tx\t0\t0\t0\t0\t") == .unreadable)
+        #expect(MailFiling.moveResult("") == .unreadable)
+        #expect(MailFiling.moveResult("#MOVED\t4\t0") == .unreadable)
     }
 
-    /// How far a Move to path goes in Mail's menu, and how many items the last level has
-    /// (0: Mail builds that submenu only when it opens).
-    @MainActor @Test func moveMenuDepth() {
-        typealias Item = MailMenuTests.FakeItem
-        let bar: [MenuNode] = [Item("Message", [Item("Move to", [Item("Gmail")])])]
-        let depth = MailFiling.menuDepth(["Message", "Move to", "Gmail", "INBOX"], in: bar)
-        #expect(depth.found == 3)
-        #expect(depth.itemsAtLast == 0)
-        #expect(MailFiling.menuDepth(["Mailbox"], in: bar).found == 0)
+    /// The toast says only what Mail showed afterwards (2026-11-20: "moved 4" when the 4
+    /// were copied to [Info] on Gmail and still in the Inbox). The log line has no names.
+    @MainActor @Test func moveToastsSayWhatMailShows() {
+        let info = MailFiling.Mailbox(account: "Gmail", path: "[Info]")
+        let copied = MailFiling.MoveResult.counted(moved: 0, copied: 4, unchanged: 0, neither: 0, fellBack: 0, source: "INBOX")
+        #expect(copied.report(to: info) == MailFiling.MoveReport(outcome: .copied, title: "Copied to [Info]", subtitle: "4 messages; still in the Inbox"))
+        #expect(!copied.logLine.contains("INBOX"))
+        #expect(!copied.logLine.contains("Info"))
+        let moved = MailFiling.MoveResult.counted(moved: 4, copied: 0, unchanged: 0, neither: 0, fellBack: 0, source: "INBOX")
+        #expect(moved.report(to: info) == MailFiling.MoveReport(outcome: .moved, title: "Moved to [Info]", subtitle: "4 messages"))
+        #expect(MailFiling.MoveResult.counted(moved: 0, copied: 0, unchanged: 2, neither: 0, fellBack: 2, source: "INBOX").report(to: info).outcome == .notMoved)
+        #expect(MailFiling.MoveResult.counted(moved: 1, copied: 1, unchanged: 0, neither: 0, fellBack: 0, source: "INBOX").report(to: info).outcome == .partial)
+        #expect(MailFiling.MoveResult.counted(moved: 0, copied: 0, unchanged: 0, neither: 0, fellBack: 0, source: "").report(to: info).outcome != .moved)
+        let missing = MailFiling.MoveResult.folderNotFound(error: -1728, level: 1, of: 1)
+        #expect(missing.report(to: info) == MailFiling.MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Can't find that folder in Mail"))
+        #expect(missing.logLine.contains("level 1 of 1"))
+        #expect(missing.logLine.contains("-1728"))
+        #expect(MailFiling.MoveResult.unreadable.report(to: info).outcome == .notMoved)
+        #expect(MailFiling.folderName("Archive") == "Archive")
+        #expect(MailFiling.folderName("") == "the folder it was in")
+    }
+
+    /// The script proves the folder exists, name by name, before touching the selection; it
+    /// sets each message's mailbox (Gmail's move command only copies), runs the move
+    /// command only when that raises an error, and never deletes anything.
+    @Test func theMoveChecksTheFolderFirstAndSetsTheMailbox() throws {
+        let script = MailScripts.moveAndCheck(account: "Gmail", chain: ["Clients", "Acme"])
+        let check = try #require(script.range(of: "#NOFOLDER"))
+        let selection = try #require(script.range(of: "selection as list"))
+        #expect(check.lowerBound < selection.lowerBound)
+        let set = try #require(script.range(of: "set mailbox of osMessage to osBox"))
+        let move = try #require(script.range(of: "move osMessage to osBox"))
+        #expect(set.lowerBound < move.lowerBound)
+        #expect(script.replacingOccurrences(of: " ", with: "").contains("onerror\nsetosFellBacktoosFellBack+1\ntry\ntellapplicationid\"com.apple.mail\"tomoveosMessagetoosBox"))
+        #expect(!script.lowercased().contains("delete"))
+        #expect(script.contains("set osChain to {\"Clients\", \"Acme\"}"))
+        #expect(script.contains("mailbox (item 1 of osChain) of account \"Gmail\""))
+        #expect(MailScripts.moveAndCheck(account: "", chain: ["Old"]).contains("set osBox to mailbox (item 1 of osChain)\n"))
+    }
+
+    /// Mailbox names with brackets, slashes, quotes and other characters, top level and
+    /// nested, survive the listing, the saved list, the folder chain and the script, and
+    /// each script compiles. The regression: a top-level Gmail mailbox named "[Info]".
+    nonisolated static let oddNames = ["[Info]", "(Receipts)", "a/b", "back\\slash", "say \"hi\"", "it's", "R&D", "Café ☕︎ 日本", "[x]/(y)\\z"]
+
+    @Test func infoAtTheTopLevel() throws {
+        let paths = try #require(MailFiling.bulkPaths(["#L1\tINBOX", "#L1\t[Info]"]))
+        #expect(paths == ["INBOX", "[Info]"])
+        let info = MailFiling.Mailbox(account: "Gmail", path: paths[1])
+        #expect(info.chain == ["[Info]"])
+        #expect(info.display == "[Info] — Gmail")
+        let script = MailScripts.moveAndCheck(account: info.account, chain: info.chain)
+        #expect(script.contains("set osChain to {\"[Info]\"}"))
+        #expect(MailScriptTermTests.compile(script, as: "info") != nil)
+    }
+
+    @Test(arguments: oddNames) func oddNamesSurviveEveryStep(name: String) throws {
+        let parent = "Parent [1]"
+        let lines = ["#L1\t\(name)", "#L1\t\(parent)", "#L2\t2\t\(name)", "#L3\t2\t1\t\(name)"]
+        let paths = try #require(MailFiling.bulkPaths(lines))
+        #expect(paths.count == 4)
+        let boxes = paths.map { MailFiling.Mailbox(account: "Gmail", path: $0) }
+        #expect(boxes.map(\.chain) == [[name], [parent], [parent, name], [parent, name, name]])
+        #expect(boxes[0].shown == name)
+        #expect(boxes[2].shown == "\(parent)/\(name)")
+        let defaults = UserDefaults(suiteName: "OpenShelfTests.oddNames.\(UUID())")!
+        MailFiling.saveCache(["Gmail": boxes], defaults)
+        #expect(MailFiling.loadCache(defaults)["Gmail"]?.map(\.chain) == boxes.map(\.chain))
+        #expect(MailScripts.specifier(account: "Gmail", path: name).hasPrefix("mailbox \(MailScripts.quoted(name)) of account"))
+        for box in [boxes[0], boxes[3]] {
+            let script = MailScripts.moveAndCheck(account: box.account, chain: box.chain)
+            #expect(script.contains("set osChain to {" + box.chain.map(MailScripts.quoted).joined(separator: ", ") + "}"))
+            #expect(MailScriptTermTests.compile(script, as: "odd") != nil, "didn't compile for \(box.chain)")
+        }
+        // The full walk's escape, run by AppleScript itself (no app is asked), gives the same
+        // path as the Swift side.
+        #expect(Self.walkEscape(name) == MailFiling.joinPath([name]))
+    }
+
+    /// Runs the listing script's osEscape handler with osascript; nothing else runs.
+    static func walkEscape(_ name: String) -> String? {
+        let source = AppleScriptMailFiling.listingSource
+        guard let start = source.range(of: "on osEscape(osText)"), let end = source.range(of: "end osEscape") else { return nil }
+        let handler = String(source[start.lowerBound..<end.upperBound])
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", handler + "\nreturn osEscape(" + MailScripts.quoted(name) + ")"]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        process.waitUntilExit()
+        let text = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return text.hasSuffix("\n") ? String(text.dropLast()) : text
     }
 }

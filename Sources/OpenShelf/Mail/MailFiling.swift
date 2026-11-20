@@ -11,7 +11,29 @@ enum MailFiling {
         /// "Projects/2026" for a mailbox inside another.
         var path: String
 
-        var display: String { account.isEmpty ? path : "\(path) — \(account)" }
+        /// Each folder's own name, top first.
+        var chain: [String] { MailFiling.chain(of: path) }
+        /// The path as Mail shows it, slashes in names unescaped.
+        var shown: String { chain.joined(separator: "/") }
+        var display: String { account.isEmpty ? shown : "\(shown) — \(account)" }
+    }
+
+    /// A path keeps "/" between folders; a "/" or "\\" inside a folder's own name is
+    /// stored with a backslash before it, so a name like "a/b" stays one folder.
+    nonisolated static func joinPath(_ names: [String]) -> String {
+        names.map { $0.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "/", with: "\\/") }.joined(separator: "/")
+    }
+
+    nonisolated static func chain(of path: String) -> [String] {
+        var names: [String] = [], current = "", escaped = false
+        for character in path {
+            if escaped { current.append(character); escaped = false }
+            else if character == "\\" { escaped = true }
+            else if character == "/" { names.append(current); current = "" }
+            else { current.append(character) }
+        }
+        names.append(current)
+        return names.filter { !$0.isEmpty }
     }
 
     static let recentKey = "MailFilingRecent"
@@ -23,8 +45,8 @@ enum MailFiling {
     static func score(_ query: String, _ mailbox: Mailbox) -> Int? {
         let typed = Array(query.lowercased().filter { !$0.isWhitespace })
         guard !typed.isEmpty else { return 0 }
-        let name = Array(mailbox.path.lowercased())
-        let leafStart = (mailbox.path.lastIndex(of: "/").map { mailbox.path.distance(from: mailbox.path.startIndex, to: $0) + 1 }) ?? 0
+        let name = Array(mailbox.shown.lowercased())
+        let leafStart = name.count - (mailbox.chain.last?.lowercased().count ?? 0)
         var score = 0
         var index = 0
         var previous = -2
@@ -75,6 +97,62 @@ enum MailFiling {
         case partial
     }
 
+    /// What the move script read back from Mail, message by message.
+    enum MoveResult: Equatable {
+        /// The folder's name didn't resolve: the error, and the level (1 is the top) that failed.
+        case folderNotFound(error: Int, level: Int, of: Int)
+        case nothingSelected
+        /// Per message, read back from Mail after the move. `fellBack` counts messages whose
+        /// mailbox couldn't be set, so the move command ran instead; `source` is the first
+        /// message's folder name, for the toast only (never logged).
+        case counted(moved: Int, copied: Int, unchanged: Int, neither: Int, fellBack: Int, source: String)
+        case unreadable
+
+        var logLine: String {
+            switch self {
+            case .folderNotFound(let error, let level, let depth): "the folder didn't resolve at level \(level) of \(depth) (error \(error)); nothing moved"
+            case .nothingSelected: "nothing selected"
+            case .counted(let moved, let copied, let unchanged, let neither, let fellBack, _): "moved \(moved), copied \(copied), unchanged \(unchanged), in neither folder \(neither); move command used for \(fellBack)"
+            case .unreadable: "Mail's answer couldn't be read; nothing claimed"
+            }
+        }
+
+        /// The toast: only what Mail showed.
+        @MainActor func report(to mailbox: Mailbox) -> MoveReport {
+            switch self {
+            case .folderNotFound: return MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Can't find that folder in Mail")
+            case .nothingSelected: return MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Select a message in Mail first")
+            case .unreadable: return MoveReport(outcome: .notMoved, title: "Not sure what moved", subtitle: "Check the folder in Mail")
+            case .counted(let moved, let copied, let unchanged, let neither, _, let source):
+                let total = moved + copied + unchanged + neither
+                if moved == total, total > 0 { return MailFiling.report(.moved, total: total, to: mailbox) }
+                if copied == total { return MailFiling.report(.copied, total: total, to: mailbox, source: source) }
+                if moved + copied == 0, neither == 0 { return MailFiling.report(.notMoved, total: total, to: mailbox, problem: "Mail left \(total == 1 ? "it" : "them") where \(total == 1 ? "it was" : "they were")") }
+                var parts = ["\(moved) moved"]
+                if copied > 0 { parts.append("\(copied) copied") }
+                if unchanged > 0 { parts.append("\(unchanged) left") }
+                if neither > 0 { parts.append("\(neither) not found in either folder") }
+                return MoveReport(outcome: .partial, title: "Partly moved to \(mailbox.shown)", subtitle: parts.joined(separator: ", "))
+            }
+        }
+    }
+
+    static func moveResult(_ text: String) -> MoveResult {
+        let parts = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\t").map(String.init)
+        switch parts.first {
+        case "#NOFOLDER"? where parts.count == 4:
+            return .folderNotFound(error: Int(parts[1]) ?? 0, level: Int(parts[2]) ?? 0, of: Int(parts[3]) ?? 0)
+        case "#NOFOLDER"?: return .folderNotFound(error: 0, level: 0, of: 0)
+        case "#NONE"?: return .nothingSelected
+        case "#RESULT"? where parts.count >= 6:
+            let numbers = parts[1...5].compactMap { Int($0) }
+            guard numbers.count == 5 else { return .unreadable }
+            let source = parts.dropFirst(6).joined(separator: "\t")
+            return .counted(moved: numbers[0], copied: numbers[1], unchanged: numbers[2], neither: numbers[3], fellBack: numbers[4], source: source)
+        default: return .unreadable
+        }
+    }
+
     struct MoveReport: Equatable {
         var outcome: MoveOutcome
         var title: String
@@ -82,14 +160,20 @@ enum MailFiling {
     }
 
     /// What the toast says: only what Mail shows.
-    static func report(_ outcome: MoveOutcome, total: Int, to mailbox: Mailbox, problem: String? = nil) -> MoveReport {
+    static func report(_ outcome: MoveOutcome, total: Int, to mailbox: Mailbox, problem: String? = nil, source: String = "") -> MoveReport {
         let count = total == 1 ? "1 message" : "\(total) messages"
         switch outcome {
-        case .moved: return MoveReport(outcome: outcome, title: "Moved to \(mailbox.path)", subtitle: count)
-        case .copied: return MoveReport(outcome: outcome, title: "Copied to \(mailbox.path)", subtitle: "\(count) still in the folder it was in")
-        case .partial: return MoveReport(outcome: outcome, title: "Partly moved to \(mailbox.path)", subtitle: "Check \(count) in Mail")
+        case .moved: return MoveReport(outcome: outcome, title: "Moved to \(mailbox.shown)", subtitle: count)
+        case .copied: return MoveReport(outcome: outcome, title: "Copied to \(mailbox.shown)", subtitle: "\(count); still in \(folderName(source))")
+        case .partial: return MoveReport(outcome: outcome, title: "Partly moved to \(mailbox.shown)", subtitle: "Check \(count) in Mail")
         case .notMoved: return MoveReport(outcome: outcome, title: "Not moved", subtitle: problem ?? "Mail didn't move it")
         }
+    }
+
+    /// Mail names Gmail's and IMAP's inbox "INBOX"; the toast says "the Inbox".
+    static func folderName(_ source: String) -> String {
+        if source.isEmpty { return "the folder it was in" }
+        return source.uppercased() == "INBOX" ? "the Inbox" : source
     }
 
     static func moveOutcome(total: Int, inSource: Int, inDestination: Int) -> MoveOutcome {
@@ -99,36 +183,8 @@ enum MailFiling {
         return .partial
     }
 
-    /// The script's move answer: how many moved and failed; nil when it said something else
-    /// (a reason, shown as such).
-    static func scriptMoveCounts(_ text: String) -> (moved: Int, failed: Int)? {
-        let parts = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\t").map(String.init)
-        guard parts.count == 3, parts[0] == "#MOVED", let moved = Int(parts[1]), let failed = Int(parts[2]) else { return nil }
-        return (moved, failed)
-    }
 
-    /// How far a menu path goes in `bar`: the number of its parts found, and how many items
-    /// the last level found has (0 when Mail builds that submenu only when it opens).
-    static func menuDepth(_ path: [String], in bar: [MenuNode]) -> (found: Int, itemsAtLast: Int) {
-        var level = bar, found = 0
-        for title in path {
-            guard let next = level.first(where: { $0.title == title }) else { break }
-            found += 1
-            level = next.children
-        }
-        return (found, level.count)
-    }
 
-    /// The paths Mail's Message › Move to menu may give `mailbox`: the account (or On My Mac),
-    /// then each part of its path; an IMAP "INBOX" shows as "Inbox".
-    static func moveMenuPaths(for mailbox: Mailbox) -> [[String]] {
-        let top = mailbox.account.isEmpty ? "On My Mac" : mailbox.account
-        let parts = mailbox.path.split(separator: "/").map(String.init)
-        var paths = [["Message", "Move to", top] + parts]
-        let friendly = parts.map { $0 == "INBOX" ? "Inbox" : $0 }
-        if friendly != parts { paths.append(["Message", "Move to", top] + friendly) }
-        return paths
-    }
 
     /// Paths from the bulk listing's lines, in Mail's order; nil when Mail's answer didn't
     /// line up (the full walk is used then).
@@ -146,11 +202,11 @@ enum MailFiling {
         }
         var paths: [String] = []
         for (i1, top) in level1.enumerated() {
-            paths.append(top)
+            paths.append(joinPath([top]))
             let kids = level2.filter { $0.0 == i1 + 1 }.map(\.1)
             for (i2, kid) in kids.enumerated() {
-                paths.append("\(top)/\(kid)")
-                for grandkid in level3.filter({ $0.0 == i1 + 1 && $0.1 == i2 + 1 }).map(\.2) { paths.append("\(top)/\(kid)/\(grandkid)") }
+                paths.append(joinPath([top, kid]))
+                for grandkid in level3.filter({ $0.0 == i1 + 1 && $0.1 == i2 + 1 }).map(\.2) { paths.append(joinPath([top, kid, grandkid])) }
             }
         }
         // A level 2 or 3 entry pointing past its parents means the answer didn't line up.
@@ -362,6 +418,22 @@ struct AppleScriptMailFiling: MailFilingScripting {
         -- and the earlier -1700 came from a parameter named scope). Mail is asked only in
         -- one-line tells; the text is built outside them. A test compiles this script and
         -- checks no variable is an application term.
+        -- A "\\" or "/" inside a folder's own name gets a backslash before it, so the path
+        -- splits back into the same names.
+        on osEscape(osText)
+            set osSaved to AppleScript's text item delimiters
+            set AppleScript's text item delimiters to "\\\\"
+            set osParts to text items of osText
+            set AppleScript's text item delimiters to "\\\\\\\\"
+            set osText to osParts as text
+            set AppleScript's text item delimiters to "/"
+            set osParts to text items of osText
+            set AppleScript's text item delimiters to "\\\\/"
+            set osText to osParts as text
+            set AppleScript's text item delimiters to osSaved
+            return osText
+        end osEscape
+
         on osWalk(osBoxes, osPrefix, osAccountTitle, osScopeName)
             set osOut to ""
             repeat with osIndex from 1 to (count of osBoxes)
@@ -372,7 +444,7 @@ struct AppleScriptMailFiling: MailFilingScripting {
                     tell application id "com.apple.mail" to set osBoxName to name of osBox
                     if osBoxName is not missing value then
                         set osStage to "text"
-                        set osPath to osPrefix & (osBoxName as text)
+                        set osPath to osPrefix & my osEscape(osBoxName as text)
                         set osOut to osOut & osAccountTitle & tab & osPath & linefeed
                         set osStage to "children"
                         tell application id "com.apple.mail" to set osChildren to mailboxes of osBox
@@ -449,84 +521,20 @@ struct AppleScriptMailFiling: MailFilingScripting {
         return boxes
     }
 
-    /// Moves the viewer's selection to `mailbox` the way David's hands do: the list gets the
-    /// keyboard, then Mail's own Message › Move to › <account> › <mailbox> item (Mail treats
-    /// Gmail labels right there); the script's move only when that item isn't found. Then
-    /// Mail is asked where each message is, by Message-ID, in its source and in the
-    /// destination. Nothing is ever deleted to tidy up.
+    /// Moves the viewer's selection to `mailbox` with one script that resolves the folder name
+    /// by name and proves it exists before moving anything, then reads back where each
+    /// message is (2026-11-20: a move "succeeded" and nothing moved). Mail's Move to menu
+    /// can't be used: its folder lists are built only when the menu opens (keys.log: "3 of
+    /// 4 parts found, 0 items at the last one"). Nothing is ever deleted to tidy up.
     func move(to mailbox: MailFiling.Mailbox) async -> MailFiling.MoveReport {
-        let placesText = await MailScript.run("selection places", MailScripts.selectionPlaces).text ?? ""
-        let places: [(id: String, source: String)] = placesText.split(separator: "\n").compactMap { line in
-            let parts = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
-            guard parts.count == 3, !parts[0].isEmpty else { return nil }
-            return (parts[0], MailScripts.specifier(account: parts[1], path: parts[2]))
+        let chain = mailbox.chain
+        guard !chain.isEmpty else { return MailFiling.report(.notMoved, total: 0, to: mailbox, problem: "No folder chosen") }
+        let outcome = await MailScript.run("move and check", MailScripts.moveAndCheck(account: mailbox.account, chain: chain))
+        if let problem = MailScript.problem(outcome) {
+            return MailFiling.report(.notMoved, total: 0, to: mailbox, problem: "\(problem.title): \(problem.subtitle)")
         }
-        guard !places.isEmpty else { return MailFiling.report(.notMoved, total: 0, to: mailbox, problem: "Select a message in Mail first") }
-        let destination = MailScripts.specifier(account: mailbox.account, path: mailbox.path)
-        let sameMailbox = places.allSatisfy { $0.source == destination }
-        guard !sameMailbox else { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: "It is already there") }
-        var route = "menu"
-        if !(await Self.pressMoveMenu(for: mailbox)) {
-            route = "script"
-            let outcome = await MailScript.run("move selection", MailScripts.move(to: destination))
-            if let problem = MailScript.problem(outcome) { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: "\(problem.title): \(problem.subtitle)") }
-            guard let counts = MailFiling.scriptMoveCounts(outcome.text ?? "") else {
-                return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: outcome.text ?? "Mail didn't answer")
-            }
-            SnoozeLog.append(["move: the script moved \(counts.moved), failed \(counts.failed)"], to: MailScript.logURL)
-            if counts.moved == 0 { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: "Mail refused to move \(counts.failed == 1 ? "it" : "them")") }
-        }
-        // Mail moves in the background; up to 3 s for the messages to arrive.
-        var counts = (inSource: places.count, inDestination: 0)
-        for _ in 0..<6 {
-            try? await Task.sleep(for: .milliseconds(500))
-            let text = await MailScript.run("move check", MailScripts.placeCounts(places, destination: destination)).text ?? ""
-            let numbers = text.split(separator: "\t").compactMap { Int($0) }
-            guard numbers.count == 2 else { continue }
-            counts = (numbers[0], numbers[1])
-            if MailFiling.moveOutcome(total: places.count, inSource: counts.inSource, inDestination: counts.inDestination) == .moved { break }
-        }
-        var outcome = MailFiling.moveOutcome(total: places.count, inSource: counts.inSource, inDestination: counts.inDestination)
-        // The menu answered but nothing moved at all (every message still in its source, none
-        // in the destination): the script's move once, then checked the same way.
-        if route == "menu", outcome == .notMoved, counts.inSource == places.count {
-            route = "menu, then script"
-            _ = await MailScript.run("move selection", MailScripts.move(to: destination))
-            try? await Task.sleep(for: .milliseconds(1000))
-            let text = await MailScript.run("move check", MailScripts.placeCounts(places, destination: destination)).text ?? ""
-            let numbers = text.split(separator: "\t").compactMap { Int($0) }
-            if numbers.count == 2 { counts = (numbers[0], numbers[1]) }
-            outcome = MailFiling.moveOutcome(total: places.count, inSource: counts.inSource, inDestination: counts.inDestination)
-        }
-        let accounts = Set(places.map(\.source)).count
-        SnoozeLog.append(["move: \(places.count) selected from \(accounts) source mailbox\(accounts == 1 ? "" : "es"), \(mailbox.account.isEmpty ? "to On My Mac" : "to an account mailbox"), via \(route); in the destination \(counts.inDestination) of \(places.count), still in the source \(counts.inSource): \(outcome)"], to: MailScript.logURL)
-        return MailFiling.report(outcome, total: places.count, to: mailbox)
-    }
-
-    /// Mail's own Move to item for `mailbox`, with the list given the keyboard first, as
-    /// Archive needs (2026-11-20). False when no such item is found.
-    @MainActor
-    static func pressMoveMenu(for mailbox: MailFiling.Mailbox) async -> Bool {
-        guard let mail = MailMenu.running, let bar = MailMenu.menuBar() else { return false }
-        guard let item = MailFiling.moveMenuPaths(for: mailbox).lazy.compactMap({ MailMenu.find($0, in: bar) }).first else {
-            // How far the path went, and how many items the last level had: 0 there means
-            // Mail builds that submenu only when it opens, which a closed menu can't show.
-            let path = MailFiling.moveMenuPaths(for: mailbox)[0]
-            let depth = MailFiling.menuDepth(path, in: bar)
-            KeysLog.note("move: no Message › Move to item: \(depth.found) of \(path.count) parts found, \(depth.itemsAtLast) items at the last one; using the script's move")
-            return false
-        }
-        let app = AXUIElementCreateApplication(mail.processIdentifier)
-        AXUIElementSetMessagingTimeout(app, 0.5)
-        if let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute), let list = AXSelectableList.inViewer(viewer) {
-            AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-        }
-        try? await Task.sleep(for: .milliseconds(100))
-        guard item.isEnabled else {
-            KeysLog.note("move: the Move to item is off; using the script's move")
-            return false
-        }
-        KeysLog.note("move: pressed Message › Move to item: \(item.press())")
-        return true
+        let result = MailFiling.moveResult(outcome.text ?? "")
+        SnoozeLog.append(["move: \(mailbox.account.isEmpty ? "to On My Mac" : "to an account mailbox"), \(chain.count) level\(chain.count == 1 ? "" : "s") deep: \(result.logLine)"], to: MailScript.logURL)
+        return result.report(to: mailbox)
     }
 }

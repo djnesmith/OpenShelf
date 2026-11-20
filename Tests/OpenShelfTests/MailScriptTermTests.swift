@@ -13,12 +13,12 @@ struct MailScriptTermTests {
          ("selected messages", MailScripts.selectedMessages),
          ("selected senders", MailScripts.selectedSenders),
          ("selection state", MailScripts.selectionState),
-         ("move selection", MailScripts.move(to: "mailbox \"Archive\" of account \"Work\"")),
-         ("selection places", MailScripts.selectionPlaces),
+         ("move to a top-level mailbox", MailScripts.moveAndCheck(account: "Work", chain: ["[Info]"])),
+         ("move to a nested mailbox", MailScripts.moveAndCheck(account: "Work", chain: ["Clients", "Acme (2026)"])),
+         ("move in On My Mac", MailScripts.moveAndCheck(account: "", chain: ["Old"])),
          ("selection accounts", MailScripts.selectionAccounts),
          ("list one account", MailScripts.accountListing("Work")),
-         ("list On My Mac", MailScripts.accountListing("")),
-         ("move check", MailScripts.placeCounts([(id: "a@x", source: "mailbox \"INBOX\" of account \"Work\"")], destination: "mailbox \"Archive\" of account \"Work\""))]
+         ("list On My Mac", MailScripts.accountListing(""))]
     }
 
     static let folder: URL = {

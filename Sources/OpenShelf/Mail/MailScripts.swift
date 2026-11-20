@@ -47,39 +47,6 @@ enum MailScripts {
         account.isEmpty ? "mailbox \(quoted(path))" : "mailbox \(quoted(path)) of account \(quoted(account))"
     }
 
-    /// Where each selected message is: its Message-ID, its account (empty for On My Mac)
-    /// and its mailbox's path, one per line (2026-11-20: a move back to the Inbox left a
-    /// copy, and moves are now checked against their source).
-    static let selectionPlaces = """
-    tell application id "com.apple.mail" to set osPicked to selection as list
-    set osOut to ""
-    repeat with osIndex from 1 to (count of osPicked)
-        set osMessage to item osIndex of osPicked
-        tell application id "com.apple.mail"
-            set osId to message id of osMessage
-            set osBox to mailbox of osMessage
-            set osPath to name of osBox
-            set osAccountTitle to ""
-            try
-                set osAccountTitle to name of account of osBox
-            end try
-        end tell
-        repeat
-            try
-                tell application id "com.apple.mail" to set osBox to container of osBox
-                -- A top-level mailbox's container may be its account: stop there.
-                tell application id "com.apple.mail" to set osIsBox to (class of osBox is mailbox)
-                if not osIsBox then exit repeat
-                tell application id "com.apple.mail" to set osParent to name of osBox
-                set osPath to osParent & "/" & osPath
-            on error
-                exit repeat
-            end try
-        end repeat
-        set osOut to osOut & osId & tab & osAccountTitle & tab & osPath & linefeed
-    end repeat
-    return osOut
-    """
 
     /// The account of each selected message (empty for On My Mac), one per line, from the
     /// message itself, never from the mailbox showing (All Inboxes mixes accounts).
@@ -137,53 +104,93 @@ enum MailScripts {
         """
     }
 
-    /// How many of `places` (id, source specifier) are still in their source, and how many
-    /// are in `destination`, by Message-ID.
-    static func placeCounts(_ places: [(id: String, source: String)], destination: String) -> String {
-        let rows = places.map { "{\(quoted($0.id)), \($0.source)}" }.joined(separator: ", ")
+
+    /// Moves the selected messages to the mailbox reached by `chain` in `account` (empty for On
+    /// My Mac), and reads back from Mail where each one is (2026-11-20: a move "succeeded" and
+    /// nothing moved; a mailbox addressed by a rebuilt path didn't resolve). The mailbox is
+    /// resolved name by name and must exist before anything moves. Each message's id and
+    /// source mailbox are taken first; after its move it is counted in the destination and
+    /// in the source. Answers "#NOFOLDER n", "#NONE", or
+    /// "#RESULT moved copied unchanged neither".
+    static func moveAndCheck(account: String, chain: [String]) -> String {
+        let names = "{" + chain.map(quoted).joined(separator: ", ") + "}"
+        let first = account.isEmpty ? "mailbox (item 1 of osChain)" : "mailbox (item 1 of osChain) of account \(quoted(account))"
         return """
-        with timeout of 20 seconds
-            tell application id "com.apple.mail"
-                set osPlaces to {\(rows)}
-                set osDestination to \(destination)
-            end tell
-            set osInSource to 0
-            set osInDestination to 0
-            repeat with osIndex from 1 to (count of osPlaces)
-                set osPlace to item osIndex of osPlaces
-                set osId to item 1 of osPlace
-                set osSource to item 2 of osPlace
+        with timeout of 60 seconds
+            set osChain to \(names)
+            -- Each level is checked to exist (asking its name) before the next, so a name
+            -- that doesn't resolve says which level failed.
+            set osLevel to 1
+            try
+                tell application id "com.apple.mail" to set osBox to \(first)
+                tell application id "com.apple.mail" to set osBoxName to name of osBox
+                repeat with osLevel from 2 to (count of osChain)
+                    tell application id "com.apple.mail" to set osBox to mailbox (item osLevel of osChain) of osBox
+                    tell application id "com.apple.mail" to set osBoxName to name of osBox
+                end repeat
+            on error osMessage number osNumber
+                return "#NOFOLDER" & tab & (osNumber as text) & tab & (osLevel as text) & tab & ((count of osChain) as text)
+            end try
+            tell application id "com.apple.mail" to set osPicked to selection as list
+            if (count of osPicked) is 0 then return "#NONE"
+            set osIds to {}
+            set osSources to {}
+            repeat with osIndex from 1 to (count of osPicked)
+                set osMessage to item osIndex of osPicked
                 tell application id "com.apple.mail"
-                    set osInSource to osInSource + (count of (messages of osSource whose message id is osId))
-                    set osInDestination to osInDestination + (count of (messages of osDestination whose message id is osId))
+                    set end of osIds to message id of osMessage
+                    set end of osSources to mailbox of osMessage
                 end tell
             end repeat
-            return (osInSource as text) & tab & (osInDestination as text)
+            -- Setting the message's mailbox first: on a Gmail account the move command only
+            -- adds the label and leaves the message where it was (2026-11-20). The move
+            -- command runs only when setting the property raises an error. Either way the
+            -- counts below, not the absence of an error, say what happened.
+            set osFellBack to 0
+            repeat with osIndex from 1 to (count of osPicked)
+                set osMessage to item osIndex of osPicked
+                try
+                    tell application id "com.apple.mail" to set mailbox of osMessage to osBox
+                on error
+                    set osFellBack to osFellBack + 1
+                    try
+                        tell application id "com.apple.mail" to move osMessage to osBox
+                    end try
+                end try
+            end repeat
+            set osSourceName to ""
+            try
+                tell application id "com.apple.mail" to set osSourceName to name of (item 1 of osSources)
+            end try
+            delay 1
+            set osMoved to 0
+            set osCopied to 0
+            set osUnchanged to 0
+            set osNeither to 0
+            repeat with osIndex from 1 to (count of osIds)
+                set osId to item osIndex of osIds
+                set osSource to item osIndex of osSources
+                set osInBox to 0
+                set osInSource to 0
+                try
+                    tell application id "com.apple.mail" to set osInBox to count of (messages of osBox whose message id is osId)
+                end try
+                try
+                    tell application id "com.apple.mail" to set osInSource to count of (messages of osSource whose message id is osId)
+                end try
+                if osInBox > 0 and osInSource is 0 then
+                    set osMoved to osMoved + 1
+                else if osInBox > 0 then
+                    set osCopied to osCopied + 1
+                else if osInSource > 0 then
+                    set osUnchanged to osUnchanged + 1
+                else
+                    set osNeither to osNeither + 1
+                end if
+            end repeat
+            return "#RESULT" & tab & (osMoved as text) & tab & (osCopied as text) & tab & (osUnchanged as text) & tab & (osNeither as text) & tab & (osFellBack as text) & tab & osSourceName
         end timeout
         """
     }
 
-    /// Moves the viewer's selected messages to `target` (a mailbox specifier), one message
-    /// per statement, each in its own try (2026-11-20: moving a list of two messages at once
-    /// failed with -1700 "Can't make {…} into type specifier"). Answers "#MOVED moved failed",
-    /// or a sentence when nothing is selected.
-    static func move(to target: String) -> String {
-        """
-        tell application id "com.apple.mail" to set osPicked to selection as list
-        if (count of osPicked) is 0 then return "Select a message in Mail first"
-        tell application id "com.apple.mail" to set osDestination to \(target)
-        set osMoved to 0
-        set osFailed to 0
-        repeat with osIndex from 1 to (count of osPicked)
-            set osMessage to item osIndex of osPicked
-            try
-                tell application id "com.apple.mail" to move osMessage to osDestination
-                set osMoved to osMoved + 1
-            on error
-                set osFailed to osFailed + 1
-            end try
-        end repeat
-        return "#MOVED" & tab & (osMoved as text) & tab & (osFailed as text)
-        """
-    }
 }
