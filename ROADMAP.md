@@ -874,11 +874,12 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     | `u` | Back to the list | No direct equivalent; close a message window (⌘W) or focus the list |
     | `n` / `p` | Next / previous message in a conversation | No direct key; arrows within an expanded conversation |
     | `/` | Search | Edit › Find › Mailbox Search (⌥⌘F) |
-    | `g i` | Inbox | Go to Favorite Mailbox (⌘1) |
-    | `g s` | Flagged (Gmail: starred) | The Flagged mailbox; a favourite number if added |
-    | `g t` | Sent | The Sent mailbox; a favourite number if added |
-    | `g d` | Drafts | The Drafts mailbox; a favourite number if added |
-    | `g a` | Archive (Gmail: All Mail) | The Archive mailbox; a favourite number if added |
+    | `g i` | All Inboxes ("Inbox" with one account) | Mailbox › Go to Favorite Mailbox, else the sidebar row |
+    | `g f` | Flagged (David, 2026-11-20; Gmail's `g s`) | The Flagged mailbox, as above |
+    | `g s` | All Sent (David, 2026-11-20; Gmail's `g t`) | As above |
+    | `g t` | All Trash (David, 2026-11-20) | As above |
+    | `g d` | All Drafts | As above |
+    | `g a` | All Archive (Gmail: All Mail) | As above |
     | `e` | Archive | Message › Archive (⌃⌘A) |
     | `x` | Move to Trash | Delete |
     | `r` | Reply | ⌘R |

@@ -317,7 +317,7 @@ enum MailKeyActions {
         case .menu(let top, let title):
             press(title, under: top)
         case .favorite(let name):
-            press(name, under: "Mailbox", within: "Go to Favorite Mailbox")
+            goToUnified(name)
         case .nextMessage:
             moveSelection(by: 1)
         case .previousMessage:
@@ -647,6 +647,60 @@ enum MailKeyActions {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             MainActor.assumeIsolated { KeysLog.note("close: window still open: \(AXMenuNode.string(window, kAXRoleAttribute) != nil)") }
         }
+    }
+
+    /// `g i`, `g f`, `g s`, `g t`, `g d`, `g a`: the unified mailbox, found among Mail's
+    /// Favorites at press time by its title ("All Inboxes", or "Inbox" with one account),
+    /// else its row in the sidebar; then the viewer's title is checked.
+    static func goToUnified(_ name: String) {
+        guard let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        let wanted = MailKeys.unifiedTitles(for: name).first ?? name
+        var route = "none"
+        if let bar = MailMenu.menuBar(), let favorites = MailMenu.find(["Mailbox", "Go to Favorite Mailbox"], in: bar)?.children,
+           let index = MailKeys.unifiedIndex(for: name, in: favorites.map(\.title)), favorites[index].isEnabled, favorites[index].press() {
+            route = "Favorites"
+        } else if let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute), selectSidebarRow(name, in: viewer) {
+            route = "sidebar"
+        }
+        guard route != "none" else {
+            KeysLog.note("g \(name): not in Mail's Favorites or sidebar")
+            ToastController.shared.show(Toast(systemImage: "tray", title: "\(wanted) isn't in Mail's Favorites",
+                                              subtitle: "Nor in the sidebar; add it to Favorites in Mail"), for: .seconds(5))
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            MainActor.assumeIsolated {
+                let title = AXMenuNode.element(app, kAXFocusedWindowAttribute).flatMap { AXMenuNode.string($0, kAXTitleAttribute) }
+                let arrived = MailKeys.showsUnified(name, windowTitle: title)
+                KeysLog.note("g \(name): via \(route), viewer shows it: \(arrived)")
+                if !arrived {
+                    ToastController.shared.show(Toast(systemImage: "tray", title: "Not sure Mail went to \(wanted)",
+                                                      subtitle: "Its window doesn't say so"), for: .seconds(4))
+                }
+            }
+        }
+    }
+
+    /// Selects the sidebar's row for the unified mailbox `name` (the sidebar is the first
+    /// outline in the viewer's "Main Window" split group). False when there is none.
+    static func selectSidebarRow(_ name: String, in viewer: AXUIElement) -> Bool {
+        guard MailKeys.isMainViewer(AXDialogNode(element: viewer)),
+              let split = AXMenuNode.childElements(viewer).first(where: { AXMenuNode.string($0, kAXIdentifierAttribute) == "Main Window" }),
+              let sidebar = AXMenuNode.childElements(split).lazy.compactMap({ area in
+                  AXMenuNode.childElements(area).first { AXMenuNode.string($0, kAXRoleAttribute) == "AXOutline" }
+              }).first else { return false }
+        var rowsValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(sidebar, kAXRowsAttribute as CFString, &rowsValue) == .success, let rows = rowsValue as? [AXUIElement] else { return false }
+        func label(_ element: AXUIElement, depth: Int = 0) -> String {
+            if AXMenuNode.string(element, kAXRoleAttribute) == kAXStaticTextRole, let value = AXMenuNode.string(element, kAXValueAttribute) { return value }
+            guard depth < 3 else { return "" }
+            for child in AXMenuNode.childElements(element) { let text = label(child, depth: depth + 1); if !text.isEmpty { return text } }
+            return ""
+        }
+        guard let index = MailKeys.unifiedIndex(for: name, in: rows.map { label($0) }) else { return false }
+        return AXUIElementSetAttributeValue(sidebar, kAXSelectedRowsAttribute as CFString, [rows[index]] as CFArray) == .success
     }
 
     /// Esc and `* n`: select none in the focused message list.

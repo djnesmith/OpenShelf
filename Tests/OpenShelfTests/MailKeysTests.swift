@@ -500,4 +500,30 @@ struct MailKeysTests {
         #expect(MailKeys.verification(for: "Archive") == .rowsLeave)
         #expect(MailKeys.toolbarLabel(for: "Move to Junk") == "Junk")
     }
+
+    /// David's go-to keys (2026-11-20): g i All Inboxes, g f Flagged, g s All Sent, g t All
+    /// Trash, g d All Drafts, g a All Archive; g g stays the first message.
+    @Test func goToKeys() {
+        let expected: [Character: MailKeys.Action] = ["i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"),
+                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("Archive"), "g": .firstMessage]
+        for (key, action) in expected { #expect(MailKeys.outcome(for: key, pending: "g") == .act(action), "g \(key)") }
+        #expect(MailKeys.outcome(for: "g", pending: nil) == .prefix("g"))
+        #expect(MailKeys.help.contains { $0.0.contains("g f") && $0.1.contains("All Trash") })
+    }
+
+    /// The unified mailbox is found by Mail's titles now: "All …" with several accounts, the
+    /// plain name with one, a count after it ignored; one account's own mailbox never counts.
+    @Test func unifiedMailboxesByTitle() {
+        #expect(MailKeys.unifiedIndex(for: "Inbox", in: ["VIPs", "All Inboxes", "Inbox"]) == 1)
+        #expect(MailKeys.unifiedIndex(for: "Inbox", in: ["Inbox"]) == 0)
+        #expect(MailKeys.unifiedIndex(for: "Inbox", in: ["All Inboxes (12)"]) == 0)
+        #expect(MailKeys.unifiedIndex(for: "Sent", in: ["Sent — Gmail", "All Sent"]) == 1)
+        #expect(MailKeys.unifiedIndex(for: "Trash", in: ["Drafts", "All Trash"]) == 1)
+        #expect(MailKeys.unifiedIndex(for: "Flagged", in: ["Flagged"]) == 0)
+        #expect(MailKeys.unifiedIndex(for: "Drafts", in: ["VIPs", "Notes"]) == nil)
+        #expect(MailKeys.showsUnified("Inbox", windowTitle: "All Inboxes – 1,204 messages"))
+        #expect(MailKeys.showsUnified("Inbox", windowTitle: "Inbox"))
+        #expect(!MailKeys.showsUnified("Inbox", windowTitle: "Sent – 12 messages"))
+        #expect(!MailKeys.showsUnified("Sent", windowTitle: nil))
+    }
 }

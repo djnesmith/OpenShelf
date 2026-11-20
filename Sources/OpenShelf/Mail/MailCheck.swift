@@ -37,6 +37,12 @@ enum MailCheck {
         }
         if let bar = MailMenu.menuBar() {
             // Where Mail keeps these (any menu), for `o` and Esc (2026-11-20).
+            // His Favorites as Mail titles them now, for the g keys (2026-11-20).
+            if let favorites = MailMenu.find(["Mailbox", "Go to Favorite Mailbox"], in: bar)?.children {
+                lines.append("Go to Favorite Mailbox: \(favorites.map(\.title).joined(separator: " | "))")
+            } else {
+                lines.append("Go to Favorite Mailbox: not found")
+            }
             for title in ["Open Message", "Close"] {
                 let menu = bar.first { MailMenu.findAnywhere(title, in: $0.children) != nil }
                 let item = MailMenu.findAnywhere(title, in: bar)

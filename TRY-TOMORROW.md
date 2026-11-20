@@ -29,7 +29,7 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    *Expect:* the reply in Sent, the original in Archive. The first time, macOS asks to let
    OpenShelf control Mail: allow it. A new message (not a reply) with ⇧⌘↩ sends and says
    "Sent, not archived". (#59)
-4. **Filing** (works on your Mail as of 3:23 PM). Select a test message, **⌃⌥M** (or **v**; the cursor is in the field), type part of a folder's name, **Return**.
+4. **Filing** (into a folder works on your Mail; moving back to the Inbox left a copy and is fixed, try it again: the toast now says "Moved to …" or "Copied to …"). Select a test message, **⌃⌥M** (or **v**; the cursor is in the field), type part of a folder's name, **Return**.
    *Expect:* the message is in that folder; recent folders come first next time. (#60)
 5. **Message link.** Select a message, **⌃⌥K**, paste into Notes, click the link.
    *Expect:* Mail opens that message. (#60)
@@ -44,6 +44,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    or after you click another row, archives only that message. Not tried on real Mail yet.
    Open a message with `o`, then **Esc** (or `u`): the window closes. In the reading pane, `u`
    puts you back in the list; `g g` / `G` jump to the first / last message.
+   `g i` All Inboxes, `g f` Flagged, `g s` All Sent, `g t` All Trash, `g d` All Drafts, `g a` All
+   Archive (a toast says if one isn't in Mail's Favorites).
    Then `* a` and **Esc** (or `* n`): the selection clears (or only one message stays
    selected, if Mail insists on one); Esc with one message selected, or in a sheet, does what
    Mail always does.

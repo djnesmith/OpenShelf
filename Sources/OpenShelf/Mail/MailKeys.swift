@@ -56,7 +56,9 @@ enum MailKeys {
     static let escape: Character = "\u{1b}"
 
     static let afterG: [Character: Action] = [
-        "i": .favorite("Inbox"), "s": .favorite("Flagged"), "t": .favorite("Sent"), "d": .favorite("Drafts"), "a": .favorite("Archive"), "g": .firstMessage,
+        // David, 2026-11-20: g f Flagged, g s All Sent, g t All Trash (not Gmail's letters).
+        "i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"), "t": .favorite("Trash"),
+        "d": .favorite("Drafts"), "a": .favorite("Archive"), "g": .firstMessage,
     ]
 
     static let afterStar: [Character: Action] = ["a": .menu("Edit", "Select All"), "n": .clearSelection]
@@ -156,6 +158,36 @@ enum MailKeys {
     static func isMainViewer(_ window: DialogNode) -> Bool {
         guard window.identifier?.hasPrefix("Mail.messageViewer.window") == true else { return false }
         return window.children.contains { $0.role == "AXSplitGroup" && $0.identifier == "Main Window" }
+    }
+
+    /// The titles Mail gives a unified mailbox: "All Inboxes" with several accounts, "Inbox"
+    /// with one (David, 2026-11-20: "g i should go to \"All Inboxes\"").
+    static func unifiedTitles(for name: String) -> [String] {
+        switch name {
+        case "Inbox": ["All Inboxes", "Inbox"]
+        case "Flagged": ["Flagged", "All Flagged"]
+        case "Sent": ["All Sent", "Sent"]
+        case "Trash": ["All Trash", "Trash"]
+        case "Drafts": ["All Drafts", "Drafts"]
+        case "Archive": ["All Archive", "All Archives", "Archive"]
+        default: [name]
+        }
+    }
+
+    /// The first of `titles` (menu items or sidebar rows, as Mail shows them now) that is
+    /// the unified mailbox `name`; a count after the name ("All Inboxes (12)") is ignored.
+    static func unifiedIndex(for name: String, in titles: [String]) -> Int? {
+        let clean = titles.map { $0.replacingOccurrences(of: #"\s*\(\d+\)$"#, with: "", options: .regularExpression) }
+        for wanted in unifiedTitles(for: name) {
+            if let index = clean.firstIndex(of: wanted) { return index }
+        }
+        return nil
+    }
+
+    /// Whether the viewer's title says it is showing the unified mailbox `name`.
+    static func showsUnified(_ name: String, windowTitle: String?) -> Bool {
+        guard let windowTitle else { return false }
+        return unifiedTitles(for: name).contains { windowTitle == $0 || windowTitle.hasPrefix($0 + " ") || windowTitle.hasPrefix($0 + " –") }
     }
 
     /// The message list in Mail's viewer window: the first table or outline inside the split
@@ -424,7 +456,7 @@ enum MailKeys {
     /// The `?` list, one line a key, in the table's order.
     static let help: [(String, String)] = [
         ("j / k", "next / previous message"), ("o", "open"), ("/", "search"),
-        ("g i  g s  g t  g d  g a", "Inbox, Flagged, Sent, Drafts, Archive"),
+        ("g i  g f  g s  g t  g d  g a", "All Inboxes, Flagged, All Sent, All Trash, All Drafts, All Archive"),
         ("e  or  ]", "archive"), ("[", "archive, then the message above"), ("x", "move to Trash"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),
