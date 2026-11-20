@@ -382,6 +382,26 @@ struct VimEngine {
         }
     }
 
+    // MARK: - ⌃A and ⌃X
+
+    /// ⌃A and ⌃X (ROADMAP C12 item 5): add `amount` to the first number on the line at or
+    /// after the cursor, as vim with nrformats=bin,hex does. A "-" right before the digits
+    /// is its sign; leading zeros keep the width; hex keeps its letters' case. The cursor
+    /// goes to the number's last character. No number: nothing happens (vim beeps).
+    private mutating func addToNumber(_ amount: Int) {
+        let start = lineStart(cursor), end = lineEnd(cursor)
+        let line = String(text[start..<end])
+        guard let (range, replacement) = VimNumber.add(amount, in: line, at: cursor - start) else {
+            failed = true
+            return
+        }
+        checkpoint()
+        let replaced = Array(replacement)
+        text.replaceSubrange((start + range.lowerBound)..<(start + range.upperBound), with: replaced)
+        cursor = start + range.lowerBound + replaced.count - 1
+        wantedColumn = nil
+    }
+
     // MARK: - Substitute
 
     /// Runs `:s` (ROADMAP C12): each line of the range has its first match (every match with
@@ -568,6 +588,8 @@ struct VimEngine {
             switch c {
             case "r": return .done(Command(count: count, action: .simple("redo")))
             case "[", "c": return .done(Command(count: nil, action: .simple("escape")))
+            case "a" where !inVisual: return .done(Command(count: count, action: .simple("increment")))
+            case "x" where !inVisual: return .done(Command(count: count, action: .simple("decrement")))
             default: return .invalid
             }
         }
@@ -867,7 +889,7 @@ struct VimEngine {
         case .deleteSurround, .changeSurround, .addSurround: true
         case .operate(let op, _): op != .yank
         case .simple(let name):
-            ["x", "X", "s", "S", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~"].contains(name)
+            ["x", "X", "s", "S", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement"].contains(name)
                 || (name.hasPrefix("line") && name != "liney") || (name.hasPrefix("r") && name.count == 2)
         }
     }
@@ -1039,6 +1061,7 @@ struct VimEngine {
             mode = .commandLine
             commandLine = name
         case ".": repeatLastChange(count: count)
+        case "increment", "decrement": addToNumber(name == "increment" ? n : -n)
         case "&":
             // & repeats the last :s on this line, without its flags, as vim does.
             guard var last = lastSubstitute else {
