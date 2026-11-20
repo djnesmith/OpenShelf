@@ -20,6 +20,8 @@ What is left of ROADMAP.md, MAIL-PLAN.md and TRY-TOMORROW.md, checked against th
 | Stage 10: capture, services and power tools | 0 | 1 | 6 |
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 1 | 1 |
+| Text tools on files (ROADMAP.md:220 design) | — | — | 1 |
+| **Total** | 19 | 7 | 38 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
 ## Stage 1: select, press, fix it
@@ -140,6 +142,29 @@ Partly built:
 
 C12's "left out for now" list (marks, `:g`, `:sort`, `:normal`, `:!`, his vim config, keeping
 macros) stays out by choice.
+
+## Text tools on files
+
+ROADMAP.md:220 says every text tool works on a selection and on a text file or shelf item.
+Only the selection is built. A text or source file reaches the file wheel, not the text wheel:
+
+- Finder with the hotkey: `Text/HotkeyRouting.swift:40` `if frontmostBundleID == finderBundleID { return .finder }`
+  opens `openWheelForFinderSelection()` (`App/AppDelegate.swift:174`). A shelf selection and a
+  drag onto the wheel use the same file wheel. Its items come from `App/AppDelegate.swift:248-250`
+  (Convert formats, `FileTool.available`, Actions).
+- Tools: `Tools/FileTool.swift:209-210` gives only Pretty Print, and only when a formatter for the
+  extension is installed (`Tools/PrettyPrint.swift:33-52`: js, ts, json, md, css, html, yaml, clj,
+  edn, py, sh, swift, xml, sql, C, go, rs). Pretty Print writes "name.formatted.ext" beside the
+  file. `.txt` gets no tools.
+- Convert: `.txt` and `.md` become PDF, DOCX, HTML and the like; JSON and YAML convert between
+  data formats (`Convert/DataConversion.swift:12-13`).
+- The text wheel opens only on text read from an app (`App/AppDelegate.swift:144`,
+  `SelectedTextController.open(_:from:in:at:)` at `Text/SelectedTextController.swift:74`).
+  So no Trim, Lines, Case, Indent, Stage 2 tool, live preview, Edit window or `:s` runs on a file.
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| Text tools on files | A "Text" entry in the file Tools wheel for text and source files that opens the text wheel on the file's text (UTF-8 only, size cap, binary refused). Changes save as a copy beside the file ("name Sorted.ext"), as other tools do, so no undo is needed. Reports (Count, Hash) show a toast. The live preview works as is. The Edit window would need a Save to a copy. Snippets do not apply. | M | Decide: copy beside the file (as every tool does today) or change it in place (then it needs an undo) |
 
 ## Mail leftovers
 
