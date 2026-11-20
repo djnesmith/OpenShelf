@@ -393,6 +393,27 @@ struct VimEngine {
         }
     }
 
+    // MARK: - gq
+
+    /// gq (ROADMAP C12 item 4): the lines `first`...`last` re-wrapped, paragraph by
+    /// paragraph (blank lines between), to the text width: a paragraph's lines joined as J
+    /// does, then broken at the last space that fits, the new lines taking its first line's
+    /// indent. Width 79, as vim with textwidth=0; `VimTextWidth` changes it.
+    private mutating func format(_ first: Int, _ last: Int) {
+        let lines = string.components(separatedBy: "\n")
+        let width = UserDefaults.standard.integer(forKey: "VimTextWidth") > 0 ? UserDefaults.standard.integer(forKey: "VimTextWidth") : 79
+        let formatted = VimFormat.wrap(Array(lines[first...last]), width: width)
+        let result = Array(lines[..<first]) + formatted + Array(lines[(last + 1)...])
+        let joined = result.joined(separator: "\n")
+        let lastLine = first + formatted.count - 1
+        if joined != string {
+            checkpoint()
+            text = Array(joined)
+        }
+        cursor = firstNonBlank(lineStarts[min(lastLine, lineStarts.count - 1)])
+        wantedColumn = nil
+    }
+
     // MARK: - Replace mode
 
     /// `R` (ROADMAP C12): each character typed replaces the one under the cursor, or is
@@ -562,6 +583,8 @@ struct VimEngine {
         case upper = "U", lower = "u", toggleCase = "~"
         /// ys: wraps the range in `surroundPair`.
         case surround = "S"
+        /// gq: re-wraps lines to the text width (ROADMAP C12).
+        case format = "q"
     }
 
     struct Command {
@@ -700,7 +723,7 @@ struct VimEngine {
                 index += 1
                 return .done(Command(count: nil, action: .simple("gv")))
             }
-            if case .char(let g) = second, ["~", "u", "U"].contains(g) {
+            if case .char(let g) = second, ["~", "u", "U", "q"].contains(g) {
                 index += 1
                 op = Operator(rawValue: g)
             }
@@ -712,11 +735,11 @@ struct VimEngine {
             let innerCount = countStart..<index
             let total = count.map { min($0 * (motionCount ?? 1), Self.maxCount) } ?? motionCount
             guard let doubled = next() else { return .incomplete }
-            // dd, cc, yy, >>, <<, g~~, guu, gUU, and gugu-style repeats. gUgg is gU to the first line.
+            // dd, cc, yy, >>, <<, g~~, guu, gUU, gqq, and gugu-style repeats. gUgg is gU to the first line.
             var repeated = false
             if case .char(let d) = doubled, d == op.rawValue {
                 repeated = true
-            } else if case .char("g") = doubled, [.toggleCase, .lower, .upper].contains(op) {
+            } else if case .char("g") = doubled, [.toggleCase, .lower, .upper, .format].contains(op) {
                 guard index + 1 < keys.count else { return .incomplete }
                 if case .char(op.rawValue) = keys[index + 1] {
                     index += 2
@@ -1553,6 +1576,7 @@ struct VimEngine {
     /// An operator on whole lines, `first` through `last`.
     private mutating func applyLines(_ op: Operator, _ first: Int, _ last: Int) {
         if op == .surround { return wrapLines(first, last, in: surroundPair, indenting: false) }
+        if op == .format { return format(first, last) }
         let starts = lineStarts
         let start = starts[first]
         let bodyEnd = lineEnd(starts[last])
@@ -1584,7 +1608,7 @@ struct VimEngine {
             cursor = start + indent.count
             beginInsert()
             return
-        case .surround:
+        case .surround, .format:
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: start)
@@ -1601,6 +1625,7 @@ struct VimEngine {
     /// An operator on the characters in `range`.
     private mutating func apply(_ op: Operator, to range: Range<Int>) {
         if op == .surround { return wrap(range, in: surroundPair, trimming: true) }
+        if op == .format { return format(lineIndex(range.lowerBound), lineIndex(max(range.upperBound - 1, range.lowerBound))) }
         let taken = String(text[range])
         switch op {
         case .yank:
@@ -1616,7 +1641,7 @@ struct VimEngine {
                 beginInsert()
                 return
             }
-        case .surround:
+        case .surround, .format:
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: range.lowerBound)
