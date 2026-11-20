@@ -166,6 +166,32 @@ Only the selection is built. A text or source file reaches the file wheel, not t
 |---|---|---|---|
 | Text tools on files | A "Text" entry in the file Tools wheel for text and source files that opens the text wheel on the file's text (UTF-8 only, size cap, binary refused). Changes save as a copy beside the file ("name Sorted.ext"), as other tools do, so no undo is needed. Reports (Count, Hash) show a toast. The live preview works as is. The Edit window would need a Save to a copy. Snippets do not apply. | M | Decide: copy beside the file (as every tool does today) or change it in place (then it needs an undo) |
 
+### Editing a file in place: a safe design (not built)
+
+Today Edit in the file Tools wheel is the image editor (`Tools/FileTool.swift:8`). The text
+Edit window only puts text back into an app or on the clipboard; "nothing is written to disk"
+(`Text/SelectedTextController.swift:201-202`).
+
+- Open: read the file's bytes. Refuse a file with NUL bytes or one that won't decode, and one
+  over a size cap (for example 2 MB). Remember the encoding (UTF-8, with or without BOM,
+  UTF-16), the line ending (LF, CRLF, CR), whether it ends with a newline, and its size, date
+  and hash.
+- Edit with plain LF lines. ⌘W, `:q!` or the close button leaves the file untouched.
+- ⌘↩ or `:w`: if the file changed on disk since it opened (size, date or hash differ), stop and
+  say so. Otherwise put back the same line ending, final newline and encoding, and write
+  atomically (`Data.write(to:options: .atomic)`), keeping the file's permissions. Do nothing if
+  the text is unchanged.
+- Undo: before writing, copy the old bytes to Application Support (last 10 files, cleared on
+  quit, like `TextHistory`). The toast and the menu bar offer Undo. Undo writes the old bytes
+  back only if the file still has the hash OpenShelf wrote; if not, it says the file has changed
+  since and leaves it.
+- One-shot tools (Sort, Case, Trim…) use the same read, write and undo steps without the
+  window. The live preview shows the result first.
+- Edge to watch: the Edit window turns U+2028 into line breaks when the text also has Return
+  paragraphs (TRY-TOMORROW), so in-place writes must skip that change or refuse such files.
+- Size: M for one-shot tools plus undo; M for the Edit window on top. Needs David's choice of
+  in place (this design) or a copy beside the file.
+
 ## Mail leftovers
 
 | Item | What it is | Size | Needs first |
