@@ -196,7 +196,7 @@ Edit window only puts text back into an app or on the clipboard; "nothing is wri
 
 | Id | What it is | Size | Needs first |
 |---|---|---|---|
-| C15 | Color the Edit window's text by file type when editing a file. | S-M built in; M with tree-sitter | C14; David's yes if tree-sitter (third-party code); open question: also for selected text |
+| C15 | Color the Edit window's text by file type when editing a file, with tree-sitter (chosen 2026-11-19). | M | C14; the spike (size, speed) and a security read of each grammar; open question: also for selected text |
 
 ## Mail leftovers
 

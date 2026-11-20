@@ -472,18 +472,21 @@ Today a text or source file reaches the file wheel, which has only Pretty Print 
   undo above), or save a copy beside the file as every file tool does today (no undo needed).
 - Permissions: none.
 
-**C15. Syntax highlighting in the Edit window** (S-M for the first languages built in; M with tree-sitter) — not built (David, 2026-11-19: "also have syntax highlighting when editing files")
+**C15. Syntax highlighting in the Edit window** (M, with tree-sitter) — not built; tree-sitter chosen 2026-11-19, spike first (David, 2026-11-19: "also have syntax highlighting when editing files")
 - Colors the text by file type when the Edit window edits a file (C14).
 - First languages: the Pretty Print list (`Tools/PrettyPrint.swift:33-52`: JavaScript,
   TypeScript, JSON, Markdown, CSS, HTML, YAML, Clojure and EDN, Python, shell, Swift, XML, SQL,
   C and Objective-C, Go, Rust). Markdown is in that list; plain `.txt` stays uncolored.
-- Two ways to do it:
-  - Built in: a small regex tokenizer per language (comments, strings, numbers, keywords,
-    Clojure keywords and brackets). No new code from others, about 30-80 lines a language,
-    good enough for reading; wrong on edge cases (nested template strings, heredocs).
-  - Tree-sitter grammars: exact and fast, but third-party C code for the engine and every
-    grammar, which breaks the project's "no third-party code" rule so far. Needs David's yes.
-  - Recommended: built in first; tree-sitter only if the regex results are not good enough.
+- **Chosen: tree-sitter** (David, 2026-11-19: yes to third-party code for C15 only), after a
+  spike that measures size and speed. Conditions:
+  - The tree-sitter library and every grammar pinned to an exact version and vendored in the
+    repo; nothing is fetched at build time.
+  - A security read of the runtime and of each grammar (license, maintainer, build scripts,
+    external scanners) before it goes in.
+  - Order: Clojure, EDN, JSON, Markdown (with fenced code), Python, shell, Swift, YAML, SQL;
+    then the rest of the Pretty Print list.
+  - The other option was a small regex tokenizer per language: no new code from others, but
+    wrong on edge cases (nested forms, multi-line strings, fenced code).
 - Colors: a light and a dark set that follow the system appearance; comments in the same gray
   as the line numbers.
 - Highlighting only sets display colors. It never changes the text or the saved bytes.
