@@ -247,7 +247,10 @@ struct AppleScriptMailFiling: MailFilingScripting {
         let lines = text.split(separator: "\n")
         let failures = lines.filter { $0.hasPrefix("#ERR\t") }.map { $0.dropFirst(5) }
         if !failures.isEmpty { SnoozeLog.append(["list mailboxes: not read: \(failures.joined(separator: ", "))"], to: MailScript.logURL) }
-        let diagnostics = lines.filter { $0.hasPrefix("#STEP\t") || $0.hasPrefix("#FAIL\t") || $0.hasPrefix("#SKIP\t") || $0.hasPrefix("#ERR\t") }
+        // The step markers go to the log only when something failed; a good run is one
+        // summary line (David's listing worked on 2026-11-20).
+        let failed = lines.contains { $0.hasPrefix("#FAIL\t") || $0.hasPrefix("#SKIP\t") || $0.hasPrefix("#ERR\t") }
+        let diagnostics = lines.filter { failed && ($0.hasPrefix("#STEP\t") || $0.hasPrefix("#FAIL\t") || $0.hasPrefix("#SKIP\t") || $0.hasPrefix("#ERR\t")) }
             .prefix(60).map { "list mailboxes: " + MailScript.scrubbed(String($0.dropFirst(1)).replacingOccurrences(of: "\t", with: " ")) }
         if !diagnostics.isEmpty { SnoozeLog.append(Array(diagnostics), to: MailScript.logURL) }
         let summary = MailFiling.listingSummary(lines.map(String.init))

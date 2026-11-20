@@ -29,7 +29,7 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    *Expect:* the reply in Sent, the original in Archive. The first time, macOS asks to let
    OpenShelf control Mail: allow it. A new message (not a reply) with ⇧⌘↩ sends and says
    "Sent, not archived". (#59)
-4. **Filing.** Select a test message, **⌃⌥M** (or **v**; the cursor is in the field), type part of a folder's name, **Return**.
+4. **Filing** (works on your Mail as of 3:23 PM). Select a test message, **⌃⌥M** (or **v**; the cursor is in the field), type part of a folder's name, **Return**.
    *Expect:* the message is in that folder; recent folders come first next time. (#60)
 5. **Message link.** Select a message, **⌃⌥K**, paste into Notes, click the link.
    *Expect:* Mail opens that message. (#60)
