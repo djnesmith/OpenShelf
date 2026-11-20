@@ -8,6 +8,9 @@ protocol DialogNode {
     var title: String? { get }
     /// The Accessibility identifier, where there is one.
     var identifier: String? { get }
+    /// The name a control shows: its title, or its description when it has no title
+    /// (toolbar segments such as Archive, Delete, Junk).
+    var label: String? { get }
     var children: [DialogNode] { get }
     /// A date picker's date; nil for anything else.
     var date: Date? { get }
@@ -22,6 +25,7 @@ protocol DialogNode {
 
 extension DialogNode {
     var identifier: String? { nil }
+    var label: String? { title }
     var valueDescription: String { date.map { "date " + ISO8601DateFormatter().string(from: $0) } ?? "no date" }
     func pressReporting() -> (ok: Bool, detail: String) {
         let ok = press()
@@ -130,6 +134,7 @@ struct AXDialogNode: DialogNode {
     var role: String { AXMenuNode.string(element, kAXRoleAttribute) ?? "" }
     var title: String? { AXMenuNode.string(element, kAXTitleAttribute) }
     var identifier: String? { AXMenuNode.string(element, kAXIdentifierAttribute) }
+    var label: String? { AXMenuNode.string(element, kAXTitleAttribute) ?? AXMenuNode.string(element, kAXDescriptionAttribute) }
     var children: [DialogNode] { AXMenuNode.childElements(element).map(AXDialogNode.init) }
 
     var date: Date? {

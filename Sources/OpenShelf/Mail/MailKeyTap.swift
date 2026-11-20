@@ -437,36 +437,37 @@ enum MailKeyActions {
         return true
     }
 
-    /// Archive or Delete on the open message through its window's own toolbar button,
-    /// never a menu item that acts on whatever is in front.
+    /// Archive or Delete on the open message through its window's own toolbar button, one
+    /// press, never a menu item that acts on whatever is in front. The press's answer is
+    /// only logged (it can be an error while Mail acts); what happened is read from the
+    /// window afterwards.
     static func actOnOpenMessage(_ window: AXUIElement, archive: Bool, reason: String) {
         let title = archive ? "Archive" : "Delete"
-        let verb = archive ? "Archived" : "Trashed"
-        guard let button = toolbarButton(title, in: window), AXUIElementPerformAction(button, kAXPressAction as CFString) == .success || AXMenuNode.string(window, kAXRoleAttribute) == nil else {
-            KeysLog.note("\(title) on the open message: no \(title) button in its window")
+        guard let button = MailKeys.toolbarButton(title, in: AXDialogNode(element: window)) as? AXDialogNode else {
+            KeysLog.note("\(title) on the open message: no \(title) button in its window's toolbar")
             ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Nothing \(archive ? "archived" : "trashed")",
                                               subtitle: "The message window has no \(title) button"), for: .seconds(4))
             return
         }
-        ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(verb) 1 message",
-                                          subtitle: "\(reason.prefix(1).uppercased() + reason.dropFirst()), so only this one"), for: .seconds(4))
-    }
-
-    /// The button titled `title` in `window`'s toolbar (Archive and Delete in a message
-    /// window, David's Check Mail of 2026-11-20).
-    static func toolbarButton(_ title: String, in window: AXUIElement) -> AXUIElement? {
-        guard let toolbar = AXMenuNode.childElements(window).first(where: { AXMenuNode.string($0, kAXRoleAttribute) == "AXToolbar" }) else { return nil }
-        func find(_ element: AXUIElement, depth: Int) -> AXUIElement? {
-            guard depth < 4 else { return nil }
-            for child in AXMenuNode.childElements(element) {
-                // Check Mail prints a title, or the description when there is none.
-                let label = AXMenuNode.string(child, kAXTitleAttribute) ?? AXMenuNode.string(child, kAXDescriptionAttribute)
-                if AXMenuNode.string(child, kAXRoleAttribute) == kAXButtonRole, label == title { return child }
-                if let found = find(child, depth: depth + 1) { return found }
+        let answer = AXUIElementPerformAction(button.element, kAXPressAction as CFString)
+        KeysLog.note("\(title) on the open message: pressed its button, \(answer == .success ? "ok" : "AXError \(answer.rawValue)")")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            MainActor.assumeIsolated {
+                let gone = AXMenuNode.string(window, kAXRoleAttribute) == nil
+                let result = MailKeys.openMessageResult(buttonFound: true, windowGone: gone)
+                KeysLog.note("\(title) on the open message: \(result)")
+                switch result {
+                case .done:
+                    ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(archive ? "Archived" : "Trashed") 1 message",
+                                                      subtitle: "\(reason.prefix(1).uppercased() + reason.dropFirst()), so only this one"), for: .seconds(4))
+                case .unsure:
+                    ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(title) pressed",
+                                                      subtitle: "The window is still open; check the message"), for: .seconds(4))
+                case .noButton:
+                    break
+                }
             }
-            return nil
         }
-        return find(toolbar, depth: 0)
     }
 
     /// `o`: opens the selected message, and remembers which Message-IDs were selected for

@@ -237,11 +237,13 @@ struct MailKeysTests {
         let role: String
         let title: String? = nil
         let identifier: String?
+        let label: String?
         let children: [DialogNode]
         let date: Date? = nil
-        init(_ role: String, id: String? = nil, _ children: [DialogNode] = []) {
+        init(_ role: String, id: String? = nil, label: String? = nil, _ children: [DialogNode] = []) {
             self.role = role
             identifier = id
+            self.label = label
             self.children = children
         }
         func setDate(_ date: Date) -> Bool { false }
@@ -427,5 +429,31 @@ struct MailKeysTests {
         #expect(!MailKeys.mayPressInViewer(messageWindowGone: true, frontIsMainViewer: true, bound: ids, current: ["a@x"]))
         #expect(!MailKeys.mayPressInViewer(messageWindowGone: true, frontIsMainViewer: true, bound: nil, current: ids))
         #expect(!MailKeys.mayPressInViewer(messageWindowGone: true, frontIsMainViewer: true, bound: [], current: []))
+    }
+
+    /// A message window's toolbar as David's Check Mail showed it: the Archive, Delete and
+    /// Junk segments inside a group, named by description. Found one level down.
+    @MainActor @Test func findsTheSegmentedArchiveAndDelete() {
+        let archive = Node("AXButton", label: "Archive"), delete = Node("AXButton", label: "Delete")
+        let window = Node("AXWindow", id: "Mail.messageViewer.window.39", [
+            Node("AXGroup"), Node("AXScrollArea"),
+            Node("AXToolbar", [
+                Node("AXGroup", [archive, delete, Node("AXButton", label: "Junk")]),
+                Node("AXGroup", [Node("AXButton", label: "Reply"), Node("AXButton", label: "Reply All"), Node("AXButton", label: "Forward")]),
+                Node("AXButton", label: "Print"),
+            ]),
+            Node("AXButton"),
+        ])
+        #expect(MailKeys.toolbarButton("Archive", in: window) as? Node === archive)
+        #expect(MailKeys.toolbarButton("Delete", in: window) as? Node === delete)
+        #expect(MailKeys.toolbarButton("Archive", in: Node("AXWindow", [Node("AXGroup", [Node("AXButton", label: "Archive")])])) == nil)
+    }
+
+    /// After pressing the open message's own button, only a closed window counts as done; an
+    /// error answer with the window still open is "unsure", never "no button".
+    @Test func theOpenMessageResultComesFromTheWindow() {
+        #expect(MailKeys.openMessageResult(buttonFound: true, windowGone: true) == .done)
+        #expect(MailKeys.openMessageResult(buttonFound: true, windowGone: false) == .unsure)
+        #expect(MailKeys.openMessageResult(buttonFound: false, windowGone: false) == .noButton)
     }
 }

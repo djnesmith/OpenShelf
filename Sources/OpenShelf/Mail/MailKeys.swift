@@ -223,6 +223,37 @@ enum MailKeys {
         return bound == current
     }
 
+    /// The button named `title` in the window's toolbar, at any depth (David's capture: the
+    /// toolbar holds an AXGroup with the segments Archive, Delete and Junk).
+    @MainActor
+    static func toolbarButton(_ title: String, in window: DialogNode) -> DialogNode? {
+        guard let toolbar = window.children.first(where: { $0.role == "AXToolbar" }) else { return nil }
+        func find(_ node: DialogNode, depth: Int) -> DialogNode? {
+            guard depth < 5 else { return nil }
+            for child in node.children {
+                if child.role == "AXButton", child.label == title { return child }
+                if let found = find(child, depth: depth + 1) { return found }
+            }
+            return nil
+        }
+        return find(toolbar, depth: 0)
+    }
+
+    /// What pressing the open message's own Archive or Delete button came to.
+    enum OpenMessageResult: Equatable {
+        case noButton
+        /// The window went away: the message was archived or trashed.
+        case done
+        /// Pressed (Accessibility may answer an error while Mail acts), but the window is
+        /// still open: not claimed either way.
+        case unsure
+    }
+
+    static func openMessageResult(buttonFound: Bool, windowGone: Bool) -> OpenMessageResult {
+        guard buttonFound else { return .noButton }
+        return windowGone ? .done : .unsure
+    }
+
     /// A window a key may close, as the close rule sees it. A protocol, so tests use a fake.
     @MainActor
     protocol ClosableWindow {
