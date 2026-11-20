@@ -413,12 +413,17 @@ enum MailKeyActions {
             let button = label.flatMap { MailKeys.toolbarButton($0, in: AXDialogNode(element: viewer)) } as? AXDialogNode
             if label != nil, button == nil { KeysLog.note("\(title): no \(label!) button in the viewer's toolbar") }
             var tried: [MailKeys.ActionRoute] = []
-            var changedNow = false
+            var last: MailKeys.ActionOutcome?
             while true {
-                switch MailKeys.nextActionStep(tried: tried, lastChanged: changedNow, toolbarAvailable: button != nil) {
+                switch MailKeys.nextActionStep(tried: tried, last: last, toolbarAvailable: button != nil) {
                 case .done(let route):
                     KeysLog.note("\(title): done via \(route)\(kind == .none ? " (not verifiable)" : "")")
                     afterDone?()
+                    return
+                case .unsure(let route):
+                    KeysLog.note("\(title): unsure after \(route); no second route")
+                    ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Not sure \(title) worked",
+                                                      subtitle: "Mail changed, but no message left the list"), for: .seconds(5))
                     return
                 case .gaveUp:
                     KeysLog.note("\(title): no change after every route")
@@ -438,21 +443,27 @@ enum MailKeyActions {
                         try? await Task.sleep(for: .milliseconds(100))
                         _ = press(title, under: top)
                     }
-                    changedNow = await waitForChange(from: before, in: viewer, kind)
-                    KeysLog.note("\(title): \(route) \(changedNow ? "changed Mail" : "no change")")
+                    last = await waitForOutcome(from: before, in: viewer, kind, title: title)
+                    KeysLog.note("\(title): \(route) \(last.map { "\($0)" } ?? "?")")
                 }
             }
         }
     }
 
-    /// Up to a second of looking for the command's effect.
-    private static func waitForChange(from before: MailKeys.ListSnapshot, in viewer: AXUIElement, _ kind: MailKeys.Verification) async -> Bool {
-        if kind == .none { return true }
-        for _ in 0..<5 {
-            try? await Task.sleep(for: .milliseconds(200))
-            if MailKeys.changed(before, await snapshot(viewer), kind) { return true }
+    /// Up to 1.5 s of looking for the command's effect: stops early when proven; else the
+    /// last reading. Logs the rows before and after and how many selected messages remain.
+    private static func waitForOutcome(from before: MailKeys.ListSnapshot, in viewer: AXUIElement, _ kind: MailKeys.Verification, title: String) async -> MailKeys.ActionOutcome {
+        if kind == .none { return .changed }
+        var after = before
+        var result = MailKeys.ActionOutcome.unchanged
+        for _ in 0..<6 {
+            try? await Task.sleep(for: .milliseconds(250))
+            after = await snapshot(viewer)
+            result = MailKeys.outcome(before, after, kind)
+            if result == .changed { break }
         }
-        return false
+        KeysLog.note("\(title): rows \(before.rows) → \(after.rows), \(before.selected.intersection(after.selected).count) of \(before.selected.count) selected remain")
+        return result
     }
 
     /// The viewer's list row count and the selected messages' ids, flag and read states

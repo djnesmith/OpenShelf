@@ -267,14 +267,38 @@ enum MailKeys {
     enum ActionStep: Equatable {
         case attempt(ActionRoute)
         case done(ActionRoute)
+        /// Something moved but the command isn't proven; no second route, to be safe.
+        case unsure(ActionRoute)
         case gaveUp
     }
 
-    /// The next step: stop as soon as the last route changed something (never a second
-    /// route after a change), else the next route not yet tried, else give up.
-    static func nextActionStep(tried: [ActionRoute], lastChanged: Bool, toolbarAvailable: Bool) -> ActionStep {
-        if let last = tried.last, lastChanged { return .done(last) }
-        let order: [ActionRoute] = toolbarAvailable ? [.toolbar, .listThenMenu] : [.listThenMenu]
+    /// What a try came to, read from Mail.
+    enum ActionOutcome: Equatable {
+        /// The command is proven (the messages left the list; the flag or read state changed
+        /// on the same messages).
+        case changed
+        /// Mail looks exactly as before: the next route may try.
+        case unchanged
+        /// Mail changed, but not in a way that proves the command (the selection moved with
+        /// the same rows; 2026-11-20: 9 selected became 1 and nothing was archived).
+        case ambiguous
+    }
+
+    /// The next step: done after a proven change; stop, unsure, after an ambiguous one
+    /// (a second route could act on the next message); after no change, the next route not
+    /// yet tried, else give up.
+    static func nextActionStep(tried: [ActionRoute], last: ActionOutcome?, toolbarAvailable: Bool) -> ActionStep {
+        if let route = tried.last {
+            switch last {
+            case .changed?: return .done(route)
+            case .ambiguous?: return .unsure(route)
+            case .unchanged?, nil: break
+            }
+        }
+        // The list first: Archive acts on the list's selection when the list has the
+        // keyboard, as his own ⌘E does (2026-11-20: the toolbar press answered -25204 and
+        // archived nothing). The toolbar button second.
+        let order: [ActionRoute] = toolbarAvailable ? [.listThenMenu, .toolbar] : [.listThenMenu]
         guard let next = order.first(where: { !tried.contains($0) }) else { return .gaveUp }
         return .attempt(next)
     }
@@ -310,17 +334,26 @@ enum MailKeys {
         }
     }
 
-    /// Whether Mail changed the way the command should: rows left (or the selection moved
-    /// on) for archive, delete and junk; the flag or read state for those; `.none` can't be
-    /// seen, so it counts as changed and is logged as not verifiable.
-    static func changed(_ before: ListSnapshot, _ after: ListSnapshot, _ kind: Verification) -> Bool {
+    /// What a try came to. Archive, delete, junk: proven only when the list lost rows and
+    /// none of the messages selected before is still selected. Flag and read: proven when the
+    /// same messages are selected and their state changed. Anything else that moved is
+    /// ambiguous; exactly as before is unchanged. Mute can't be seen and counts as changed.
+    static func outcome(_ before: ListSnapshot, _ after: ListSnapshot, _ kind: Verification) -> ActionOutcome {
+        if kind == .none { return .changed }
+        guard !before.selected.isEmpty else { return after == before ? .unchanged : .ambiguous }
         switch kind {
-        case .rowsLeave: after.rows < before.rows || (!before.selected.isEmpty && after.selected != before.selected)
-        case .flag: !before.flagged.isEmpty && after.flagged != before.flagged
-        case .read: !before.read.isEmpty && after.read != before.read
-        case .none: true
+        case .rowsLeave:
+            if after.rows < before.rows, before.selected.isDisjoint(with: after.selected) { return .changed }
+        case .flag:
+            if after.selected == before.selected, after.flagged != before.flagged { return .changed }
+        case .read:
+            if after.selected == before.selected, after.read != before.read { return .changed }
+        case .none:
+            return .changed
         }
+        return after == before ? .unchanged : .ambiguous
     }
+
 
     /// A window a key may close, as the close rule sees it. A protocol, so tests use a fake.
     @MainActor

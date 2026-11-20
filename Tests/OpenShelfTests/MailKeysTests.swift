@@ -457,41 +457,47 @@ struct MailKeysTests {
         #expect(MailKeys.openMessageResult(buttonFound: false, windowGone: false) == .noButton)
     }
 
-    /// Toolbar button first, then list focus and the menu; a route that changed Mail ends it
-    /// (never a second press after a change); nothing changed after both: give up.
+    /// Toolbar button first, then list focus and the menu; a proven change ends it; an
+    /// ambiguous one stops without a second route; no change moves to the next route.
     @Test func actionRoutesInOrderAndNeverTwiceAfterAChange() {
-        typealias R = MailKeys.ActionRoute
-        #expect(MailKeys.nextActionStep(tried: [], lastChanged: false, toolbarAvailable: true) == .attempt(.toolbar))
-        #expect(MailKeys.nextActionStep(tried: [.toolbar], lastChanged: true, toolbarAvailable: true) == .done(.toolbar))
-        #expect(MailKeys.nextActionStep(tried: [.toolbar], lastChanged: false, toolbarAvailable: true) == .attempt(.listThenMenu))
-        #expect(MailKeys.nextActionStep(tried: [.toolbar, .listThenMenu], lastChanged: true, toolbarAvailable: true) == .done(.listThenMenu))
-        #expect(MailKeys.nextActionStep(tried: [.toolbar, .listThenMenu], lastChanged: false, toolbarAvailable: true) == .gaveUp)
-        // No toolbar button (hidden or customized): the list route alone.
-        #expect(MailKeys.nextActionStep(tried: [], lastChanged: false, toolbarAvailable: false) == .attempt(.listThenMenu))
-        #expect(MailKeys.nextActionStep(tried: [.listThenMenu], lastChanged: false, toolbarAvailable: false) == .gaveUp)
+        // The list with the menu first, then the toolbar button.
+        #expect(MailKeys.nextActionStep(tried: [], last: nil, toolbarAvailable: true) == .attempt(.listThenMenu))
+        #expect(MailKeys.nextActionStep(tried: [.listThenMenu], last: .changed, toolbarAvailable: true) == .done(.listThenMenu))
+        #expect(MailKeys.nextActionStep(tried: [.listThenMenu], last: .unchanged, toolbarAvailable: true) == .attempt(.toolbar))
+        // 2026-11-20: a false success skipped the next route; an ambiguous result now stops, unsure.
+        #expect(MailKeys.nextActionStep(tried: [.listThenMenu], last: .ambiguous, toolbarAvailable: true) == .unsure(.listThenMenu))
+        #expect(MailKeys.nextActionStep(tried: [.listThenMenu, .toolbar], last: .changed, toolbarAvailable: true) == .done(.toolbar))
+        #expect(MailKeys.nextActionStep(tried: [.listThenMenu, .toolbar], last: .unchanged, toolbarAvailable: true) == .gaveUp)
+        #expect(MailKeys.nextActionStep(tried: [], last: nil, toolbarAvailable: false) == .attempt(.listThenMenu))
+        #expect(MailKeys.nextActionStep(tried: [.listThenMenu], last: .unchanged, toolbarAvailable: false) == .gaveUp)
     }
 
-    /// What counts as Mail having done it.
-    @Test func whatCountsAsAChange() {
+    /// What proves a command, from David's log shape (14 rows, 9 selected).
+    @Test func whatProvesACommand() {
         typealias S = MailKeys.ListSnapshot
-        let before = S(rows: 10, selected: ["a@x", "b@x"], flagged: ["a@x": false], read: ["a@x": false])
-        // Archive, delete, junk: rows left, or the selection moved on.
-        #expect(MailKeys.changed(before, S(rows: 9, selected: ["a@x", "b@x"]), .rowsLeave))
-        #expect(MailKeys.changed(before, S(rows: 10, selected: ["c@x"]), .rowsLeave))
-        #expect(!MailKeys.changed(before, S(rows: 10, selected: ["a@x", "b@x"]), .rowsLeave))
-        // Flag and read: their state.
-        #expect(MailKeys.changed(before, S(rows: 10, selected: ["a@x"], flagged: ["a@x": true], read: ["a@x": false]), .flag))
-        #expect(!MailKeys.changed(before, S(rows: 10, selected: ["a@x"], flagged: ["a@x": false], read: ["a@x": true]), .flag))
-        #expect(MailKeys.changed(before, S(rows: 10, selected: ["a@x"], flagged: ["a@x": false], read: ["a@x": true]), .read))
-        // Nothing known before: not counted as a change.
-        #expect(!MailKeys.changed(S(rows: 10, selected: []), S(rows: 10, selected: []), .flag))
-        #expect(!MailKeys.changed(S(rows: 10, selected: []), S(rows: 10, selected: ["a@x"]), .rowsLeave))
-        #expect(MailKeys.changed(before, before, .none))
+        let nine = Set((1...9).map { "m\($0)@x" })
+        let before = S(rows: 14, selected: nine)
+        // His case: the selection narrowed to one of the nine, same rows: not an archive.
+        #expect(MailKeys.outcome(before, S(rows: 14, selected: ["m3@x"]), .rowsLeave) == .ambiguous)
+        // The selection moved to another message, same rows: not an archive either.
+        #expect(MailKeys.outcome(before, S(rows: 14, selected: ["other@x"]), .rowsLeave) == .ambiguous)
+        // Rows gone but some of the messages still selected: not proven.
+        #expect(MailKeys.outcome(before, S(rows: 13, selected: ["m1@x"]), .rowsLeave) == .ambiguous)
+        // Rows gone and none of them selected: proven.
+        #expect(MailKeys.outcome(before, S(rows: 13, selected: ["next@x"]), .rowsLeave) == .changed)
+        #expect(MailKeys.outcome(before, S(rows: 13, selected: []), .rowsLeave) == .changed)
+        // Exactly as before.
+        #expect(MailKeys.outcome(before, before, .rowsLeave) == .unchanged)
+        // Flag and read: the same messages, their state changed.
+        let one = S(rows: 14, selected: ["a@x"], flagged: ["a@x": false], read: ["a@x": false])
+        #expect(MailKeys.outcome(one, S(rows: 14, selected: ["a@x"], flagged: ["a@x": true], read: ["a@x": false]), .flag) == .changed)
+        #expect(MailKeys.outcome(one, S(rows: 14, selected: ["a@x"], flagged: ["a@x": false], read: ["a@x": true]), .read) == .changed)
+        #expect(MailKeys.outcome(one, S(rows: 14, selected: ["b@x"], flagged: ["b@x": true], read: ["b@x": false]), .flag) == .ambiguous)
+        #expect(MailKeys.outcome(one, one, .flag) == .unchanged)
+        // Nothing selected before: never proven.
+        #expect(MailKeys.outcome(S(rows: 14, selected: []), S(rows: 13, selected: []), .rowsLeave) == .ambiguous)
+        #expect(MailKeys.outcome(one, one, .none) == .changed)
         #expect(MailKeys.verification(for: "Archive") == .rowsLeave)
-        #expect(MailKeys.verification(for: "Toggle Flag") == .flag)
-        #expect(MailKeys.verification(for: "Unread") == .read)
-        #expect(MailKeys.verification(for: "Mute") == .none)
         #expect(MailKeys.toolbarLabel(for: "Move to Junk") == "Junk")
-        #expect(MailKeys.toolbarLabel(for: "Toggle Flag") == nil)
     }
 }
