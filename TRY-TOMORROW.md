@@ -93,6 +93,10 @@ Built with these defaults; each is one setting or constant to change.
 - `:s`: no `c` flag, `~` in a replacement, `\u` `\l` `\U` `\L`, or `\v`; case follows
   smartcase (stock vim is case-sensitive).
 - `.` does not repeat visual-mode changes (it does nothing after one).
+- A change that can't run (`ci"` with no quotes, `cgn`, which isn't built) drops what you type
+  until Esc, with a gray "typing ignored until Esc"; vim would run those keys as commands.
+- vim commands that aren't built (`=`, `gc`, marks, `zz`, `gJ`, …) read all their keys and do
+  nothing, with a gray "not built" (marks: "marks are not built").
 - `R` ignores Return (vim breaks the line); a Backspace in `R` drops its count.
 - Visual block and `j`/`k` use character columns, not screen columns (tabs count as one).
 - `J` and `gq` put one space after a period (vim: two); `gq` keeps the first line's indent on

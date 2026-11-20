@@ -70,6 +70,17 @@ struct VimEngine {
     private(set) var failureHint: String?
     /// The keys of the command being run, as typed, for the hint.
     private var typed: [VimKey] = []
+    /// A change command (c…) that couldn't run: keys are dropped until Esc.
+    private(set) var ignoresTyping = false
+
+    /// Whether `keys` (after a count and register) start a change: c, the one whose text
+    /// would have gone into insert mode.
+    static func isChange(_ keys: [VimKey]) -> Bool {
+        var index = 0
+        _ = readCount(keys, &index)
+        if index + 1 < keys.count, keys[index] == .char("\"") { index += 2; _ = readCount(keys, &index) }
+        return index < keys.count && keys[index] == .char("c")
+    }
     /// The unnamed register.
     private(set) var register = VimRegister(text: "", linewise: false)
     /// Registers "a to "z and "0 (the last yank).
@@ -204,11 +215,27 @@ struct VimEngine {
                 _ = runMotion(arrow, count: 1)
                 return nil
             }
+            if ignoresTyping {
+                // After a change command that didn't run, typing is dropped until Esc, so
+                // the text meant for insert mode never runs as commands.
+                if key == .escape || key == .ctrl("[") || key == .ctrl("c") { ignoresTyping = false } else if playDepth == 0, !isRepeating {
+                    failureHint = "typing ignored until Esc"
+                }
+                return nil
+            }
             pending.append(key)
             switch parse(pending) {
             case .incomplete: return nil
             case .invalid:
                 if playDepth == 0, !isRepeating { failureHint = "\(Self.describe(pending)): not a command" }
+                ignoresTyping = Self.isChange(pending)
+                pending = []
+                failed = true
+                return nil
+            case .done(let command) where { if case .simple(let name) = command.action { name.hasPrefix("unbuilt:") } else { false } }():
+                if case .simple(let name) = command.action, playDepth == 0, !isRepeating {
+                    failureHint = "\(Self.describe(pending)): \(name.dropFirst("unbuilt:".count))"
+                }
                 pending = []
                 failed = true
                 return nil
@@ -798,12 +825,61 @@ struct VimEngine {
             if let more = Self.readCount(keys, &index) { count = min((count ?? 1) * more, Self.maxCount) }
         }
         let body = index
+        if let unbuilt = unbuiltCommand(keys, from: index) {
+            guard let reason = unbuilt else { return .incomplete }
+            return .done(Command(count: nil, action: .simple("unbuilt:" + reason)))
+        }
         let result = parseCommand(keys, from: index, count: count)
         guard case .done(var command) = result else { return result }
         command.register = register
         // The keys "." runs again, without counts: it puts the total back in front.
         command.keys = keys.indices.filter { $0 >= body && !(command.innerCount?.contains($0) ?? false) }.map { keys[$0] }
         return .done(command)
+    }
+
+    /// vim commands this engine doesn't have, read to their end so the keys after them
+    /// never run as commands of their own (2026-11-20: `=ip` and `ma` fell into insert
+    /// mode). nil: not one of them; .some(nil): wait for more keys; .some(reason): done.
+    static let unbuiltOperators = ["=", "!", "g?", "gc", "gw", "gx", "gl", "gL", "g@", "zf"]
+    static let unbuiltWithArgument: [String: String] = [
+        "m": "marks are not built", "'": "marks are not built", "`": "marks are not built",
+        "z": "not built", "[": "not built", "]": "not built", "g'": "marks are not built", "g`": "marks are not built",
+    ]
+    static let unbuiltAlone = ["gn", "gN", "gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g-", "g+", "gX", "gd", "gD", "g*", "g#", "g&"]
+
+    private func unbuiltCommand(_ keys: [VimKey], from start: Int) -> String?? {
+        var typed = ""
+        for key in keys[start...] {
+            guard case .char(let c) = key else { break }
+            typed.append(c)
+        }
+        guard let first = typed.first else { return nil }
+        if typed == "g" || typed == "z" && !inVisual { return .some(nil) }
+        if Self.unbuiltAlone.contains(where: { typed.hasPrefix($0) }), !inVisual || typed.hasPrefix("gJ") {
+            return .some("not built")
+        }
+        for (prefix, reason) in Self.unbuiltWithArgument where !inVisual && typed.hasPrefix(prefix) {
+            // "gg", "gv", "gu" and the other built g commands are not "g'" and are left alone.
+            if prefix == "z", typed.count > 1, typed.hasPrefix("zf") { break }
+            guard typed.count > prefix.count else { return .some(nil) }
+            return .some(reason)
+        }
+        guard let op = Self.unbuiltOperators.first(where: { typed.hasPrefix($0) }) else {
+            // A "g" or "z" second key that is neither built nor listed is left to the parser.
+            _ = first
+            return nil
+        }
+        if inVisual { return .some("not built") }
+        var index = start + op.count
+        _ = Self.readCount(keys, &index)
+        guard index < keys.count else { return .some(nil) }
+        // ==, !!, g??, gcc, gww: the line form.
+        if keys[index] == .char(op.last!) { return .some("not built") }
+        var motionIndex = index
+        switch parseMotion(keys, &motionIndex, textObjects: true) {
+        case .incomplete: return .some(nil)
+        case .done, .invalid: return .some("not built")
+        }
     }
 
     /// Digits past the cap are read but dropped, so no count overflows.
@@ -1095,6 +1171,9 @@ struct VimEngine {
         let effect = perform(command)
         // A macro or "." that stops says so for the key that played it, which fails too.
         if failed, message == nil { failureHint = failureHint(for: command) }
+        // A change that couldn't run (ci" with no quotes, c; with no find): the typing meant
+        // for insert mode is dropped until Esc instead of running as commands.
+        if failed, playDepth == 0, !isRepeating, case .operate(.change, _) = command.action { ignoresTyping = true }
         // Remember a change for "." (a repeat records itself again, count and all, as in vim);
         // changes made in visual mode are not repeated, and "." after one does nothing rather
         // than repeat an older change.

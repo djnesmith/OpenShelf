@@ -175,7 +175,9 @@ struct VimTextObjectTests {
     /// cursor where the search stopped; keys after it run as normal commands (checked against vim).
     @Test func wordCountsPastTheTextFail() {
         #expect(Self.run("|a b", "d999999iw") == "a |b")
-        #expect(Self.run("|a b", "c999999awX<Esc>") == "a|b")
+        // vim then runs X (deleting the blank); here a change that fails drops the typing
+        // until Esc instead (2026-11-20), so the text is as it was.
+        #expect(Self.run("|a b", "c999999awX<Esc>") == "a |b")
     }
 
     /// Windows line breaks from the clipboard paste as lines.
