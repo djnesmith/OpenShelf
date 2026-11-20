@@ -666,8 +666,10 @@ enum MailKeyActions {
         }
         guard route != "none" else {
             KeysLog.note("g \(name): not in Mail's Favorites or sidebar")
-            ToastController.shared.show(Toast(systemImage: "tray", title: "\(wanted) isn't in Mail's Favorites",
-                                              subtitle: "Nor in the sidebar; add it to Favorites in Mail"), for: .seconds(5))
+            // Follow Up, Send Later and Remind Me show in Mail only when they hold something.
+            let shownOnlyWhenFull = ["Follow Up", "Send Later", "Remind Me"].contains(name)
+            ToastController.shared.show(Toast(systemImage: "tray", title: shownOnlyWhenFull ? "\(wanted) isn't showing in Mail right now" : "\(wanted) isn't in Mail's Favorites",
+                                              subtitle: shownOnlyWhenFull ? "Mail shows it when it holds messages" : "Nor in the sidebar; add it to Favorites in Mail"), for: .seconds(5))
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {

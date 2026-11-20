@@ -45,7 +45,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    Open a message with `o`, then **Esc** (or `u`): the window closes. In the reading pane, `u`
    puts you back in the list; `g g` / `G` jump to the first / last message.
    `g i` All Inboxes, `g f` Flagged, `g s` All Sent, `g t` All Trash, `g d` All Drafts, `g a` All
-   Archive (a toast says if one isn't in Mail's Favorites).
+   Archive, `g j` All Junk, `g u` Follow Up, `g l` Send Later, `g r` Remind Me (a toast says if one
+   isn't in Mail's Favorites, or isn't showing because it is empty).
    Then `* a` and **Esc** (or `* n`): the selection clears (or only one message stays
    selected, if Mail insists on one); Esc with one message selected, or in a sheet, does what
    Mail always does.

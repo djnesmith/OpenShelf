@@ -59,6 +59,8 @@ enum MailKeys {
         // David, 2026-11-20: g f Flagged, g s All Sent, g t All Trash (not Gmail's letters).
         "i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"), "t": .favorite("Trash"),
         "d": .favorite("Drafts"), "a": .favorite("Archive"), "g": .firstMessage,
+        // David, 2026-11-20: g j All Junk, g u Follow Up, g l Send Later, g r Remind Me.
+        "j": .favorite("Junk"), "u": .favorite("Follow Up"), "l": .favorite("Send Later"), "r": .favorite("Remind Me"),
     ]
 
     static let afterStar: [Character: Action] = ["a": .menu("Edit", "Select All"), "n": .clearSelection]
@@ -170,6 +172,9 @@ enum MailKeys {
         case "Trash": ["All Trash", "Trash"]
         case "Drafts": ["All Drafts", "Drafts"]
         case "Archive": ["All Archive", "All Archives", "Archive"]
+        // Mail's own titles (MailFramework.loctable JunkSpecialMailboxName; Localizable and
+        // TableHeaderContextMenu for the others); these have no "All" form.
+        case "Junk": ["All Junk", "Junk"]
         default: [name]
         }
     }
@@ -457,6 +462,7 @@ enum MailKeys {
     static let help: [(String, String)] = [
         ("j / k", "next / previous message"), ("o", "open"), ("/", "search"),
         ("g i  g f  g s  g t  g d  g a", "All Inboxes, Flagged, All Sent, All Trash, All Drafts, All Archive"),
+        ("g j  g u  g l  g r", "All Junk, Follow Up, Send Later, Remind Me"),
         ("e  or  ]", "archive"), ("[", "archive, then the message above"), ("x", "move to Trash"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),

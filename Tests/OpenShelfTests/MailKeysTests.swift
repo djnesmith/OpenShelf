@@ -505,7 +505,8 @@ struct MailKeysTests {
     /// Trash, g d All Drafts, g a All Archive; g g stays the first message.
     @Test func goToKeys() {
         let expected: [Character: MailKeys.Action] = ["i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"),
-                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("Archive"), "g": .firstMessage]
+                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("Archive"), "g": .firstMessage,
+                                                      "j": .favorite("Junk"), "u": .favorite("Follow Up"), "l": .favorite("Send Later"), "r": .favorite("Remind Me")]
         for (key, action) in expected { #expect(MailKeys.outcome(for: key, pending: "g") == .act(action), "g \(key)") }
         #expect(MailKeys.outcome(for: "g", pending: nil) == .prefix("g"))
         #expect(MailKeys.help.contains { $0.0.contains("g f") && $0.1.contains("All Trash") })
@@ -525,5 +526,22 @@ struct MailKeysTests {
         #expect(MailKeys.showsUnified("Inbox", windowTitle: "Inbox"))
         #expect(!MailKeys.showsUnified("Inbox", windowTitle: "Sent – 12 messages"))
         #expect(!MailKeys.showsUnified("Sent", windowTitle: nil))
+    }
+
+    /// g then j, u, l or r inside the prefix time go to the mailbox and never run the plain
+    /// key (next message, back to the list, move picker, reply); on their own those keys
+    /// keep their meaning.
+    @Test func gPrefixedKeysNeverRunThePlainKey() {
+        for (key, mailbox) in [("j", "Junk"), ("u", "Follow Up"), ("l", "Send Later"), ("r", "Remind Me")] as [(Character, String)] {
+            #expect(MailKeys.outcome(for: key, pending: "g") == .act(.favorite(mailbox)), "g \(key)")
+        }
+        #expect(MailKeys.outcome(for: "j", pending: nil) == .act(.nextMessage))
+        #expect(MailKeys.outcome(for: "u", pending: nil) == .act(.backToList))
+        #expect(MailKeys.outcome(for: "l", pending: nil) == .act(.file))
+        #expect(MailKeys.outcome(for: "r", pending: nil) == .act(.menu("Message", "Reply")))
+        #expect(MailKeys.unifiedIndex(for: "Junk", in: ["All Junk"]) == 0)
+        #expect(MailKeys.unifiedIndex(for: "Remind Me", in: ["VIPs", "Remind Me"]) == 1)
+        #expect(MailKeys.unifiedIndex(for: "Send Later", in: ["Send Later (2)"]) == 0)
+        #expect(MailKeys.help.contains { $0.0.contains("g r") && $0.1.contains("Remind Me") })
     }
 }
