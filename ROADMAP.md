@@ -553,7 +553,7 @@ report is in the result panel and can be copied.
 - Record a region, then the existing video tools and GIF apply.
 - ScreenCaptureKit. Needs Screen Recording permission.
 
-**F5. Edit audio tags** (M)
+**F5. Edit audio tags** (M) — built 2026-11-19 (FORK-FEATURES #64)
 David, 2026-11-19: "editing the metadata tags of files like mp3s".
 - Today the audio and video Metadata tool only removes tags: `Tools/ToolLauncher.swift:49`
   runs `MediaTools.stripMetadata` (`Tools/Media/MediaFilters.swift:27`), a copy without title,

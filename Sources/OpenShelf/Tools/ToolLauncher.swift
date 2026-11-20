@@ -99,6 +99,8 @@ enum ToolLauncher {
             EditorWindowController.present(size: PDFSplitEditor.windowSize(for: urls.count), near: location, sourceShelfID: sourceShelfID) { PDFSplitEditor(urls: urls, actions: $0) }
         case .compressPDF:
             EditorWindowController.present(size: PDFCompressEditor.windowSize, near: location, sourceShelfID: sourceShelfID) { PDFCompressEditor(urls: urls, actions: $0) }
+        case .audioTags:
+            EditorWindowController.present(size: AudioTagsEditor.windowSize, near: location, sourceShelfID: sourceShelfID) { AudioTagsEditor(urls: urls, actions: $0) }
         case .pdfMetadata:
             EditorWindowController.present(size: PDFMetadataEditor.windowSize, near: location, sourceShelfID: sourceShelfID) { PDFMetadataEditor(urls: urls, actions: $0) }
         case .makeFillable:

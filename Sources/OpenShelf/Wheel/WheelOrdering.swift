@@ -13,8 +13,9 @@ enum WheelOrdering {
 
     /// Video tools; Merge only appears for several files.
     static let videoTools: [FileTool] = [
-        .mergeMedia, .trim, .compressVideo, .fitSize, .cropVideo, .rotateVideo, .splitMedia,
+        .mergeMedia, .trim, .compressVideo, .compressAudio, .fitSize, .cropVideo, .rotateVideo, .splitMedia,
         .speed, .mute, .stillFrame, .grayscale, .transcribe, .reverse, .mediaMetadata, .normalize, .volume, .mono, .frameRate, .export,
+        .audioTags,
     ]
 
     /// Conversions by the kind of file being converted. ZIP stays last.

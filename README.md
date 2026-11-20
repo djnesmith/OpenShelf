@@ -46,7 +46,8 @@ the file on a wedge and it's done, saved right next to the original.
   rate, fit under a size, export in a chosen codec, transcribe, OCR, PDF pages to images,
   crop to subject, GIF loop count, icons and animated PNGs, ebooks (calibre), markup
   (pandoc), data files, EDN, Parquet and SQLite, archives, subtitles, JPEG XL, Make Fillable,
-  Check Safety, BPM, Pretty Print, and a metadata Clean that checks the file's own bytes.
+  Check Safety, BPM, Pretty Print, a metadata Clean that checks the file's own bytes, and
+  audio tag editing (title, artist, album, cover art) for MP3, M4A and FLAC.
 - **Actions and shelves:** Copy to a folder with a name-clash dialog, Move and Copy that
   open on the last folder used, Copy Name, Open in iTerm2, Hide Shelves, ⌘-number wedges,
   and the wheel on selected shelf items.

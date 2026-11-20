@@ -523,6 +523,13 @@ While Mail is in front, ⌃⌥U opens Mail's own right-click menu on the one sel
 - Files: `Sources/OpenShelf/Text/Snippets.swift` (engine), `Text/SnippetWheel.swift`, `Text/TextWheel.swift` (`TextCommand.snippet`, `.snippetGroup`, `.snippetBack`), `Text/SelectedTextController.swift` (`openSnippets`, `insert`), `App/AppDelegate.swift`, `App/GlobalHotKey.swift`, `Settings/SettingsPanes.swift`
 - Check: `swift test --filter 'SnippetsTests|SnippetWheelTests'`. In the app: cursor in a TextEdit document, ⌃⌥I, Dates & Times ▸, ISO Date: today's date appears. A file `Reply.txt` holding `Dear {cursor},` in the snippets folder: the cursor lands before the comma.
 
+### 64. Edit audio tags (ROADMAP F5)
+David, 2026-11-19: "editing the metadata tags of files like mp3s". Tools › Tags on audio files (shown when ffmpeg is installed) opens a window with Title, Artist, Album, Album Artist, Track, Disc, Year, Genre and Comment, read with ffprobe (any case, and the other names files use: album artist, tracknumber, discnumber, date and year, description). For several files a field they disagree on shows "Mixed" and is left alone unless typed over; only fields that change are written, and an emptied field clears its tag. Cover: kept, removed, or replaced from a JPEG or PNG (an attached picture). Saved as a copy beside each file ("… tagged") unless "Change the original files" is on, which writes a finished copy and swaps it in, so a failure leaves the original as it was. ffmpeg copies the streams (`-c copy`, `-map_metadata 0`), so the sound is never re-encoded; MP3s get ID3 v2.3, which Finder and Music read. Checked on MP3, M4A and FLAC.
+- On the audio Tools wheel, Compress is now ranked with the everyday tools (it was unranked and only fit on page two by luck); Tags comes after Export.
+- Commits: this one
+- Files: `Sources/OpenShelf/Tools/Media/AudioTags.swift`, `Tools/Editors/AudioTagsEditor.swift`, `Tools/FileTool.swift` (`audioTags`), `Tools/ToolLauncher.swift`, `Wheel/WheelOrdering.swift`
+- Check: `swift test --filter AudioTagsTests` (the round trip runs when ffmpeg is installed). In the app: drag an MP3, Tools › Tags, change the title, Save; the "… tagged" copy shows the new title in Finder's Get Info.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

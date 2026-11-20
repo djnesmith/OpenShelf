@@ -33,6 +33,8 @@ enum FileTool: CaseIterable, Hashable {
     case stillFrame
     case reverse
     case mediaMetadata
+    /// Edit an audio file's tags (ROADMAP F5).
+    case audioTags
     case mono
     case normalize
     case grayscale
@@ -81,6 +83,7 @@ enum FileTool: CaseIterable, Hashable {
         case .stillFrame: "Still"
         case .reverse: "Reverse"
         case .mediaMetadata: "Metadata"
+        case .audioTags: "Tags"
         case .mono: "Mono"
         case .normalize: "Loudness"
         case .grayscale: "Grayscale"
@@ -104,6 +107,7 @@ enum FileTool: CaseIterable, Hashable {
         switch self {
         case .compress, .compressPDF, .compressVideo, .compressAudio: "arrow.down.right.and.arrow.up.left"
         case .metadata, .pdfMetadata, .mediaMetadata: "tag"
+        case .audioTags: "music.note.list"
         case .edit: "slider.horizontal.3"
         case .annotate: "pencil.tip.crop.circle"
         case .addBackground: "photo.on.rectangle"
@@ -223,7 +227,7 @@ enum FileTool: CaseIterable, Hashable {
         }
         if kinds == [.audio] {
             let bpm: [FileTool] = tools.aubio != nil && urls.allSatisfy(BPM.reads) ? [.bpm] : []
-            return merge + [.trim, .speed, .splitMedia, .compressAudio, .export, .transcribe] + (hasFFmpeg ? [.reverse, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : []) + bpm
+            return merge + [.trim, .speed, .splitMedia, .compressAudio, .export, .transcribe] + (hasFFmpeg ? [.reverse, .audioTags, .mediaMetadata, .mono, .normalize, .volume, .fitSize] : []) + bpm
         }
         return kinds.isSubset(of: [.image, .pdf]) ? combine + [.ocr] : combine
     }
