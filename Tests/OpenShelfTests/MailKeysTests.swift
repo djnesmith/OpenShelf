@@ -368,4 +368,52 @@ struct MailKeysTests {
         #expect(MailKeys.sendIsOn(menuRead: true, send: true))
         #expect(MailKeys.sendIsOn(menuRead: false, send: nil))
     }
+
+    @MainActor final class FakeWindow: MailKeys.ClosableWindow {
+        let isMainViewer: Bool
+        let hasButton: Bool
+        let answer: Bool
+        var presses = 0
+        init(viewer: Bool = false, hasButton: Bool = true, answer: Bool) {
+            isMainViewer = viewer
+            self.hasButton = hasButton
+            self.answer = answer
+        }
+        func pressCloseButton() -> Bool? {
+            guard hasButton else { return nil }
+            presses += 1
+            return answer
+        }
+    }
+
+    /// One press of the captured window's own close button, nothing else (2026-11-20: after
+    /// an error from that press, File › Close closed Mail's main viewer). An error answer is
+    /// not a reason to try anything else, and the viewer is never closed.
+    @MainActor @Test func closingIsOnePressAndNeverTheViewer() {
+        let erring = FakeWindow(answer: false)
+        #expect(MailKeys.closeOnce(erring) == .pressAnswered)
+        #expect(erring.presses == 1)
+        let fine = FakeWindow(answer: true)
+        #expect(MailKeys.closeOnce(fine) == .pressed)
+        #expect(fine.presses == 1)
+        let buttonless = FakeWindow(hasButton: false, answer: true)
+        #expect(MailKeys.closeOnce(buttonless) == .noCloseButton)
+        let viewer = FakeWindow(viewer: true, answer: true)
+        #expect(MailKeys.closeOnce(viewer) == .refusedMainViewer)
+        #expect(viewer.presses == 0)
+    }
+
+    /// The close path has no way to a menu item: MailKeyActions.close calls closeOnce and
+    /// logs, and closeOnce takes nothing that could press "Close" or any front-window action.
+    @Test func theClosePathNeverPressesAMenuItem() throws {
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/OpenShelf/Mail/MailKeyTap.swift"), encoding: .utf8)
+        let start = try #require(source.range(of: "    static func close(_ window: AXUIElement) {"))
+        let end = try #require(source.range(of: "\n    }\n", range: start.upperBound..<source.endIndex))
+        let body = source[start.lowerBound..<end.upperBound]
+        #expect(!body.contains("press("))
+        #expect(!body.contains("pressAnywhere("))
+        #expect(!body.contains("\"Close\""))
+    }
 }

@@ -62,6 +62,11 @@ final class MailKeyTap {
             return false
         }
         guard type == .keyDown, let key = Self.character(of: event) else { return false }
+        // One action per key down: a held Esc or u repeats, and after a close the next window
+        // in front would get it (2026-11-20). Repeats right after a close are dropped.
+        if key == MailKeys.escape || key == "u", event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            return Date().timeIntervalSince(MailKeyActions.lastCloseAt) < 2
+        }
         // One of OpenShelf's own panels (the snooze prompt, the folder picker) has the
         // keyboard over Mail: every key is typed there.
         if ownPanelHasKeyboard, !MailKeyHelp.shared.isOpen { return false }
@@ -465,10 +470,17 @@ enum MailKeyActions {
     }
 
     /// Esc on a message open in its own window: its close button, else File › Close.
+    /// When a key last closed a message window, so its repeats are dropped.
+    static var lastCloseAt = Date.distantPast
+
     static func close(_ window: AXUIElement) {
-        if let button = AXMenuNode.element(window, kAXCloseButtonAttribute),
-           AXUIElementPerformAction(button, kAXPressAction as CFString) == .success { return }
-        press("Close", under: "File")
+        lastCloseAt = Date()
+        let result = MailKeys.closeOnce(AXClosableWindow(element: window))
+        KeysLog.note("close: \(result)")
+        // Only a check afterwards, never another action.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            MainActor.assumeIsolated { KeysLog.note("close: window still open: \(AXMenuNode.string(window, kAXRoleAttribute) != nil)") }
+        }
     }
 
     /// Esc and `* n`: select none in the focused message list.
@@ -591,5 +603,18 @@ enum KeysLog {
 
     static func note(_ line: String) {
         SnoozeLog.append([line], to: fileURL)
+    }
+}
+
+/// A Mail window behind the close rule: its own close button, read and pressed once.
+@MainActor
+struct AXClosableWindow: MailKeys.ClosableWindow {
+    let element: AXUIElement
+
+    var isMainViewer: Bool { MailKeys.isMainViewer(AXDialogNode(element: element)) }
+
+    func pressCloseButton() -> Bool? {
+        guard let button = AXMenuNode.element(element, kAXCloseButtonAttribute) else { return nil }
+        return AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
     }
 }

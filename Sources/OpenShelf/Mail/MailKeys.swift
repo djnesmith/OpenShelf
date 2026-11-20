@@ -214,6 +214,38 @@ enum MailKeys {
         return .viaList(messages: current.count)
     }
 
+    /// A window a key may close, as the close rule sees it. A protocol, so tests use a fake.
+    @MainActor
+    protocol ClosableWindow {
+        /// Mail's main viewer: never closed by any key.
+        var isMainViewer: Bool { get }
+        /// Presses this window's own close button once; nil when it has none.
+        func pressCloseButton() -> Bool?
+    }
+
+    enum Closed: Equatable {
+        case pressed
+        /// Accessibility answered an error; the window may well be closed (it goes away
+        /// during the press), so nothing else is tried.
+        case pressAnswered
+        case noCloseButton
+        case refusedMainViewer
+    }
+
+    /// Closes the captured message window with one press of its own close button, and does
+    /// nothing else (2026-11-20: after an error from that press, a File › Close fallback
+    /// closed the next front window, Mail's main viewer). No menu item and no front-window
+    /// action is ever used here, and the main viewer is never closed.
+    @MainActor
+    static func closeOnce(_ window: ClosableWindow) -> Closed {
+        guard !window.isMainViewer else { return .refusedMainViewer }
+        switch window.pressCloseButton() {
+        case nil: return .noCloseButton
+        case true?: return .pressed
+        case false?: return .pressAnswered
+        }
+    }
+
     /// A message list's selection, by row index. A protocol, so tests use a fake.
     @MainActor
     protocol SelectableList {
