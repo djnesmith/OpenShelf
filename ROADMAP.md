@@ -487,6 +487,25 @@ Today a text or source file reaches the file wheel, which has only Pretty Print 
     then the rest of the Pretty Print list.
   - The other option was a small regex tokenizer per language: no new code from others, but
     wrong on edge cases (nested forms, multi-line strings, fenced code).
+- Spike, 2026-11-19 (throwaway, outside the repo; runtime 0.27.2 and the nine grammars at
+  their latest tags, called through tree-sitter's C API with no Swift binding):
+  - Size added: runtime 0.15 MB; Clojure 0.08, JSON 0.004, Markdown 0.37 + inline 0.37,
+    Python 0.44, YAML 0.18, Bash 1.3, Swift 4.0, SQL 12.7 MB. All nine: about 20.5 MB on
+    today's 13 MB app; without SQL about 7 MB.
+  - Speed on a 2,000-line file: full parse 1-17 ms, reparse after one key under 3 ms, coloring
+    80 visible lines under 0.2 ms. On a 2 MB file: full parse 18-208 ms, reparse after one key
+    up to 80 ms (Bash), memory 13-88 MB, visible coloring still under 0.2 ms. So parse and
+    reparse run off the main thread, and big files keep the old colors until the new tree lands.
+  - Accuracy: on a Clojure sample with a multi-line docstring, `;` inside strings and a regex,
+    and a Markdown sample with `#` and `*` inside a fenced block, a quick regex colorer made six
+    mistakes and tree-sitter none.
+  - To fit the Edit window: `render()` sets the whole string on every change, which drops
+    colors and gives no edit range; it needs a one-range replace (common prefix and suffix)
+    that also feeds `ts_tree_edit`. Colors go in as layout-manager temporary attributes, so the
+    text storage never changes. Our own highlight queries are needed (the Clojure grammar's
+    colors no discard forms or regexes), plus `#match?` and `#eq?` handling, and Markdown needs
+    its inline grammar and an injection for fenced code. The Edit window itself is not yet
+    measured on a 2 MB file.
 - Colors: a light and a dark set that follow the system appearance; comments in the same gray
   as the line numbers.
 - Highlighting only sets display colors. It never changes the text or the saved bytes.
