@@ -175,72 +175,69 @@ struct AppleScriptMailFiling: MailFilingScripting {
     }
 
     /// The listing script; its handler talks to Mail inside its own tell block.
-    static let listingSource = """
-        -- Diagnostic (2026-11-20): every scope still failed with -1700. Each step writes a
-        -- marker before it runs, and every error carries its number and Mail's text, so the
-        -- log shows the last step reached and the exact coercion (names are scrubbed in Swift).
-        on walk(boxes, prefix, accountName, scope)
-            set out to "#STEP" & tab & scope & " entered" & linefeed
-            tell application id "com.apple.mail"
-                set stage to "class of list"
+    nonisolated static let listingSource = """
+        -- Every variable starts with "os": inside a tell to Mail a plain word such as scope,
+        -- name, id or result is Mail's own term (2026-11-20: "set scope" failed with -10006,
+        -- and the earlier -1700 came from a parameter named scope). Mail is asked only in
+        -- one-line tells; the text is built outside them. A test compiles this script and
+        -- checks no variable is an application term.
+        on osWalk(osBoxes, osPrefix, osAccountTitle, osScopeName)
+            set osOut to ""
+            repeat with osIndex from 1 to (count of osBoxes)
+                set osStage to "item"
                 try
-                    set out to out & "#STEP" & tab & scope & " list class " & ((class of boxes) as text) & linefeed
-                    set stage to "count"
-                    set total to count of boxes
-                    set out to out & "#STEP" & tab & scope & " count " & (total as text) & linefeed
-                on error msg number e
-                    return out & "#FAIL" & tab & scope & " " & (e as text) & " at " & stage & ": " & msg & linefeed
+                    set osBox to item osIndex of osBoxes
+                    set osStage to "name"
+                    tell application id "com.apple.mail" to set osBoxName to name of osBox
+                    if osBoxName is not missing value then
+                        set osStage to "text"
+                        set osPath to osPrefix & (osBoxName as text)
+                        set osOut to osOut & osAccountTitle & tab & osPath & linefeed
+                        set osStage to "children"
+                        tell application id "com.apple.mail" to set osChildren to mailboxes of osBox
+                        set osOut to osOut & my osWalk(osChildren, osPath & "/", osAccountTitle, osScopeName)
+                    end if
+                on error osMessage number osNumber
+                    set osOut to osOut & "#SKIP" & tab & osScopeName & " " & (osNumber as text) & " at " & osStage & ": " & osMessage & linefeed
                 end try
-                repeat with i from 1 to total
-                    set stage to "item"
-                    try
-                        set b to item i of boxes
-                        set stage to "name"
-                        set n to name of b
-                        if n is not missing value then
-                            set stage to "text"
-                            set p to prefix & (n as text)
-                            set out to out & accountName & tab & p & linefeed
-                            set stage to "children"
-                            set out to out & my walk(mailboxes of b, p & "/", accountName, scope)
-                        end if
-                    on error msg number e
-                        set out to out & "#SKIP" & tab & scope & " " & (e as text) & " at " & stage & ": " & msg & linefeed
-                    end try
-                end repeat
-                return out
-            end tell
-        end walk
-        tell application id "com.apple.mail"
-            with timeout of 20 seconds
-                set out to ""
+            end repeat
+            return osOut
+        end osWalk
+
+        with timeout of 20 seconds
+            set osOut to ""
+            try
+                tell application id "com.apple.mail" to set osTop to mailboxes
+                set osOut to osOut & "#STEP" & tab & "On My Mac got " & ((count of osTop) as text) & linefeed
+                set osOut to osOut & my osWalk(osTop, "", "", "On My Mac") & "#DONE" & tab & "On My Mac" & linefeed
+            on error osMessage number osNumber
+                set osOut to osOut & "#ERR" & tab & "On My Mac " & (osNumber as text) & ": " & osMessage & linefeed
+            end try
+            try
+                tell application id "com.apple.mail" to set osAccounts to every account
+            on error osMessage number osNumber
+                return osOut & "#ERR" & tab & "accounts " & (osNumber as text) & ": " & osMessage & linefeed
+            end try
+            set osAccountIndex to 0
+            repeat with osAccountRef in osAccounts
+                set osAccountIndex to osAccountIndex + 1
+                set osScopeName to "account " & (osAccountIndex as text)
                 try
-                    set top to mailboxes
-                    set out to out & "#STEP" & tab & "On My Mac got the list" & linefeed
-                    set out to out & my walk(top, "", "", "On My Mac") & "#DONE" & tab & "On My Mac" & linefeed
-                on error msg number n
-                    set out to out & "#ERR" & tab & "On My Mac " & (n as text) & ": " & msg & linefeed
+                    tell application id "com.apple.mail" to set osEnabled to enabled of osAccountRef
+                    if osEnabled then
+                        tell application id "com.apple.mail" to set osAccountBoxes to mailboxes of osAccountRef
+                        tell application id "com.apple.mail" to set osAccountTitle to name of osAccountRef
+                        set osOut to osOut & "#STEP" & tab & osScopeName & " got " & ((count of osAccountBoxes) as text) & linefeed
+                        set osOut to osOut & my osWalk(osAccountBoxes, "", (osAccountTitle as text), osScopeName) & "#DONE" & tab & osScopeName & linefeed
+                    else
+                        set osOut to osOut & "#OFF" & tab & osScopeName & linefeed
+                    end if
+                on error osMessage number osNumber
+                    set osOut to osOut & "#ERR" & tab & osScopeName & " " & (osNumber as text) & ": " & osMessage & linefeed
                 end try
-                set i to 0
-                repeat with a in accounts
-                    set i to i + 1
-                    set scope to "account " & (i as text)
-                    try
-                        if enabled of a then
-                            set boxes to mailboxes of a
-                            set out to out & "#STEP" & tab & scope & " got the list" & linefeed
-                            set accountName to (name of a) as text
-                            set out to out & my walk(boxes, "", accountName, scope) & "#DONE" & tab & scope & linefeed
-                        else
-                            set out to out & "#OFF" & tab & scope & linefeed
-                        end if
-                    on error msg number n
-                        set out to out & "#ERR" & tab & scope & " " & (n as text) & ": " & msg & linefeed
-                    end try
-                end repeat
-                return out
-            end timeout
-        end tell
+            end repeat
+            return osOut
+        end timeout
         """
 
     private func list(_ source: String) async -> [MailFiling.Mailbox] {
@@ -271,14 +268,7 @@ struct AppleScriptMailFiling: MailFilingScripting {
     func moveSelection(to mailbox: MailFiling.Mailbox) async -> String? {
         func quoted(_ text: String) -> String { "\"" + text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
         let target = mailbox.account.isEmpty ? "mailbox \(quoted(mailbox.path))" : "mailbox \(quoted(mailbox.path)) of account \(quoted(mailbox.account))"
-        let source = """
-        tell application id "com.apple.mail"
-            set picked to selection as list
-            if (count of picked) is 0 then return "Select a message in Mail first"
-            move picked to \(target)
-            return ""
-        end tell
-        """
+        let source = MailScripts.move(to: target)
         let outcome = await MailScript.run("move selection", source)
         if let problem = MailScript.problem(outcome) { return "\(problem.title): \(problem.subtitle)" }
         let text = outcome.text ?? ""

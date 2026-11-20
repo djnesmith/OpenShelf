@@ -213,10 +213,12 @@ struct MailFilingTests {
     /// "mailboxes" compiled as a plain name and every account failed with -1700.
     @Test func theListingHandlerTalksToMail() throws {
         let source = AppleScriptMailFiling.listingSource
-        let start = try #require(source.range(of: "on walk("))
-        let end = try #require(source.range(of: "end walk"))
+        let start = try #require(source.range(of: "on osWalk("))
+        let end = try #require(source.range(of: "end osWalk"))
         let handler = source[start.upperBound..<end.lowerBound]
-        #expect(handler.contains("tell application id \"com.apple.mail\""))
-        #expect(handler.contains("on error msg number e"))
+        // Mail is asked in one-line tells; the text is built outside them.
+        #expect(handler.contains("tell application id \"com.apple.mail\" to set osBoxName to name of osBox"))
+        #expect(handler.contains("tell application id \"com.apple.mail\" to set osChildren to mailboxes of osBox"))
+        #expect(handler.contains("on error osMessage number osNumber"))
     }
 }

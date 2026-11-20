@@ -143,15 +143,7 @@ enum MailUnsubscribe {
 extension MailScripting {
     /// The selected messages' senders, through Mail's AppleScript.
     func selectedSenders() async -> [String] {
-        let source = """
-        tell application id "com.apple.mail"
-            set out to ""
-            repeat with m in (selection as list)
-                set out to out & (extract address from (sender of m)) & linefeed
-            end repeat
-            return out
-        end tell
-        """
+        let source = MailScripts.selectedSenders
         guard let text = await MailScript.run("selected senders", source).text else { return [] }
         return text.split(separator: "\n").map(String.init)
     }

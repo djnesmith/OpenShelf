@@ -459,15 +459,7 @@ enum MailKeyActions {
     /// (Mail's AppleScript; never a subject or body).
     static func snapshot(_ viewer: AXUIElement) async -> MailKeys.ListSnapshot {
         let rows = AXSelectableList.inViewer(viewer)?.rows.count ?? 0
-        let source = """
-        tell application id "com.apple.mail"
-            set out to ""
-            repeat with m in (selection as list)
-                set out to out & (message id of m) & tab & (flagged status of m as text) & tab & (read status of m as text) & linefeed
-            end repeat
-            return out
-        end tell
-        """
+        let source = MailScripts.selectionState
         let text = await MailScript.run("selection state", source).text ?? ""
         var snapshot = MailKeys.ListSnapshot(rows: rows, selected: [])
         for line in text.split(separator: "\n") {

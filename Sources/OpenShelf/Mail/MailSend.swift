@@ -152,15 +152,7 @@ protocol MailScripting {
 /// Automation permission for Mail, asked the first time.
 struct AppleScriptMail: MailScripting {
     func selectedMessages() async -> [MailSend.Selected] {
-        let source = """
-        tell application id "com.apple.mail"
-            set out to ""
-            repeat with m in (selection as list)
-                set out to out & (message id of m) & tab & (subject of m) & linefeed
-            end repeat
-            return out
-        end tell
-        """
+        let source = MailScripts.selectedMessages
         guard let text = await MailScript.run("selected messages", source).text else { return [] }
         return text.split(separator: "\n").compactMap { line in
             let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
