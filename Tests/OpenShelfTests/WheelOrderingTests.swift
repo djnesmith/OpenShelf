@@ -36,13 +36,13 @@ struct WheelOrderingTests {
     @Test func imageToolsLeadWithTheEverydayOnes() {
         #expect(tools(urls("a.jpg")) == [
             .compress, .crop, .resize, .annotate, .removeBackground, .edit,
-            .metadata, .redact, .addBackground, .readQR, .ocr, .icon,
+            .metadata, .redact, .cleanImage, .addBackground, .readQR, .ocr, .icon,
         ])
     }
 
     @Test func severalImagesAddCombineAtTheEnd() {
         let tools = tools(urls("a.jpg", "b.png"))
-        #expect(tools.count == 13)
+        #expect(tools.count == 14)
         #expect(firstPage(tools) == [.compress, .crop, .resize, .annotate, .removeBackground, .edit])
         #expect(tools.last == .combinePDF)
     }

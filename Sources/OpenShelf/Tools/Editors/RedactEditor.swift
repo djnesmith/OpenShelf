@@ -4,6 +4,8 @@ import SwiftUI
 
 enum RedactionStyle: CaseIterable, Identifiable, Hashable {
     case box, pixelate, blur
+    /// Filled from the pixels around it, to blend in (ROADMAP E6).
+    case fill
 
     var id: Self { self }
 
@@ -12,6 +14,7 @@ enum RedactionStyle: CaseIterable, Identifiable, Hashable {
         case .box: "Black box"
         case .pixelate: "Pixelate"
         case .blur: "Blur"
+        case .fill: "Fill"
         }
     }
 }
@@ -40,7 +43,13 @@ enum Redaction {
     /// preview looks the same as the full-resolution result.
     static func apply(to image: CGImage, areas: [(rect: CGRect, look: RedactionLook)]) -> CGImage? {
         guard !areas.isEmpty else { return image }
-        let source = CIImage(cgImage: image)
+        // Fill areas are worked out from the pixels around them, before the other looks.
+        let fills = areas.filter { $0.look.style == .fill }.map(\.rect)
+        let base = fills.isEmpty ? image : (ImageFill.fill(image, areas: fills) ?? image)
+        let others = areas.filter { $0.look.style != .fill }
+        guard !others.isEmpty else { return base }
+        let areas = others
+        let source = CIImage(cgImage: base)
         var output = source
         // One pass per look, each filtering the original so looks don't compound.
         var looks: [RedactionLook] = []
@@ -82,6 +91,9 @@ enum Redaction {
             covered = source.clampedToExtent()
                 .applyingGaussianBlur(sigma: max(longSide * (0.003 + amount * 0.025), 1))
                 .cropped(to: extent)
+        case .fill:
+            // Done on the pixels before this, in `apply`.
+            return background
         }
 
         var mask = CIImage(color: .black).cropped(to: extent)
@@ -107,6 +119,9 @@ struct RedactEditor: View {
 
     let images: [EditableImage]
     let actions: EditorActions
+    /// Clean Image (ROADMAP E6): areas are filled to blend in, every image's metadata goes,
+    /// and a report says what was removed.
+    var cleans = false
     private let previewImages: [CGImage]
 
     @State private var index = 0
@@ -138,9 +153,11 @@ struct RedactEditor: View {
         var looks: [RedactionLook]
     }
 
-    init(images: [EditableImage], actions: EditorActions) {
+    init(images: [EditableImage], actions: EditorActions, cleans: Bool = false) {
         self.images = images
         self.actions = actions
+        self.cleans = cleans
+        if cleans { _style = State(initialValue: .fill) }
         previewImages = images.map { AnnotationPreviewImage.downscaled($0.cgImage) }
         _marks = State(initialValue: images.map { _ in ImageRegions() })
         _thumbnails = State(initialValue: images.count > 1 ? images.map { $0.thumbnail() } : [])
@@ -173,9 +190,10 @@ struct RedactEditor: View {
 
     var body: some View {
         EditorChrome(
-            title: "Redact",
-            primaryTitle: primaryTitle,
-            isPrimaryEnabled: !isWorking && editedCount > 0,
+            title: cleans ? "Clean Image" : "Redact",
+            primaryTitle: cleans ? "Clean" : primaryTitle,
+            // Cleaning removes metadata even with no area marked.
+            isPrimaryEnabled: !isWorking && (cleans || editedCount > 0),
             actions: actions,
             onReset: reset,
             onPrimary: save
@@ -212,8 +230,8 @@ struct RedactEditor: View {
                 }
 
                 EditorSlider(label: "Strength", value: $strength, range: 1...100, unit: "%")
-                    .disabled(style == .box)
-                    .opacity(style == .box ? 0.45 : 1)
+                    .disabled(style == .box || style == .fill)
+                    .opacity(style == .box || style == .fill ? 0.45 : 1)
             }
             .background {
                 AnnotationShortcutButton(key: .delete, isEnabled: selectedID != nil, action: deleteSelection)
@@ -440,6 +458,7 @@ struct RedactEditor: View {
     }
 
     private func save() {
+        if cleans { return clean() }
         let jobs = images.indices.map { (images[$0], marks[$0].regions) }
         guard isBatch else {
             do {
@@ -461,6 +480,44 @@ struct RedactEditor: View {
                     actions.failed(error)
                 }
             }
+        }
+    }
+}
+
+extension RedactEditor {
+    /// Clean Image: each image's areas filled and its metadata removed, then the report.
+    private func clean() {
+        let jobs = images.indices.map { (images[$0], marks[$0].regions.map(\.rect)) }
+        isWorking = true
+        Task.detached {
+            let result = Result { try jobs.map { try ImageCleaner.clean($0.0, areas: $0.1) } }
+            await MainActor.run {
+                isWorking = false
+                switch result {
+                case .success(let cleaned):
+                    let report = cleaned.map { "\($0.url.lastPathComponent): \($0.report)" }.joined(separator: "\n\n")
+                    actions.finished(SaveOutcome(saved: cleaned.map(\.url), savedLabel: "cleaned"))
+                    CleanReport.show(report)
+                case .failure(let error):
+                    actions.failed(error)
+                }
+            }
+        }
+    }
+}
+
+/// The Clean Image report: what was removed, with a Copy button (ROADMAP E6).
+@MainActor
+enum CleanReport {
+    static func show(_ report: String) {
+        let alert = NSAlert()
+        alert.messageText = "Cleaned"
+        alert.informativeText = report
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Copy Report")
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(report, forType: .string)
         }
     }
 }

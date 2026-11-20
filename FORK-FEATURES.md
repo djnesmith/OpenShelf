@@ -548,6 +548,12 @@ The three text tools used last (kept between launches, `TextWheelRecentTools`) c
 - Files: `Sources/OpenShelf/Text/TextRecents.swift`, `Text/TextWheel.swift` (`items(for:group:recent:favorites:)`), `Text/SelectedTextController.swift`, `Settings/SettingsPanes.swift`
 - Check: `swift test --filter 'TextRecentsTests|TextWheelTests'`. In the app: run Sort A to Z on some lines, then ⌃⌥Space again: Sort A to Z is the first wedge.
 
+### 67. Clean Image: hidden data and marked areas, with a report (ROADMAP E6)
+David, 2026-11-19: "should remove non-hidden and hidden ones that the same time, it should report back what it removed". Tools › Clean on images opens the Redact window in clean mode: mark the areas to remove (none is fine), then Clean saves "<name> Clean.<ext>" beside each image (never over it), same format, quality 0.95. The marked areas are filled to blend with what's around them, a smooth fill solved from each area's edge pixels (no model, no network: good on flat or gently changing backgrounds, it smears on detail). The pixels are then re-encoded with no metadata, and the copy's own bytes are checked (as Metadata › Clean does), so nothing hidden survives. A report lists what was removed, from ImageIO's properties and the file's bytes, e.g. "Removed: EXIF (Canon, EOS R5, RF 50mm), GPS location, IPTC (caption, creator), Content Credentials (C2PA), text comments; filled 1 marked area (bottom right, 20×10 px). Pixel-embedded marks, if any, are untouched."; it has a Copy Report button. There is no automatic watermark finding: only the areas the user marks are filled. Animated images and multi-page TIFFs get the metadata pass only. Redact also gains the Fill look. Not built: a model (LaMa) for detailed backgrounds, which needs David's yes.
+- Commits: this one
+- Files: `Sources/OpenShelf/Tools/Editors/ImageFill.swift`, `Tools/Editors/ImageCleaner.swift`, `Tools/Editors/RedactEditor.swift` (`cleans`, `.fill`, `CleanReport`), `Tools/FileTool.swift` (`cleanImage`), `Tools/ToolLauncher.swift`, `Wheel/WheelOrdering.swift`
+- Check: `swift test --filter ImageCleanerTests`. In the app: drag a photo with a location, Tools › Clean, mark a small logo, Clean: the report names GPS location and the area, and the copy's logo is gone.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

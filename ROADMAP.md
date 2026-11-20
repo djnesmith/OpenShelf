@@ -499,7 +499,7 @@ post it back as normal")
 - Risk: reading the current network name needs Location permission on recent macOS, and the
   password needs typing or Keychain access.
 
-**E6. Clean an image: hidden data and marked areas, with a report** (M, more with a model)
+**E6. Clean an image: hidden data and marked areas, with a report** (M, more with a model) — first version built 2026-11-19 (FORK-FEATURES #67): hidden pass, report, no-dependency fill
 David, 2026-11-19: "should remove non-hidden and hidden ones that the same time, it should report
 back what it removed". One tool that does two passes and then lists what it removed, e.g.
 "Removed: EXIF (camera, lens), GPS location, IPTC caption and creator, XMP, Content Credentials

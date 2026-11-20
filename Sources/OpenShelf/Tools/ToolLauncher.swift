@@ -12,7 +12,7 @@ enum ToolLauncher {
         let runner = ConversionRunner.shared
 
         switch tool {
-        case .compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact:
+        case .compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .cleanImage:
             openImageEditor(tool, with: urls, near: location, sourceShelfID: sourceShelfID)
 
         case .readQR:
@@ -159,6 +159,8 @@ enum ToolLauncher {
             EditorWindowController.present(size: AnnotateEditor.windowSize(for: images.count), near: location, sourceShelfID: sourceShelfID) { AnnotateEditor(images: images, actions: $0) }
         case .redact:
             EditorWindowController.present(size: RedactEditor.windowSize(for: images.count), near: location, sourceShelfID: sourceShelfID) { RedactEditor(images: images, actions: $0) }
+        case .cleanImage:
+            EditorWindowController.present(size: RedactEditor.windowSize(for: images.count), near: location, sourceShelfID: sourceShelfID) { RedactEditor(images: images, actions: $0, cleans: true) }
         case .edit:
             EditorWindowController.present(size: AdjustEditor.windowSize(for: images.count), near: location, sourceShelfID: sourceShelfID) { AdjustEditor(images: images, actions: $0) }
         case .compress:

@@ -12,6 +12,8 @@ enum FileTool: CaseIterable, Hashable {
     case resize
     case removeBackground
     case redact
+    /// Fill marked areas and remove all metadata, with a report (ROADMAP E6).
+    case cleanImage
     case readQR
     // PDFs (and images, for Combine).
     case combinePDF
@@ -64,6 +66,7 @@ enum FileTool: CaseIterable, Hashable {
         case .resize: "Resize"
         case .removeBackground: "Remove BG"
         case .redact: "Redact"
+        case .cleanImage: "Clean"
         case .readQR: "Read QR"
         case .combinePDF: "Combine"
         case .organizePages: "Pages"
@@ -115,6 +118,7 @@ enum FileTool: CaseIterable, Hashable {
         case .resize: "arrow.up.left.and.arrow.down.right"
         case .removeBackground: "person.crop.rectangle"
         case .redact: "eye.slash"
+        case .cleanImage: "wand.and.stars"
         case .readQR: "qrcode.viewfinder"
         case .combinePDF: "doc.on.doc"
         case .organizePages: "square.grid.2x2"
@@ -200,7 +204,7 @@ enum FileTool: CaseIterable, Hashable {
 
         if kinds == [.image] {
             let gifs: [FileTool] = urls.allSatisfy { $0.pathExtension.lowercased() == "gif" } ? [.gifLoop] : []
-            return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .readQR, .ocr, .icon] + gifs + combine
+            return [.compress, .metadata, .edit, .annotate, .addBackground, .crop, .resize, .removeBackground, .redact, .cleanImage, .readQR, .ocr, .icon] + gifs + combine
         }
         if urls.allSatisfy({ PrettyPrint.formatter(for: $0, tools: tools) != nil }) {
             return [.prettyPrint]
