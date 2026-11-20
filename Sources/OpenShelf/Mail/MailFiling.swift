@@ -553,6 +553,9 @@ struct AppleScriptMailFiling: MailFilingScripting {
     func move(to mailbox: MailFiling.Mailbox) async -> MailFiling.MoveReport {
         let chain = mailbox.chain
         guard !chain.isEmpty else { return MailFiling.report(.notMoved, total: 0, to: mailbox, problem: "No folder chosen") }
+        // Mail's own Move first: it takes the message out of where it was, which the
+        // scripted move doesn't on Gmail. The script only when the menu can't be used.
+        if let report = await MailMoveMenuRoute.move(to: mailbox) { return report }
         let started = Date()
         let outcome = await MailScript.run("move and check", MailScripts.moveAndCheck(account: mailbox.account, chain: chain))
         let elapsed = Int(Date().timeIntervalSince(started) * 1000)
