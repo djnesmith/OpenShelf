@@ -20,8 +20,8 @@ What is left of ROADMAP.md, MAIL-PLAN.md and TRY-TOMORROW.md, checked against th
 | Stage 10: capture, services and power tools | 0 | 1 | 6 |
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 1 | 1 |
-| Text tools on files (ROADMAP.md:220 design) | — | — | 1 |
-| **Total** | 19 | 7 | 38 |
+| Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
+| **Total** | 19 | 7 | 39 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
 ## Stage 1: select, press, fix it
@@ -164,7 +164,7 @@ Only the selection is built. A text or source file reaches the file wheel, not t
 
 | Id | What it is | Size | Needs first |
 |---|---|---|---|
-| Text tools on files | A "Text" entry in the file Tools wheel for text and source files that opens the text wheel on the file's text (UTF-8 only, size cap, binary refused). Changes save as a copy beside the file ("name Sorted.ext"), as other tools do, so no undo is needed. Reports (Count, Hash) show a toast. The live preview works as is. The Edit window would need a Save to a copy. Snippets do not apply. | M | Decide: copy beside the file (as every tool does today) or change it in place (then it needs an undo) |
+| Text tools on files (ROADMAP C14) | A "Text" entry in the file Tools wheel for text and source files that opens the text wheel on the file's text (UTF-8 only, size cap, binary refused). Changes save as a copy beside the file ("name Sorted.ext"), as other tools do, so no undo is needed. Reports (Count, Hash) show a toast. The live preview works as is. The Edit window would need a Save to a copy. Snippets do not apply. | M | Decide: copy beside the file (as every tool does today) or change it in place (then it needs an undo) |
 
 ### Editing a file in place: a safe design (not built)
 
@@ -191,6 +191,12 @@ Edit window only puts text back into an app or on the clipboard; "nothing is wri
   paragraphs (TRY-TOMORROW), so in-place writes must skip that change or refuse such files.
 - Size: M for one-shot tools plus undo; M for the Edit window on top. Needs David's choice of
   in place (this design) or a copy beside the file.
+
+### Syntax highlighting (ROADMAP C15)
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| C15 | Color the Edit window's text by file type when editing a file. | S-M built in; M with tree-sitter | C14; David's yes if tree-sitter (third-party code); open question: also for selected text |
 
 ## Mail leftovers
 
