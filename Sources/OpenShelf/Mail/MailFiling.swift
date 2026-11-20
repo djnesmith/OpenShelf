@@ -85,6 +85,8 @@ enum MailFiling {
                 skips = []
             case "#OFF": parts.append("\(fields[1]) off")
             case "#ERR": read = 0; skips = []
+            case "#STEP": continue
+            case "#FAIL": skips.append(String(fields[1].split(separator: " ").dropFirst(2).first ?? "?"))
             default: read += 1
             }
         }
@@ -116,7 +118,7 @@ enum MailFiling {
     static func showPicker(scripting: MailFilingScripting = AppleScriptMailFiling()) {
         opening += 1
         let mine = opening
-        MailboxPicker.shared.show(mailboxes: cache ?? [], recent: loadRecent(), loading: cache == nil) { chosen in
+        let choose: (Mailbox) -> Void = { chosen in
             MailMenu.running?.activate()
             Task { @MainActor in
                 if let problem = await scripting.moveSelection(to: chosen) {
@@ -127,16 +129,23 @@ enum MailFiling {
                 }
             }
         }
+        // With a list from this session the picker opens at once; without one it opens only
+        // when Mail's list arrives, so a failure is a toast, never a picker that flashes.
+        let shownAtOnce = cache != nil
+        if let cache { MailboxPicker.shared.show(mailboxes: cache, recent: loadRecent(), onChoose: choose) }
         Task { @MainActor in
             let boxes = await scripting.mailboxes()
             if !boxes.isEmpty { cache = boxes }
-            switch arrival(boxes: boxes, for: mine, current: opening, pickerOpen: MailboxPicker.shared.isOpen, cached: cache) {
+            let pickerOpen = shownAtOnce ? MailboxPicker.shared.isOpen : true
+            switch arrival(boxes: boxes, for: mine, current: opening, pickerOpen: pickerOpen, cached: cache) {
             case .show(let list):
-                MailboxPicker.shared.update(mailboxes: list)
+                if shownAtOnce { MailboxPicker.shared.update(mailboxes: list) } else {
+                    MailboxPicker.shared.show(mailboxes: list, recent: loadRecent(), onChoose: choose)
+                }
             case .dropped:
                 break
             case .fail:
-                MailboxPicker.shared.close()
+                if shownAtOnce { MailboxPicker.shared.close() }
                 let problem = scripting.lastProblem ?? (title: "Can't file", subtitle: "Mail returned no mailboxes")
                 ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: problem.title, subtitle: problem.subtitle), for: .seconds(8))
             }
@@ -167,22 +176,36 @@ struct AppleScriptMailFiling: MailFilingScripting {
 
     /// The listing script; its handler talks to Mail inside its own tell block.
     static let listingSource = """
-        -- The handler talks to Mail itself: outside a tell block "mailboxes" compiled as a
-        -- plain name, so "mailboxes of b" failed with -1700 for every account (2026-11-20).
-        -- Each mailbox has its own try, so one odd mailbox doesn't empty an account.
+        -- Diagnostic (2026-11-20): every scope still failed with -1700. Each step writes a
+        -- marker before it runs, and every error carries its number and Mail's text, so the
+        -- log shows the last step reached and the exact coercion (names are scrubbed in Swift).
         on walk(boxes, prefix, accountName, scope)
+            set out to "#STEP" & tab & scope & " entered" & linefeed
             tell application id "com.apple.mail"
-                set out to ""
-                repeat with b in boxes
+                set stage to "class of list"
+                try
+                    set out to out & "#STEP" & tab & scope & " list class " & ((class of boxes) as text) & linefeed
+                    set stage to "count"
+                    set total to count of boxes
+                    set out to out & "#STEP" & tab & scope & " count " & (total as text) & linefeed
+                on error msg number e
+                    return out & "#FAIL" & tab & scope & " " & (e as text) & " at " & stage & ": " & msg & linefeed
+                end try
+                repeat with i from 1 to total
+                    set stage to "item"
                     try
+                        set b to item i of boxes
+                        set stage to "name"
                         set n to name of b
                         if n is not missing value then
+                            set stage to "text"
                             set p to prefix & (n as text)
                             set out to out & accountName & tab & p & linefeed
+                            set stage to "children"
                             set out to out & my walk(mailboxes of b, p & "/", accountName, scope)
                         end if
-                    on error number e
-                        set out to out & "#SKIP" & tab & scope & " " & e & linefeed
+                    on error msg number e
+                        set out to out & "#SKIP" & tab & scope & " " & (e as text) & " at " & stage & ": " & msg & linefeed
                     end try
                 end repeat
                 return out
@@ -192,23 +215,27 @@ struct AppleScriptMailFiling: MailFilingScripting {
             with timeout of 20 seconds
                 set out to ""
                 try
-                    set out to my walk(mailboxes, "", "", "On My Mac") & "#DONE" & tab & "On My Mac" & linefeed
-                on error number n
-                    set out to out & "#ERR" & tab & "On My Mac " & n & linefeed
+                    set top to mailboxes
+                    set out to out & "#STEP" & tab & "On My Mac got the list" & linefeed
+                    set out to out & my walk(top, "", "", "On My Mac") & "#DONE" & tab & "On My Mac" & linefeed
+                on error msg number n
+                    set out to out & "#ERR" & tab & "On My Mac " & (n as text) & ": " & msg & linefeed
                 end try
-                -- One account that can't be read (Exchange, a Gmail label, a slow server)
-                -- doesn't hide the rest; its error number is reported, not its name.
                 set i to 0
                 repeat with a in accounts
                     set i to i + 1
+                    set scope to "account " & (i as text)
                     try
                         if enabled of a then
-                            set out to out & my walk(mailboxes of a, "", name of a, "account " & i) & "#DONE" & tab & "account " & i & linefeed
+                            set boxes to mailboxes of a
+                            set out to out & "#STEP" & tab & scope & " got the list" & linefeed
+                            set accountName to (name of a) as text
+                            set out to out & my walk(boxes, "", accountName, scope) & "#DONE" & tab & scope & linefeed
                         else
-                            set out to out & "#OFF" & tab & "account " & i & linefeed
+                            set out to out & "#OFF" & tab & scope & linefeed
                         end if
-                    on error number n
-                        set out to out & "#ERR" & tab & "account " & i & " " & n & linefeed
+                    on error msg number n
+                        set out to out & "#ERR" & tab & scope & " " & (n as text) & ": " & msg & linefeed
                     end try
                 end repeat
                 return out
@@ -223,6 +250,9 @@ struct AppleScriptMailFiling: MailFilingScripting {
         let lines = text.split(separator: "\n")
         let failures = lines.filter { $0.hasPrefix("#ERR\t") }.map { $0.dropFirst(5) }
         if !failures.isEmpty { SnoozeLog.append(["list mailboxes: not read: \(failures.joined(separator: ", "))"], to: MailScript.logURL) }
+        let diagnostics = lines.filter { $0.hasPrefix("#STEP\t") || $0.hasPrefix("#FAIL\t") || $0.hasPrefix("#SKIP\t") || $0.hasPrefix("#ERR\t") }
+            .prefix(60).map { "list mailboxes: " + MailScript.scrubbed(String($0.dropFirst(1)).replacingOccurrences(of: "\t", with: " ")) }
+        if !diagnostics.isEmpty { SnoozeLog.append(Array(diagnostics), to: MailScript.logURL) }
         let summary = MailFiling.listingSummary(lines.map(String.init))
         SnoozeLog.append(["list mailboxes: \(summary)"], to: MailScript.logURL)
         let boxes: [MailFiling.Mailbox] = lines.filter { !$0.hasPrefix("#") }.compactMap { line in

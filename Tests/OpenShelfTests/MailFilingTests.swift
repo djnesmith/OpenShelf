@@ -205,6 +205,8 @@ struct MailFilingTests {
                      "#ERR\taccount 3 -1712"]
         #expect(MailFiling.listingSummary(lines) == "On My Mac 2 read; account 1 off; account 2 1 read, 1 skipped (-1700)")
         #expect(MailFiling.listingSummary([]) == "nothing listed")
+        // Diagnostic markers are not mailboxes.
+        #expect(MailFiling.listingSummary(["#STEP\tOn My Mac entered", "#STEP\tOn My Mac count 1", "\tInbox", "#DONE\tOn My Mac"]) == "On My Mac 1 read")
     }
 
     /// The handler that walks mailboxes talks to Mail inside its own tell block: outside one,
@@ -215,6 +217,6 @@ struct MailFilingTests {
         let end = try #require(source.range(of: "end walk"))
         let handler = source[start.upperBound..<end.lowerBound]
         #expect(handler.contains("tell application id \"com.apple.mail\""))
-        #expect(handler.contains("on error number e"))
+        #expect(handler.contains("on error msg number e"))
     }
 }
