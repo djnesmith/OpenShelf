@@ -38,6 +38,9 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    click another message before confirming, it does nothing and says so. (#62)
 7. **Single keys (optional).** Menu bar › **Mail Single Keys** on. Nothing new shows in the menu
    bar (fixed 2026-11-20); the checkmark on Mail Single Keys is the only sign. In the message list try **j k e ?**.
+   Then `* a` and **Esc** (or `* n`): the selection clears (or only one message stays
+   selected, if Mail insists on one); Esc with one message selected, or in a sheet, does what
+   Mail always does.
    *Expect:* next/previous, archive, the key list. Then type in a reply, the To field, the search
    field and Spotlight over Mail: no letter may vanish. Turn it off if one does. (#61)
 8. **Last folder.** Move a file with the Actions wheel's **Move**, then Move or Copy another file
@@ -75,7 +78,7 @@ Built with these defaults; each is one setting or constant to change.
   a VoiceOver command.
 - **Snippets shortcut:** ⌃⌥I, in every app.
 - **Single keys:** off by default.
-- **Keys left out:** `u`, `n`/`p`, `* n`; `[` archives then moves up.
+- **Keys left out:** `u`, `n`/`p`; `[` archives then moves up.
 - **Audio Tags, several files:** a "Mixed" field typed into and then emptied clears that tag
   on every file. Keep, or treat empty-on-mixed as "leave alone"?
 - **Image model for Clean:** a LaMa model (about 100–200 MB) would fill busy backgrounds far

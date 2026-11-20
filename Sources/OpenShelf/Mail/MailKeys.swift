@@ -12,6 +12,8 @@ enum MailKeys {
         case snooze, file, showKeys
         /// Archive, then the message above (Mail moves to the one below by itself).
         case archiveThenPrevious
+        /// Esc and `* n`: select none. Only the list's selection changes, never a message.
+        case clearSelection
     }
 
     /// What a key press means, given a pending prefix.
@@ -24,8 +26,8 @@ enum MailKeys {
     }
 
     /// David's set (2026-11-19): Gmail's keys, `x` is Trash, `v` and `l` the mailbox picker,
-    /// `b` snooze, `c` compose, `?` the list. Not decided: `u`, `n`/`p`, `* n` (left out),
-    /// `[` (archive, then the message above).
+    /// `b` snooze, `c` compose, `?` the list. Not decided: `u`, `n`/`p` (left out), `[`
+    /// (archive, then the message above). Esc and `* n` select none (David, 2026-11-20).
     static let single: [Character: Action] = [
         "j": .nextMessage, "k": .previousMessage,
         "o": .menu("Message", "Open Message"),
@@ -41,13 +43,16 @@ enum MailKeys {
         "z": .menu("Edit", "Undo"),
         "c": .menu("File", "New Message"),
         "?": .showKeys,
+        escape: .clearSelection,
     ]
+
+    static let escape: Character = "\u{1b}"
 
     static let afterG: [Character: Action] = [
         "i": .favorite("Inbox"), "s": .favorite("Flagged"), "t": .favorite("Sent"), "d": .favorite("Drafts"), "a": .favorite("Archive"),
     ]
 
-    static let afterStar: [Character: Action] = ["a": .menu("Edit", "Select All")]
+    static let afterStar: [Character: Action] = ["a": .menu("Edit", "Select All"), "n": .clearSelection]
 
     /// How long a prefix waits for its second key.
     static let prefixTimeout: TimeInterval = 1
@@ -75,6 +80,41 @@ enum MailKeys {
 
     static let listRoles: Set<String> = ["AXTable", "AXOutline", "AXRow", "AXCell"]
 
+    /// Esc is taken only to clear a selection of several messages in the list, with no
+    /// sheet or popover open. Otherwise it goes to Mail, which uses it to close things.
+    static func mayTakeEscape(focusedRole: String?, selectedCount: Int, hasSheetOrPopover: Bool, modifiers: Modifiers, mailHasFocus: Bool) -> Bool {
+        guard mailHasFocus, modifiers.isEmpty, !hasSheetOrPopover, let role = focusedRole else { return false }
+        return listRoles.contains(role) && selectedCount > 1
+    }
+
+    /// A message list's selection, by row index. A protocol, so tests use a fake.
+    @MainActor
+    protocol SelectableList {
+        var selectedRows: [Int] { get }
+        /// The row with the keyboard focus, when one has it.
+        var focusedRow: Int? { get }
+        func select(_ rows: [Int]) -> Bool
+    }
+
+    enum Cleared: Equatable {
+        case none
+        /// Mail kept no empty selection; one row stays selected.
+        case keptOne(Int)
+        case refused
+    }
+
+    /// Selects none; if Mail won't have an empty selection, only the focused row (or the
+    /// first selected one). Messages themselves are never touched.
+    @MainActor
+    static func clearSelection(_ list: SelectableList) -> Cleared {
+        let before = list.selectedRows
+        guard before.count > 1 else { return .refused }
+        if list.select([]), list.selectedRows.isEmpty { return .none }
+        let keep = list.focusedRow.flatMap { before.contains($0) ? $0 : nil } ?? before[0]
+        if list.select([keep]), list.selectedRows == [keep] { return .keptOne(keep) }
+        return .refused
+    }
+
     struct Modifiers: OptionSet, Sendable {
         let rawValue: Int
         static let shift = Modifiers(rawValue: 1)
@@ -89,6 +129,6 @@ enum MailKeys {
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),
         ("⇧I / ⇧U", "mark read / unread"), ("z", "undo"), ("c", "new message"),
-        ("* a", "select all"), ("?", "this list"),
+        ("* a", "select all"), ("Esc  or  * n", "select none (when several are selected)"), ("?", "this list"),
     ]
 }

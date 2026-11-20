@@ -29,9 +29,9 @@ struct MailKeysTests {
         #expect(MailKeys.outcome(for: "a", pending: "g") == .act(.favorite("Archive")))
         #expect(MailKeys.outcome(for: "*", pending: nil) == .prefix("*"))
         #expect(MailKeys.outcome(for: "a", pending: "*") == .act(.menu("Edit", "Select All")))
-        // A second key that means nothing after the prefix goes to Mail; "* n" is left out.
+        // A second key that means nothing after the prefix goes to Mail.
         #expect(MailKeys.outcome(for: "q", pending: "g") == .pass)
-        #expect(MailKeys.outcome(for: "n", pending: "*") == .pass)
+        #expect(MailKeys.outcome(for: "q", pending: "*") == .pass)
     }
 
     /// Fail open: only the message list or a message being read, no modifier but ⇧, nothing editable.
@@ -93,5 +93,87 @@ struct MailKeysTests {
         #expect(taken)
         let passed = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: true, focusAllows: { _ in true })
         #expect(!passed)
+    }
+
+    /// Esc and `* n` mean select none.
+    @Test func escapeAndStarNSelectNone() {
+        #expect(MailKeys.outcome(for: MailKeys.escape, pending: nil) == .act(.clearSelection))
+        #expect(MailKeys.outcome(for: "n", pending: "*") == .act(.clearSelection))
+        #expect(MailKeys.outcome(for: MailKeys.escape, pending: "*") == .pass)
+        #expect(MailKeys.help.contains { $0.0.contains("Esc") && $0.0.contains("* n") })
+    }
+
+    /// Esc is taken only for several selected messages in the list with nothing open over
+    /// it; everywhere else Mail gets it (it closes things there).
+    static let escapeCases: [(String?, Int, Bool, MailKeys.Modifiers, Bool, Bool)] = [
+        ("AXTable", 2, false, [], true, true),
+        ("AXRow", 40, false, [], true, true),
+        ("AXOutline", 3, false, [], true, true),
+        ("AXTable", 1, false, [], true, false),
+        ("AXTable", 0, false, [], true, false),
+        ("AXTable", 5, true, [], true, false),
+        ("AXTable", 5, false, .shift, true, false),
+        ("AXTable", 5, false, .other, true, false),
+        ("AXTable", 5, false, [], false, false),
+        ("AXTextField", 5, false, [], true, false),
+        ("AXWebArea", 5, false, [], true, false),
+        (nil, 5, false, [], true, false),
+    ]
+
+    @Test func escapeFailsOpen() {
+        for (role, count, sheet, modifiers, focus, expected) in Self.escapeCases {
+            #expect(MailKeys.mayTakeEscape(focusedRole: role, selectedCount: count, hasSheetOrPopover: sheet, modifiers: modifiers, mailHasFocus: focus) == expected,
+                    "\(role ?? "nil") \(count) \(sheet)")
+        }
+    }
+
+    @MainActor final class FakeList: MailKeys.SelectableList {
+        var selectedRows: [Int]
+        let focusedRow: Int?
+        let allowsEmpty: Bool
+        let allowsAny: Bool
+        /// Answers yes but keeps the selection as it was (an empty one, or any).
+        let quietlyKeepsEmpty: Bool
+        let quietlyKeepsAll: Bool
+        var calls: [[Int]] = []
+        init(_ selected: [Int], focused: Int? = nil, allowsEmpty: Bool = true, allowsAny: Bool = true,
+             quietlyKeepsEmpty: Bool = false, quietlyKeepsAll: Bool = false) {
+            selectedRows = selected
+            focusedRow = focused
+            self.allowsEmpty = allowsEmpty
+            self.allowsAny = allowsAny
+            self.quietlyKeepsEmpty = quietlyKeepsEmpty
+            self.quietlyKeepsAll = quietlyKeepsAll
+        }
+        func select(_ rows: [Int]) -> Bool {
+            calls.append(rows)
+            if quietlyKeepsAll || (rows.isEmpty && quietlyKeepsEmpty) { return true }
+            guard allowsAny, !rows.isEmpty || allowsEmpty else { return false }
+            selectedRows = rows
+            return true
+        }
+    }
+
+    @MainActor @Test func clearingSelectsNoneOrKeepsOneRow() {
+        let empty = FakeList([0, 1, 2], focused: 1)
+        #expect(MailKeys.clearSelection(empty) == .none)
+        #expect(empty.selectedRows.isEmpty)
+        // Mail refusing an empty selection: the focused row stays, else the first selected.
+        let focused = FakeList([0, 1, 2], focused: 2, allowsEmpty: false)
+        #expect(MailKeys.clearSelection(focused) == .keptOne(2))
+        #expect(focused.selectedRows == [2])
+        let outside = FakeList([3, 4], focused: 9, allowsEmpty: false)
+        #expect(MailKeys.clearSelection(outside) == .keptOne(3))
+        // Mail answering yes but keeping the selection is not taken at its word.
+        let quietEmpty = FakeList([0, 1], focused: 1, quietlyKeepsEmpty: true)
+        #expect(MailKeys.clearSelection(quietEmpty) == .keptOne(1))
+        #expect(MailKeys.clearSelection(FakeList([0, 1], quietlyKeepsAll: true)) == .refused)
+        let stubborn = FakeList([3, 4], allowsAny: false)
+        #expect(MailKeys.clearSelection(stubborn) == .refused)
+        #expect(stubborn.selectedRows == [3, 4])
+        // One or no message selected: nothing is changed.
+        let one = FakeList([5])
+        #expect(MailKeys.clearSelection(one) == .refused)
+        #expect(one.calls.isEmpty)
     }
 }

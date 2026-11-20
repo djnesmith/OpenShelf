@@ -105,6 +105,16 @@ final class MailKeyTap {
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.1)
         guard let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute) else { return false }
+        if character(of: event) == MailKeys.escape {
+            let list = AXSelectableList(focused: focused)
+            return MailKeys.mayTakeEscape(
+                focusedRole: AXMenuNode.string(focused, kAXRoleAttribute),
+                selectedCount: list?.selectedRows.count ?? 0,
+                hasSheetOrPopover: hasSheetOrPopover(app),
+                modifiers: modifiers,
+                mailHasFocus: MailMenu.hasKeyboardFocus()
+            )
+        }
         var editable: CFTypeRef?
         AXUIElementCopyAttributeValue(focused, "AXEditable" as CFString, &editable)
         let role = AXMenuNode.string(focused, kAXRoleAttribute)
@@ -118,6 +128,64 @@ final class MailKeyTap {
             modifiers: modifiers,
             mailHasFocus: MailMenu.hasKeyboardFocus()
         )
+    }
+}
+
+extension MailKeyTap {
+    /// A sheet on Mail's front window, or a popover anywhere in Mail. Unreadable counts
+    /// as yes, so Esc goes to Mail.
+    static func hasSheetOrPopover(_ app: AXUIElement) -> Bool {
+        guard let front = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return true }
+        if AXMenuNode.childElements(front).contains(where: { ["AXSheet", "AXPopover"].contains(AXMenuNode.string($0, kAXRoleAttribute) ?? "") }) { return true }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success, let windows = value as? [AXUIElement] else { return true }
+        return windows.contains { window in
+            AXMenuNode.string(window, kAXRoleAttribute) == "AXPopover"
+                || AXMenuNode.childElements(window).contains { AXMenuNode.string($0, kAXRoleAttribute) == "AXPopover" }
+        }
+    }
+}
+
+/// Mail's message list through Accessibility: the table or outline above the focused
+/// element, its rows and its selected rows.
+@MainActor
+struct AXSelectableList: MailKeys.SelectableList {
+    let list: AXUIElement
+    let rows: [AXUIElement]
+    let focused: AXUIElement
+
+    init?(focused: AXUIElement) {
+        var list = focused
+        while let role = AXMenuNode.string(list, kAXRoleAttribute), !["AXTable", "AXOutline"].contains(role) {
+            guard let parent = AXMenuNode.element(list, kAXParentAttribute) else { return nil }
+            list = parent
+        }
+        var rowsValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(list, kAXRowsAttribute as CFString, &rowsValue) == .success,
+              let rows = rowsValue as? [AXUIElement] else { return nil }
+        self.list = list
+        self.rows = rows
+        self.focused = focused
+    }
+
+    var selectedRows: [Int] {
+        var value: CFTypeRef?
+        AXUIElementCopyAttributeValue(list, kAXSelectedRowsAttribute as CFString, &value)
+        return ((value as? [AXUIElement]) ?? []).compactMap { row in rows.firstIndex { CFEqual($0, row) } }
+    }
+
+    var focusedRow: Int? {
+        var element: AXUIElement? = focused
+        // A focused cell belongs to the row above it.
+        while let current = element, AXMenuNode.string(current, kAXRoleAttribute) != kAXRowRole {
+            element = AXMenuNode.element(current, kAXParentAttribute)
+            if element.map({ CFEqual($0, list) }) == true { return nil }
+        }
+        return element.flatMap { row in rows.firstIndex { CFEqual($0, row) } }
+    }
+
+    func select(_ indices: [Int]) -> Bool {
+        AXUIElementSetAttributeValue(list, kAXSelectedRowsAttribute as CFString, indices.map { rows[$0] } as CFArray) == .success
     }
 }
 
@@ -143,6 +211,8 @@ enum MailKeyActions {
             MailFiling.showPicker()
         case .showKeys:
             MailKeyHelp.shared.show()
+        case .clearSelection:
+            clearSelection()
         }
     }
 
@@ -162,6 +232,15 @@ enum MailKeyActions {
             menu = inner
         }
         return MailMenu.findAnywhere(title, in: menu.children)
+    }
+
+    /// Esc and `* n`: select none in the focused message list.
+    static func clearSelection() {
+        guard let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        guard let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute), let list = AXSelectableList(focused: focused) else { return }
+        _ = MailKeys.clearSelection(list)
     }
 
     /// j and k: the message list's selection moves one row, through Accessibility.
