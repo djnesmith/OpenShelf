@@ -15,6 +15,9 @@ struct MailScriptTermTests {
          ("selection state", MailScripts.selectionState),
          ("move selection", MailScripts.move(to: "mailbox \"Archive\" of account \"Work\"")),
          ("selection places", MailScripts.selectionPlaces),
+         ("selection accounts", MailScripts.selectionAccounts),
+         ("list one account", MailScripts.accountListing("Work")),
+         ("list On My Mac", MailScripts.accountListing("")),
          ("move check", MailScripts.placeCounts([(id: "a@x", source: "mailbox \"INBOX\" of account \"Work\"")], destination: "mailbox \"Archive\" of account \"Work\""))]
     }
 

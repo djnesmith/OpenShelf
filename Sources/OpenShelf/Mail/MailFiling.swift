@@ -110,9 +110,77 @@ enum MailFiling {
         return paths
     }
 
-    /// The mailboxes listed this session, so `v` opens at once after the first time; the
-    /// list is refreshed in the background each time the picker opens.
-    static var cache: [Mailbox]?
+    /// Paths from the bulk listing's lines, in Mail's order; nil when Mail's answer didn't
+    /// line up (the full walk is used then).
+    static func bulkPaths(_ lines: [String]) -> [String]? {
+        if lines.contains("#MISALIGNED") { return nil }
+        var level1: [String] = [], level2: [(Int, String)] = [], level3: [(Int, Int, String)] = []
+        for line in lines {
+            let parts = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            switch parts.first {
+            case "#L1" where parts.count == 2: level1.append(parts[1])
+            case "#L2" where parts.count == 3: guard let i = Int(parts[1]) else { return nil }; level2.append((i, parts[2]))
+            case "#L3" where parts.count == 4: guard let i = Int(parts[1]), let j = Int(parts[2]) else { return nil }; level3.append((i, j, parts[3]))
+            default: continue
+            }
+        }
+        var paths: [String] = []
+        for (i1, top) in level1.enumerated() {
+            paths.append(top)
+            let kids = level2.filter { $0.0 == i1 + 1 }.map(\.1)
+            for (i2, kid) in kids.enumerated() {
+                paths.append("\(top)/\(kid)")
+                for grandkid in level3.filter({ $0.0 == i1 + 1 && $0.1 == i2 + 1 }).map(\.2) { paths.append("\(top)/\(kid)/\(grandkid)") }
+            }
+        }
+        // A level 2 or 3 entry pointing past its parents means the answer didn't line up.
+        if level2.contains(where: { $0.0 < 1 || $0.0 > level1.count }) { return nil }
+        return paths
+    }
+
+    /// Which mailboxes `v` offers (David, 2026-11-20: "v for work account should just
+    /// be its folders, v for gmail only its folders"): the selected messages' one account.
+    enum Scope: Equatable {
+        case account(String)
+        /// Messages from more than one account: a move would copy across accounts.
+        case mixed
+        case nothingSelected
+    }
+
+    /// One account name per line, each line ending in a line feed; an empty line is On My
+    /// Mac, so empty lines are kept.
+    static func accountLines(_ text: String) -> [String] {
+        var lines = text.components(separatedBy: "\n")
+        if text.hasSuffix("\n") { lines.removeLast() }
+        return text.isEmpty ? [] : lines
+    }
+
+    static func scope(of accounts: [String]) -> Scope {
+        let unique = Set(accounts)
+        guard !accounts.isEmpty else { return .nothingSelected }
+        guard unique.count == 1, let account = unique.first else { return .mixed }
+        return .account(account)
+    }
+
+    /// The picker's list: the account's own mailboxes first, then On My Mac's (a local
+    /// folder is a fair target); for an On My Mac selection, On My Mac's alone.
+    static func pickerList(account: String, own: [Mailbox], local: [Mailbox]) -> [Mailbox] {
+        account.isEmpty ? local : own + local.filter { $0.account.isEmpty }
+    }
+
+    /// Mailbox lists by account, kept across launches so the picker opens at once.
+    static let cacheKey = "MailFilingMailboxesByAccount"
+
+    static func loadCache(_ defaults: UserDefaults = .standard) -> [String: [Mailbox]] {
+        let stored = defaults.dictionary(forKey: cacheKey) as? [String: [String]] ?? [:]
+        return stored.mapValues { paths in paths.map { Mailbox(account: "", path: $0) } }
+            .reduce(into: [:]) { result, entry in result[entry.key] = entry.value.map { Mailbox(account: entry.key, path: $0.path) } }
+    }
+
+    static func saveCache(_ cache: [String: [Mailbox]], _ defaults: UserDefaults = .standard) {
+        defaults.set(cache.mapValues { $0.map(\.path) }, forKey: cacheKey)
+    }
+
     /// Which opening of the picker a listing belongs to; an answer for an older one is dropped.
     static var opening = 0
 
@@ -165,6 +233,8 @@ enum MailFiling {
     static func showPicker(scripting: MailFilingScripting = AppleScriptMailFiling()) {
         opening += 1
         let mine = opening
+        let started = Date()
+        func ms() -> Int { Int(Date().timeIntervalSince(started) * 1000) }
         let choose: (Mailbox) -> Void = { chosen in
             MailMenu.running?.activate()
             Task { @MainActor in
@@ -174,18 +244,42 @@ enum MailFiling {
                                             for: report.outcome == .moved ? MailHelpers.successToast : .seconds(6))
             }
         }
-        // With a list from this session the picker opens at once; without one it opens only
-        // when Mail's list arrives, so a failure is a toast, never a picker that flashes.
-        let shownAtOnce = cache != nil
-        if let cache { MailboxPicker.shared.show(mailboxes: cache, recent: loadRecent(), onChoose: choose) }
         Task { @MainActor in
-            let boxes = await scripting.mailboxes()
-            if !boxes.isEmpty { cache = boxes }
+            // The selected messages' account, from the messages themselves.
+            let account: String
+            switch scope(of: await scripting.selectionAccounts()) {
+            case .nothingSelected:
+                ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Can't file", subtitle: "Select a message in Mail first"), for: .seconds(4))
+                return
+            case .mixed:
+                ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Select messages from one account",
+                                                  subtitle: "A move across accounts makes a copy"), for: .seconds(5))
+                return
+            case .account(let one):
+                account = one
+            }
+            var stored = loadCache()
+            let cached = pickerList(account: account, own: stored[account] ?? [], local: stored[""] ?? [])
+            let recent = { (list: [Mailbox]) in loadRecent().filter { list.contains($0) } }
+            let shownAtOnce = !cached.isEmpty
+            if shownAtOnce {
+                MailboxPicker.shared.show(mailboxes: cached, recent: recent(cached), onChoose: choose)
+                SnoozeLog.append(["picker: shown from the saved list in \(ms()) ms, \(cached.count) mailboxes"], to: MailScript.logURL)
+            }
+            // Refreshed behind it: this account's mailboxes, then On My Mac's.
+            let own = await scripting.mailboxes(of: account)
+            let local = account.isEmpty ? own : await scripting.mailboxes(of: "")
+            if !own.isEmpty { stored[account] = own }
+            if !account.isEmpty, !local.isEmpty { stored[""] = local }
+            saveCache(stored)
+            let fresh = pickerList(account: account, own: own, local: local)
+            SnoozeLog.append(["picker: Mail's list arrived after \(ms()) ms, \(fresh.count) mailboxes"], to: MailScript.logURL)
             let pickerOpen = shownAtOnce ? MailboxPicker.shared.isOpen : true
-            switch arrival(boxes: boxes, for: mine, current: opening, pickerOpen: pickerOpen, cached: cache) {
+            switch arrival(boxes: fresh, for: mine, current: opening, pickerOpen: pickerOpen, cached: cached.isEmpty ? nil : cached) {
             case .show(let list):
                 if shownAtOnce { MailboxPicker.shared.update(mailboxes: list) } else {
-                    MailboxPicker.shared.show(mailboxes: list, recent: loadRecent(), onChoose: choose)
+                    MailboxPicker.shared.show(mailboxes: list, recent: recent(list), onChoose: choose)
+                    SnoozeLog.append(["picker: shown after \(ms()) ms (nothing saved yet)"], to: MailScript.logURL)
                 }
             case .dropped:
                 break
@@ -202,6 +296,10 @@ enum MailFiling {
 @MainActor
 protocol MailFilingScripting {
     func mailboxes() async -> [MailFiling.Mailbox]
+    /// The account of each selected message (empty for On My Mac).
+    func selectionAccounts() async -> [String]
+    /// One account's mailboxes (On My Mac's for an empty name).
+    func mailboxes(of account: String) async -> [MailFiling.Mailbox]
     /// Why the last listing came back empty, when Mail's script said so.
     var lastProblem: (title: String, subtitle: String)? { get }
     /// Moves the viewer's selected messages; nil when done, or why not.
@@ -217,6 +315,24 @@ struct AppleScriptMailFiling: MailFilingScripting {
     func mailboxes() async -> [MailFiling.Mailbox] {
         let source = Self.listingSource
         return await list(source)
+    }
+
+    func selectionAccounts() async -> [String] {
+        let text = await MailScript.run("selection accounts", MailScripts.selectionAccounts).text ?? ""
+        return MailFiling.accountLines(text)
+    }
+
+    func mailboxes(of account: String) async -> [MailFiling.Mailbox] {
+        let started = Date()
+        let text = await MailScript.run("list one account", MailScripts.accountListing(account)).text ?? ""
+        let place = account.isEmpty ? "On My Mac" : "the account"
+        if let paths = MailFiling.bulkPaths(text.split(separator: "\n").map(String.init)) {
+            SnoozeLog.append(["list one account: \(place), \(paths.count) mailboxes in \(Int(Date().timeIntervalSince(started) * 1000)) ms"], to: MailScript.logURL)
+            return paths.map { MailFiling.Mailbox(account: account, path: $0) }
+        }
+        // Mail's bulk answer didn't line up: the full walk, kept to this account.
+        SnoozeLog.append(["list one account: \(place), bulk answer didn't line up; full walk"], to: MailScript.logURL)
+        return await mailboxes().filter { $0.account == account }
     }
 
     /// The listing script; its handler talks to Mail inside its own tell block.

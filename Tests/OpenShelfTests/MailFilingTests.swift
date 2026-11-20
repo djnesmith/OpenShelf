@@ -245,4 +245,41 @@ struct MailFilingTests {
         #expect(MailScripts.specifier(account: "Work", path: "A \"B\"") == "mailbox \"A \\\"B\\\"\" of account \"Work\"")
         #expect(MailScripts.specifier(account: "", path: "Old") == "mailbox \"Old\"")
     }
+
+    /// The bulk listing's lines become paths in Mail's order, nested ones under their parent;
+    /// an answer that doesn't line up gives nil (the full walk is used then).
+    @Test func bulkListingPaths() {
+        let lines = ["#L1\tINBOX", "#L1\tClients", "#L1\tReceipts",
+                     "#L2\t2\tAcme", "#L2\t2\tGlobex", "#L3\t2\t1\t2026"]
+        #expect(MailFiling.bulkPaths(lines) == ["INBOX", "Clients", "Clients/Acme", "Clients/Acme/2026", "Clients/Globex", "Receipts"])
+        #expect(MailFiling.bulkPaths(["#MISALIGNED"]) == nil)
+        #expect(MailFiling.bulkPaths(["#L1\tA", "#L2\t5\tB"]) == nil)
+        #expect(MailFiling.bulkPaths([]) == [])
+    }
+
+    /// v offers the selected messages' one account (David, 2026-11-20); On My Mac after it;
+    /// mixed accounts or nothing selected offer nothing.
+    @Test func pickerScopeIsTheSelectionsAccount() {
+        #expect(MailFiling.scope(of: ["Gmail", "Gmail"]) == .account("Gmail"))
+        #expect(MailFiling.scope(of: ["", ""]) == .account(""))
+        #expect(MailFiling.scope(of: ["Gmail", "Work"]) == .mixed)
+        #expect(MailFiling.scope(of: ["Gmail", ""]) == .mixed)
+        #expect(MailFiling.scope(of: []) == .nothingSelected)
+        #expect(MailFiling.accountLines("Gmail\nGmail\n") == ["Gmail", "Gmail"])
+        #expect(MailFiling.accountLines("\n") == [""])
+        #expect(MailFiling.accountLines("") == [])
+        let own = [MailFiling.Mailbox(account: "Gmail", path: "INBOX"), .init(account: "Gmail", path: "Clients/Acme")]
+        let local = [MailFiling.Mailbox(account: "", path: "Old")]
+        #expect(MailFiling.pickerList(account: "Gmail", own: own, local: local) == own + local)
+        #expect(MailFiling.pickerList(account: "", own: local, local: local) == local)
+    }
+
+    /// The lists are kept by account across launches.
+    @Test func mailboxListsAreKeptByAccount() {
+        let defaults = UserDefaults(suiteName: "OpenShelfTests.filingCache.\(UUID())")!
+        let cache = ["Gmail": [MailFiling.Mailbox(account: "Gmail", path: "INBOX")], "": [.init(account: "", path: "Old")]]
+        MailFiling.saveCache(cache, defaults)
+        #expect(MailFiling.loadCache(defaults) == cache)
+        #expect(MailFiling.loadCache(UserDefaults(suiteName: "OpenShelfTests.empty.\(UUID())")!).isEmpty)
+    }
 }

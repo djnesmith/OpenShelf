@@ -81,6 +81,62 @@ enum MailScripts {
     return osOut
     """
 
+    /// The account of each selected message (empty for On My Mac), one per line, from the
+    /// message itself, never from the mailbox showing (All Inboxes mixes accounts).
+    static let selectionAccounts = """
+    tell application id "com.apple.mail" to set osPicked to selection as list
+    set osOut to ""
+    repeat with osIndex from 1 to (count of osPicked)
+        set osMessage to item osIndex of osPicked
+        set osAccountTitle to ""
+        try
+            tell application id "com.apple.mail" to set osAccountTitle to name of account of mailbox of osMessage
+        end try
+        set osOut to osOut & osAccountTitle & linefeed
+    end repeat
+    return osOut
+    """
+
+    /// One account's mailboxes (or On My Mac's, for an empty name), three levels deep, in
+    /// three bulk requests instead of one per mailbox (2026-11-20: v was slow). Lines:
+    /// "#L1 name", "#L2 i name", "#L3 i j name" (i, j: the parent's place in its level).
+    static func accountListing(_ account: String) -> String {
+        let of = account.isEmpty ? "" : " of account \(quoted(account))"
+        return """
+        with timeout of 20 seconds
+            tell application id "com.apple.mail"
+                set osLevel1 to name of every mailbox\(of)
+                set osLevel2 to name of every mailbox of every mailbox\(of)
+                set osLevel3 to name of every mailbox of every mailbox of every mailbox\(of)
+            end tell
+            if (count of osLevel2) is not (count of osLevel1) then return "#MISALIGNED"
+            set osOut to ""
+            repeat with osI from 1 to (count of osLevel1)
+                set osOut to osOut & "#L1" & tab & (item osI of osLevel1) & linefeed
+            end repeat
+            repeat with osI from 1 to (count of osLevel2)
+                set osKids to item osI of osLevel2
+                if (class of osKids) is not list then return "#MISALIGNED"
+                repeat with osJ from 1 to (count of osKids)
+                    set osOut to osOut & "#L2" & tab & (osI as text) & tab & (item osJ of osKids) & linefeed
+                end repeat
+            end repeat
+            repeat with osI from 1 to (count of osLevel3)
+                set osGroup to item osI of osLevel3
+                if (class of osGroup) is not list then return "#MISALIGNED"
+                repeat with osJ from 1 to (count of osGroup)
+                    set osKids to item osJ of osGroup
+                    if (class of osKids) is not list then return "#MISALIGNED"
+                    repeat with osK from 1 to (count of osKids)
+                        set osOut to osOut & "#L3" & tab & (osI as text) & tab & (osJ as text) & tab & (item osK of osKids) & linefeed
+                    end repeat
+                end repeat
+            end repeat
+            return osOut
+        end timeout
+        """
+    }
+
     /// How many of `places` (id, source specifier) are still in their source, and how many
     /// are in `destination`, by Message-ID.
     static func placeCounts(_ places: [(id: String, source: String)], destination: String) -> String {
