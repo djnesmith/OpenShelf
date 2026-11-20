@@ -13,6 +13,8 @@ enum VimKey: Equatable, Sendable {
 
 enum VimMode: Equatable, Sendable {
     case normal, insert, visual, visualLine
+    /// ⌃V: a rectangle of columns over several lines (ROADMAP C12).
+    case visualBlock
     /// `R`: typing replaces the characters under the cursor (ROADMAP C12).
     case replace
     /// Typing after ":", "/" or "?".
@@ -41,6 +43,8 @@ struct VimClipboard {
 struct VimRegister: Equatable, Sendable {
     var text: String
     var linewise: Bool
+    /// A visual block's rows, one a line, pasted as a block (ROADMAP C12).
+    var blockwise = false
 }
 
 /// The Edit window's vim keymap: normal, insert, visual and visual line
@@ -89,6 +93,9 @@ struct VimEngine {
     private var replaced: [Character?] = []
     private var replaceKeys: [VimKey] = []
     private var replaceCount = 1
+    /// After `I`, `A` or `c` on a visual block: the other lines get what is typed on the
+    /// first, at `column` (nil: each line's end); `pad` fills short lines with spaces.
+    private var blockInsert: (lines: ClosedRange<Int>, column: Int?, pad: Bool, cornerLine: Int, cornerColumn: Int)?
     /// The last visual selection, for `gv`.
     private var lastVisual: (mode: VimMode, anchor: Int, cursor: Int)?
     /// The last `:s`, for `&` and a bare `:s`.
@@ -161,6 +168,26 @@ struct VimEngine {
         }
     }
 
+    /// The visual block's piece of each line, top to bottom; nil outside ⌃V.
+    var blockSelection: [Range<Int>]? {
+        guard mode == .visualBlock else { return nil }
+        let block = block()
+        return (block.first...block.last).map { line in
+            let start = lineStarts[line], length = lineEnd(start) - start
+            let low = start + min(block.left, length)
+            let high = block.toEnd ? start + length : start + min(block.right + 1, length)
+            return low..<max(low, high)
+        }
+    }
+
+    /// The block's lines and columns (characters, not screen columns), and whether it runs
+    /// to each line's end ($).
+    private func block() -> (first: Int, last: Int, left: Int, right: Int, toEnd: Bool) {
+        let anchorLine = lineIndex(anchor), cursorLine = lineIndex(cursor)
+        let anchorColumn = anchor - lineStart(anchor), cursorColumn = cursor - lineStart(cursor)
+        return (min(anchorLine, cursorLine), max(anchorLine, cursorLine), min(anchorColumn, cursorColumn), max(anchorColumn, cursorColumn), wantedColumn == .max)
+    }
+
     // MARK: - Keys
 
     /// Handles one key. Returns `.finish` or `.cancel` when the window should close.
@@ -172,7 +199,7 @@ struct VimEngine {
         case .insert: handleInsert(key); return nil
         case .commandLine: return handleCommandLine(key)
         case .replace: handleReplace(key); return nil
-        case .normal, .visual, .visualLine:
+        case .normal, .visual, .visualLine, .visualBlock:
             if pending.isEmpty, let arrow = arrowMotion(key) {
                 _ = runMotion(arrow, count: 1)
                 return nil
@@ -224,6 +251,7 @@ struct VimEngine {
         case .insert: "INSERT"
         case .visual: "VISUAL"
         case .visualLine: "VISUAL LINE"
+        case .visualBlock: "VISUAL BLOCK"
         case .commandLine: "NORMAL"
         case .replace: "REPLACE"
         }
@@ -316,6 +344,11 @@ struct VimEngine {
         changeInProgress = nil
         mode = .normal
         wantedColumn = nil
+        if blockInsert != nil {
+            finishBlockInsert(typed: String(typedSinceInsert(single: repeats)))
+            clampCursor()
+            return
+        }
         if cursor > lineStart(cursor) { cursor -= 1 }
         clampCursor()
     }
@@ -412,6 +445,92 @@ struct VimEngine {
         }
         cursor = firstNonBlank(lineStarts[min(lastLine, lineStarts.count - 1)])
         wantedColumn = nil
+    }
+
+    // MARK: - Visual block
+
+    /// Where the cursor goes after a block change: the block's top-left.
+    private func blockCorner() -> Int {
+        let block = block()
+        let start = lineStarts[block.first]
+        return start + min(block.left, lineEnd(start) - start)
+    }
+
+    /// d, x, y, c, ~, u, U and > < on a visual block (ROADMAP C12 item 3).
+    private mutating func applyBlock(_ op: Operator) {
+        let block = block()
+        let ranges = blockSelection ?? []
+        let corner = blockCorner()
+        let rows = ranges.map { String(text[$0]) }
+        switch op {
+        case .yank:
+            store(VimRegister(text: rows.joined(separator: "\n"), linewise: false, blockwise: true), yank: true)
+            mode = .normal
+            cursor = corner
+        case .delete, .change:
+            store(VimRegister(text: rows.joined(separator: "\n"), linewise: false, blockwise: true), yank: false)
+            checkpoint()
+            for range in ranges.reversed() { text.removeSubrange(range) }
+            mode = .normal
+            cursor = corner
+            if op == .change {
+                blockInsert = (block.first...block.last, block.left, false, block.first, block.left)
+                beginInsert()
+            }
+        case .upper, .lower, .toggleCase:
+            checkpoint()
+            for range in ranges.reversed() { text.replaceSubrange(range, with: Array(transformed(String(text[range]), op))) }
+            mode = .normal
+            cursor = corner
+        case .indent, .outdent, .surround, .format:
+            mode = .normal
+            applyLines(op, block.first, block.last)
+        }
+    }
+
+    /// I or A on a visual block: insert mode on the first line; the other lines get the same
+    /// text when it ends.
+    private mutating func startBlockInsert(append: Bool) {
+        let block = block()
+        let firstStart = lineStarts[block.first]
+        let firstLength = lineEnd(firstStart) - firstStart
+        let column: Int? = append ? (block.toEnd ? nil : block.right + 1) : block.left
+        let position = firstStart + min(column ?? firstLength, firstLength)
+        blockInsert = (block.first...block.last, column, append, block.first, block.left)
+        mode = .normal
+        enterInsert(at: position)
+        // A past the first line's end pads it too.
+        if append, let column, firstLength < column {
+            let padding = Array(repeating: Character(" "), count: column - firstLength)
+            text.insert(contentsOf: padding, at: lineEnd(firstStart))
+            cursor = lineEnd(firstStart)
+            // The padding isn't typed text, so it isn't copied to the other lines.
+            insertBaseline = text
+        }
+    }
+
+    /// Copies the text typed on the block's first line to its other lines, as vim does on Esc.
+    private mutating func finishBlockInsert(typed: String) {
+        guard let insert = blockInsert else { return }
+        blockInsert = nil
+        if !typed.isEmpty, !typed.contains("\n") {
+            for line in insert.lines.dropFirst().reversed() where line < lineStarts.count {
+                let start = lineStarts[line], length = lineEnd(start) - start
+                if let column = insert.column {
+                    if length < column {
+                        // I and c leave lines that don't reach the block alone; A pads them.
+                        guard insert.pad else { continue }
+                        text.insert(contentsOf: Array(repeating: Character(" "), count: column - length) + Array(typed), at: start + length)
+                    } else {
+                        text.insert(contentsOf: Array(typed), at: start + column)
+                    }
+                } else {
+                    text.insert(contentsOf: Array(typed), at: start + length)
+                }
+            }
+        }
+        let start = lineStarts[min(insert.cornerLine, lineStarts.count - 1)]
+        cursor = start + min(insert.cornerColumn, max(lineEnd(start) - start, 0))
     }
 
     // MARK: - Replace mode
@@ -618,7 +737,7 @@ struct VimEngine {
         case done(Command)
     }
 
-    private var inVisual: Bool { mode == .visual || mode == .visualLine }
+    private var inVisual: Bool { mode == .visual || mode == .visualLine || mode == .visualBlock }
 
     /// A count and a register ("a, "+) may come before a command, in either order.
     private func parse(_ keys: [VimKey]) -> Parse {
@@ -667,6 +786,7 @@ struct VimEngine {
             switch c {
             case "r": return .done(Command(count: count, action: .simple("redo")))
             case "[", "c": return .done(Command(count: nil, action: .simple("escape")))
+            case "v": return .done(Command(count: nil, action: .simple("block")))
             case "a" where !inVisual: return .done(Command(count: count, action: .simple("increment")))
             case "x" where !inVisual: return .done(Command(count: count, action: .simple("decrement")))
             default: return .invalid
@@ -779,6 +899,10 @@ struct VimEngine {
             case "u": return .done(Command(count: count, action: .operate(.lower, nil)))
             case "U": return .done(Command(count: count, action: .operate(.upper, nil)))
             case "o", "v", "V", "J", "p", "P", ":": return .done(Command(count: count, action: .simple(String(c))))
+            case "I", "A", "O" where mode == .visualBlock: return .done(Command(count: count, action: .simple("block\(c)")))
+            case "r" where mode == .visualBlock:
+                guard case .char(let target)? = next() else { return next() == nil ? .incomplete : .invalid }
+                return .done(Command(count: nil, action: .simple("blockr\(target)")))
             case "q" where recording != nil: return .done(Command(count: nil, action: .simple("q")))
             default: return .invalid
             }
@@ -1041,6 +1165,9 @@ struct VimEngine {
                 // operator keeps it, as in vim.
                 operate(op, motion: motion, count: command.count ?? 1)
                 if !failed { wantedColumn = nil }
+            } else if mode == .visualBlock {
+                applyBlock(op)
+                wantedColumn = nil
             } else if let range = selection {
                 let linewise = mode == .visualLine
                 let (first, last) = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
@@ -1051,7 +1178,8 @@ struct VimEngine {
             return nil
         case .simple(let name):
             // Escape, v and V keep the column j and k aim for (after $, the line's end), as in vim.
-            if !["escape", "v", "V"].contains(name) { wantedColumn = nil }
+            // Block commands keep it too: after $, A appends at each line's end.
+            if !["escape", "v", "V"].contains(name), !name.hasPrefix("block") { wantedColumn = nil }
             return runSimple(name, count: command.count)
         }
     }
@@ -1107,9 +1235,25 @@ struct VimEngine {
                 mode = .normal
                 cursor = low
                 join(count: max(lineIndex(high) - lineIndex(low) + 1, 2))
-            case "v", "V":
-                let wanted: VimMode = name == "v" ? .visual : .visualLine
+            case "v", "V", "block":
+                let wanted: VimMode = name == "v" ? .visual : name == "V" ? .visualLine : .visualBlock
                 mode = mode == wanted ? .normal : wanted
+            case "blockO":
+                // The other corner on the same line: the columns swap.
+                let anchorColumn = anchor - lineStart(anchor), cursorColumn = cursor - lineStart(cursor)
+                anchor = min(lineStart(anchor) + cursorColumn, lineEnd(anchor))
+                cursor = min(lineStart(cursor) + anchorColumn, lineEnd(cursor))
+            case "blockI", "blockA":
+                startBlockInsert(append: name == "blockA")
+                return nil
+            case let name where name.hasPrefix("blockr"):
+                guard let replacement = name.dropFirst(6).first else { break }
+                let ranges = blockSelection ?? []
+                let corner = blockCorner()
+                checkpoint()
+                for range in ranges { for index in range { text[index] = replacement } }
+                mode = .normal
+                cursor = corner
             case "p", "P":
                 replaceSelection()
             case ":":
@@ -1148,6 +1292,9 @@ struct VimEngine {
             commandLine = name
         case ".": repeatLastChange(count: count)
         case "increment", "decrement": addToNumber(name == "increment" ? n : -n)
+        case "block":
+            anchor = cursor
+            mode = .visualBlock
         case "R":
             checkpoint()
             mode = .replace
@@ -1725,6 +1872,10 @@ struct VimEngine {
             return
         }
         checkpoint()
+        if register.blockwise {
+            putBlock(register.text, after: after, count: count)
+            return
+        }
         let pasted = Array(String(repeating: register.text, count: count))
         if register.linewise {
             let at = after ? lineEndIncludingBreak(cursor) : lineStart(cursor)
@@ -1742,6 +1893,22 @@ struct VimEngine {
             // Text that spans lines leaves the cursor at its start.
             cursor = pasted.contains("\n") ? at : at + pasted.count - 1
         }
+        clampCursor()
+    }
+
+    /// A yanked block pasted as a block: each row into the next line at the cursor's column
+    /// (after it for p), short lines padded with spaces, lines added at the end if needed.
+    private mutating func putBlock(_ block: String, after: Bool, count: Int) {
+        let rows = block.components(separatedBy: "\n").map { String(repeating: $0, count: count) }
+        let line = lineIndex(cursor)
+        let column = cursor - lineStart(cursor) + (after && !lineIsEmpty(cursor) ? 1 : 0)
+        for (offset, row) in rows.enumerated() {
+            if line + offset >= lineStarts.count { text.append("\n") }
+            let start = lineStarts[line + offset], length = lineEnd(start) - start
+            let padding = Array(repeating: Character(" "), count: max(column - length, 0))
+            text.insert(contentsOf: padding + Array(row), at: start + min(column, length))
+        }
+        cursor = lineStarts[line] + column
         clampCursor()
     }
 
@@ -2374,6 +2541,8 @@ struct VimEngine {
             guard usesSystemClipboard else { return register }
             // The clipboard, whoever put it there; a final line break makes it lines, as vim's "+ does.
             let text = (clipboard.read() ?? "").replacingOccurrences(of: "\r\n", with: "\n")
+            // Still the block yanked here: it pastes as a block.
+            if let yanked = registers["0"], yanked.blockwise, yanked.text == text { return yanked }
             return VimRegister(text: text, linewise: text.hasSuffix("\n"))
         }
     }

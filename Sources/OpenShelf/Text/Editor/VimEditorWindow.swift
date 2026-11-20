@@ -515,6 +515,19 @@ final class VimTextView: NSTextView {
         defer { isRendering = false }
         let text = engine.string
         if string != text { string = text }
+        // A visual block shows as one selection per line (empty pieces left out).
+        if let block = engine.blockSelection {
+            let ranges = block.filter { !$0.isEmpty }.map { range -> NSValue in
+                let start = utf16Offset(of: range.lowerBound)
+                return NSValue(range: NSRange(location: start, length: utf16Offset(of: range.upperBound) - start))
+            }
+            let cursorRange = NSRange(location: utf16Offset(of: engine.cursor), length: 0)
+            setSelectedRanges(ranges.isEmpty ? [NSValue(range: cursorRange)] : ranges, affinity: .downstream, stillSelecting: false)
+            scrollRangeToVisible(cursorRange)
+            needsDisplay = true
+            onChange()
+            return
+        }
         let range: NSRange
         if let selection = engine.selection {
             let start = utf16Offset(of: selection.lowerBound)
@@ -559,7 +572,7 @@ final class VimTextView: NSTextView {
 
     static func cursorShape(for mode: VimMode) -> CursorShape {
         switch mode {
-        case .normal, .visual, .visualLine, .replace: .block
+        case .normal, .visual, .visualLine, .visualBlock, .replace: .block
         case .insert: .bar
         // Typing after ":" or "/": the bar is in the status line instead.
         case .commandLine: .hidden

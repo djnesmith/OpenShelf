@@ -416,7 +416,7 @@ item on a shelf.
 - Permissions: none for the files. Writing straight into Calendar or Contacts would need
   their permission, so files come first.
 
-**C12. More for the Edit window** (David, 2026-11-18: "add your recs to the future features")
+**C12. More for the Edit window** — items 1-6 built 2026-11-19 (FORK-FEATURES #53) (David, 2026-11-18: "add your recs to the future features")
 The Edit window (FORK-FEATURES #53) has vim's motions, operators, text objects, surround,
 `.`, registers and macros. Next, in this order:
 1. `:s` find and replace: `:%s/old/new/g`, flags g, i and c if cheap, `&` to repeat.

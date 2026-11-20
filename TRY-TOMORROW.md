@@ -41,6 +41,7 @@ Not Mail:
    first wedge. Settings › Wheels › Text wheel's first page: pick up to four tools. (#66)
 14. **More vim.** In the Edit window: `:%s/old/new/g`, then `u`; `jk` quickly in insert mode
    leaves it; ⌃A on a number adds one; `R` overwrites; `gqip` re-wraps a long paragraph. (#53)
+   ⌃V, `jj` to take three lines, `I// ` then Esc: every line gets `// `. (#53)
 
 Open decisions (built with these defaults, easy to change): ⌃⌥S, ⌃⌥M, ⌃⌥K and ⌃⌥U while Mail
 is in front; ⌃⌥I for Snippets; single keys off by default; `u`, `n`/`p` and `* n` left out; `[` archives then
