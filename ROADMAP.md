@@ -485,6 +485,8 @@ Today a text or source file reaches the file wheel, which has only Pretty Print 
     external scanners) before it goes in.
   - Order: Clojure, EDN, JSON, Markdown (with fenced code), Python, shell, Swift, YAML, SQL;
     then the rest of the Pretty Print list.
+  - SQL is in the first cut (David, 2026-11-19: "accept SQL"): all nine languages, about
+    20.5 MB added, 12.7 MB of it SQL. Not to be built until David says so (C14 too).
   - The other option was a small regex tokenizer per language: no new code from others, but
     wrong on edge cases (nested forms, multi-line strings, fenced code).
 - Spike, 2026-11-19 (throwaway, outside the repo; runtime 0.27.2 and the nine grammars at
