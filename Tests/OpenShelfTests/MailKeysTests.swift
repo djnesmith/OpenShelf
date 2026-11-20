@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import OpenShelf
@@ -80,5 +81,17 @@ struct MailKeysTests {
     @Test func offByDefault() {
         #expect(UserDefaults(suiteName: "OpenShelfTests.keys.\(UUID())")!.bool(forKey: MailKeyTap.enabledKey) == false)
         #expect(MailKeys.help.count >= 15)
+    }
+
+    /// While one of OpenShelf's own panels has the keyboard over Mail, the tap takes no
+    /// key, so what is typed there arrives. `g` is a prefix: taken, with no action run.
+    @MainActor @Test func keysPassWhileAnOpenShelfPanelHasTheKeyboard() {
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: 5, keyDown: true)!
+        var g: [UniChar] = Array("g".utf16)
+        event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &g)
+        let taken = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: false, focusAllows: { _ in true })
+        #expect(taken)
+        let passed = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: true, focusAllows: { _ in true })
+        #expect(!passed)
     }
 }

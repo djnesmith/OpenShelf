@@ -53,9 +53,49 @@ struct SnoozeTimeTests {
     }
 
     /// Nothing understood, a time already past, and nonsense counts give nothing.
-    @Test(arguments: ["", "   ", "banana", "in 0 hours", "in 5000 days", "in many days", "nov 1 9am"])
+    @Test(arguments: ["", "   ", "banana", "in 0 hours", "in 5000 days", "in many days", "today 9am", "feb 30", "fri 2", "tomorrow 3", "2", "13pm", "25:00"])
     func notUnderstood(text: String) {
         #expect(SnoozeTime.parse(text, now: Self.wednesday(10), calendar: Self.calendar) == nil, "\(text)")
+    }
+
+    /// Friday 2026-11-20 at the given time, New York.
+    static func friday(_ hour: Int, _ minute: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: hour, minute: minute))!
+    }
+
+    /// Typed days and times are worked out from the given now, never the real clock
+    /// (David, 2026-11-20: on a Friday "fri 2pm" gave next Friday).
+    static let againstNow: [(String, Date, String)] = [
+        // A weekday is today while its time is ahead, else next week's.
+        ("fri 2pm", friday(9), "Fri, Nov 20 at 2:00 PM"),
+        ("fri 2pm", friday(15), "Fri, Nov 27 at 2:00 PM"),
+        ("friday", friday(6), "Fri, Nov 20 at 7:00 AM"),
+        ("friday", friday(9), "Fri, Nov 27 at 7:00 AM"),
+        ("mon 9:30am", friday(9), "Mon, Nov 23 at 9:30 AM"),
+        ("tues at 14:00", friday(9), "Tue, Nov 24 at 2:00 PM"),
+        // A month-day still ahead this year, or next year's.
+        ("dec 3 9am", friday(9), "Thu, Dec 3 at 9:00 AM"),
+        ("december 3rd, 9am", friday(9), "Thu, Dec 3 at 9:00 AM"),
+        ("12/3", friday(9), "Thu, Dec 3 at 7:00 AM"),
+        ("nov 1 9am", friday(9), "Mon, Nov 1 at 9:00 AM"),
+        // A time alone: today, or tomorrow once past.
+        ("3pm", friday(9), "Fri, Nov 20 at 3:00 PM"),
+        ("8am", friday(9), "Sat, Nov 21 at 8:00 AM"),
+        ("noon", friday(9), "Fri, Nov 20 at 12:00 PM"),
+        ("midnight", friday(9), "Sat, Nov 21 at 12:00 AM"),
+        ("today 5pm", friday(9), "Fri, Nov 20 at 5:00 PM"),
+        ("tomorrow noon", friday(9), "Sat, Nov 21 at 12:00 PM"),
+    ]
+
+    @Test func typedDaysAndTimesFollowNow() {
+        for (text, now, expected) in Self.againstNow {
+            #expect(Self.describe(SnoozeTime.parse(text, now: now, calendar: Self.calendar)) == expected, "\(text)")
+        }
+        // A month-day already past this year is next year's.
+        let nextYear = SnoozeTime.parse("nov 1 9am", now: Self.friday(9), calendar: Self.calendar)
+        #expect(nextYear.map { Self.calendar.component(.year, from: $0) } == 2027)
+        // The prompt's own words still win: "tomorrow" alone is the preset.
+        #expect(Self.describe(SnoozeTime.parse("tomorrow", now: Self.friday(9), calendar: Self.calendar)) == "Sat, Nov 21 at 7:00 AM")
     }
 
     /// Saturday after 7am: "this weekend" is the next Saturday; Monday after 7am: "next week"

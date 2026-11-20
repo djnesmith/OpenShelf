@@ -54,6 +54,16 @@ struct MailFilingTests {
         #expect(MailFiling.loadRecent(defaults) == [Self.boxes[3], Self.boxes[5]])
     }
 
+    /// The picker takes the keyboard without activating OpenShelf, with the cursor in
+    /// the field, as the snooze prompt does (2026-11-20).
+    @Test func thePickerOpensWithTheCursorInTheField() {
+        let picker = MailboxPicker()
+        let panel = picker.prepare(mailboxes: Self.boxes, recent: []) { _ in }
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
+        #expect(panel.canBecomeKey)
+        #expect(panel.initialFirstResponder === picker.pickerField)
+    }
+
     /// ↓ moves the highlight, Return picks it; Esc picks nothing. Never put on screen here.
     @Test func thePickerChoosesWithArrowsAndReturn() {
         let picker = MailboxPicker()

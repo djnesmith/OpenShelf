@@ -1,11 +1,17 @@
-# Morning page
+# Try today, 2026-11-20
 
-What is new in the installed OpenShelf (built 2026-11-19 night), what to try in order (16 items), and
-what is left for you to decide. Details for each item are in FORK-FEATURES.md (#numbers).
+What is new in the installed OpenShelf (built 2026-11-19 night, Mail fixes 2026-11-20 morning), what
+to try in order (16 items), and what is left for you to decide. Details for each item are in
+FORK-FEATURES.md (#numbers).
+
+Fixed this morning, from your first try of the Mail keys: no "Mail keys" item in the menu bar; the
+snooze prompt and the folder picker open with the cursor in the field; snooze fills Mail's real
+dialog (date, time, Schedule) and cancels it if anything is off; "fri 2pm" typed on a Friday
+morning is today at 2pm, not next Friday.
 
 ## Try, in this order
 
-The Mail helpers have not been tried on real Mail yet. Use test messages.
+Only the Mail keys have been tried on real Mail so far. Use test messages.
 
 1. **Check Mail, first.** In Mail, select a test message, open Message › Remind Me › Remind Me
    Later… and leave the dialog open (date, time, Cancel, Schedule). Then OpenShelf's menu bar
@@ -24,7 +30,7 @@ The Mail helpers have not been tried on real Mail yet. Use test messages.
    *Expect:* the reply in Sent, the original in Archive. The first time, macOS asks to let
    OpenShelf control Mail: allow it. A new message (not a reply) with ⇧⌘↩ sends and says
    "Sent, not archived". (#59)
-4. **Filing.** Select a test message, **⌃⌥M**, type part of a folder's name, **Return**.
+4. **Filing.** Select a test message, **⌃⌥M** (or **v**; the cursor is in the field), type part of a folder's name, **Return**.
    *Expect:* the message is in that folder; recent folders come first next time. (#60)
 5. **Message link.** Select a message, **⌃⌥K**, paste into Notes, click the link.
    *Expect:* Mail opens that message. (#60)

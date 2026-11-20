@@ -18,7 +18,8 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
     func show(mailboxes: [MailFiling.Mailbox], recent: [MailFiling.Mailbox], onChoose: @escaping (MailFiling.Mailbox) -> Void) {
         let panel = prepare(mailboxes: mailboxes, recent: recent, onChoose: onChoose)
         panel.center()
-        NSApp.activate()
+        // Takes the keyboard without activating OpenShelf, as the snooze prompt does: macOS
+        // may refuse to activate an app from a key tap or hotkey.
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
     }
@@ -38,7 +39,7 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
     var pickerField: NSTextField { field }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Move to…"
         panel.level = .floating
         panel.isReleasedWhenClosed = false
@@ -54,6 +55,7 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
         stack.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
         field.widthAnchor.constraint(equalToConstant: 350).isActive = true
         panel.contentView = stack
+        panel.initialFirstResponder = field
         self.panel = panel
         return panel
     }

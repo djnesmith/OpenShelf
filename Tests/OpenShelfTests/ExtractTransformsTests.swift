@@ -26,10 +26,10 @@ struct ExtractTransformsTests {
     }
 
     @Test func dates() {
-        let found = E.matches(.dates, in: "Due 2026-11-19, then next Tuesday at 3pm. Nothing else.")
-        #expect(found.count == 2)
-        // The system's detector takes a word like "Due" into the date phrase.
-        #expect(found.first?.hasSuffix("2026-11-19") == true)
+        // Fixed dates only: the system's detector reads relative ones ("next Tuesday") and
+        // even "Due <yesterday>" against the real clock.
+        let found = E.matches(.dates, in: "Met on 2025-01-05, then on January 5, 2024. Nothing else.")
+        #expect(found == ["2025-01-05", "January 5, 2024"])
     }
 
     /// Nothing of that kind: the text stays as it is ("Nothing to change").

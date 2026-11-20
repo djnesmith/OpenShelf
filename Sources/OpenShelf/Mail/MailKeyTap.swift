@@ -53,7 +53,9 @@ final class MailKeyTap {
     }
 
     /// Whether the tap takes this key from Mail. False (the key goes to Mail) whenever in doubt.
-    private func takes(type: CGEventType, event: CGEvent) -> Bool {
+    /// `ownPanelHasKeyboard` and `focusAllows` are parameters for tests.
+    func takes(type: CGEventType, event: CGEvent, ownPanelHasKeyboard: Bool = NSApp.keyWindow != nil,
+               focusAllows: @MainActor (CGEvent) -> Bool = MailKeyTap.focusAllows) -> Bool {
         // macOS turns a slow tap off; it is turned back on, and the key passes.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -62,7 +64,7 @@ final class MailKeyTap {
         guard type == .keyDown, let key = Self.character(of: event) else { return false }
         // One of OpenShelf's own panels (the snooze prompt, the folder picker) has the
         // keyboard over Mail: every key is typed there.
-        if NSApp.keyWindow != nil, !MailKeyHelp.shared.isOpen { return false }
+        if ownPanelHasKeyboard, !MailKeyHelp.shared.isOpen { return false }
         if MailKeyHelp.shared.isOpen {
             MailKeyHelp.shared.close()
             return true
@@ -70,7 +72,7 @@ final class MailKeyTap {
         if Date().timeIntervalSince(pendingSince) > MailKeys.prefixTimeout { pending = nil }
         let outcome = MailKeys.outcome(for: key, pending: pending)
         pending = nil
-        guard outcome != .pass, Self.focusAllows(event: event) else { return false }
+        guard outcome != .pass, focusAllows(event) else { return false }
         switch outcome {
         case .pass:
             return false
@@ -94,7 +96,7 @@ final class MailKeyTap {
     }
 
     /// Mail's focus, read with a short timeout; anything unreadable lets the key through.
-    private static func focusAllows(event: CGEvent) -> Bool {
+    static func focusAllows(_ event: CGEvent) -> Bool {
         let flags = event.flags
         var modifiers: MailKeys.Modifiers = []
         if flags.contains(.maskShift) { modifiers.insert(.shift) }
