@@ -559,7 +559,7 @@ final class VimTextView: NSTextView {
 
     static func cursorShape(for mode: VimMode) -> CursorShape {
         switch mode {
-        case .normal, .visual, .visualLine: .block
+        case .normal, .visual, .visualLine, .replace: .block
         case .insert: .bar
         // Typing after ":" or "/": the bar is in the status line instead.
         case .commandLine: .hidden

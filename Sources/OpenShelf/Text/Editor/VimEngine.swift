@@ -13,6 +13,8 @@ enum VimKey: Equatable, Sendable {
 
 enum VimMode: Equatable, Sendable {
     case normal, insert, visual, visualLine
+    /// `R`: typing replaces the characters under the cursor (ROADMAP C12).
+    case replace
     /// Typing after ":", "/" or "?".
     case commandLine
 }
@@ -82,6 +84,13 @@ struct VimEngine {
     private var wantedColumn: Int?
     private var lastFind: (command: Character, target: Character)?
     private var lastSearch: (pattern: String, forward: Bool, wholeWord: Bool)?
+    /// What `R` replaced, newest last (nil: a character added past the line's end), for
+    /// Backspace; the keys typed, for the count and `.`.
+    private var replaced: [Character?] = []
+    private var replaceKeys: [VimKey] = []
+    private var replaceCount = 1
+    /// The last visual selection, for `gv`.
+    private var lastVisual: (mode: VimMode, anchor: Int, cursor: Int)?
     /// The last `:s`, for `&` and a bare `:s`.
     private var lastSubstitute: VimSubstitute.Command?
     /// The lines of the visual selection `:` was typed in, for `'<,'>`.
@@ -162,6 +171,7 @@ struct VimEngine {
         switch mode {
         case .insert: handleInsert(key); return nil
         case .commandLine: return handleCommandLine(key)
+        case .replace: handleReplace(key); return nil
         case .normal, .visual, .visualLine:
             if pending.isEmpty, let arrow = arrowMotion(key) {
                 _ = runMotion(arrow, count: 1)
@@ -215,6 +225,7 @@ struct VimEngine {
         case .visual: "VISUAL"
         case .visualLine: "VISUAL LINE"
         case .commandLine: "NORMAL"
+        case .replace: "REPLACE"
         }
     }
 
@@ -380,6 +391,51 @@ struct VimEngine {
             }
             return nil
         }
+    }
+
+    // MARK: - Replace mode
+
+    /// `R` (ROADMAP C12): each character typed replaces the one under the cursor, or is
+    /// added past the line's end; Backspace puts the original back (before where `R`
+    /// began it only moves left); Esc ends it, typing it count-1 more times, as vim does.
+    private mutating func handleReplace(_ key: VimKey) {
+        switch key {
+        case .char(let character):
+            replaceKeys.append(key)
+            put(character)
+        case .backspace:
+            guard cursor > lineStart(cursor) else { return }
+            if let original = replaced.popLast() {
+                cursor -= 1
+                if let original { text[cursor] = original } else { text.remove(at: cursor) }
+                replaceKeys.append(key)
+            } else {
+                cursor -= 1
+            }
+        case .escape, .ctrl("["), .ctrl("c"):
+            let typed = replaceKeys.compactMap { if case .char(let c) = $0 { c } else { nil } }
+            if replaceKeys.allSatisfy({ if case .char = $0 { true } else { false } }) {
+                for _ in 1..<max(replaceCount, 1) { typed.forEach { put($0) } }
+            }
+            if !isRepeating { lastChange = (replaceCount > 1 ? replaceCount : nil, [.char("R")] + replaceKeys + [.escape]) }
+            if string == undoStack.last?.text { undoStack.removeLast() }
+            mode = .normal
+            if cursor > lineStart(cursor) { cursor -= 1 }
+            clampCursor()
+        default:
+            break
+        }
+    }
+
+    private mutating func put(_ character: Character) {
+        if cursor < lineEnd(cursor) {
+            replaced.append(text[cursor])
+            text[cursor] = character
+        } else {
+            replaced.append(nil)
+            text.insert(character, at: cursor)
+        }
+        cursor += 1
     }
 
     // MARK: - ⌃A and ⌃X
@@ -640,6 +696,10 @@ struct VimEngine {
             op = simpleOp
         } else if c == "g" {
             guard let second = next() else { return .incomplete }
+            if case .char("v") = second, !inVisual {
+                index += 1
+                return .done(Command(count: nil, action: .simple("gv")))
+            }
             if case .char(let g) = second, ["~", "u", "U"].contains(g) {
                 index += 1
                 op = Operator(rawValue: g)
@@ -708,7 +768,7 @@ struct VimEngine {
             guard index < keys.count else { return .incomplete }
             guard case .char(let name) = keys[index], name == "@" && c == "@" || name.isASCII && name.isLetter || (c == "@" && (name == "+" || name == "*")) else { return .invalid }
             return .done(Command(count: count, action: .simple("\(c)\(name)")))
-        case "x", "X", "s", "S", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".", "&":
+        case "x", "X", "s", "S", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".", "&", "R":
             return .done(Command(count: count, action: .simple(String(c))))
         case "r":
             guard case .char(let target)? = next() else { return next() == nil ? .incomplete : .invalid }
@@ -833,6 +893,7 @@ struct VimEngine {
         activeRegister = command.register
         defer { activeRegister = nil }
         let wasVisual = inVisual
+        let visualBefore = inVisual ? (mode, anchor, cursor) : nil
         let changesBefore = undoStack.count + undoTrimmed
         failed = false
         let effect = perform(command)
@@ -844,6 +905,8 @@ struct VimEngine {
         // A change that failed (ci" with no quotes) leaves the last one in place;
         // one that worked counts even when the text came out the same.
         if wasVisual, undoStack.count + undoTrimmed != changesBefore { lastChange = nil }
+        // Leaving a visual selection keeps it for gv.
+        if let visualBefore, !inVisual { lastVisual = (visualBefore.0, visualBefore.1, visualBefore.2) }
         if !wasVisual, Self.isChange(command), !failed {
             let change = (command.count, (command.register.map { [VimKey.char("\""), .char($0)] } ?? []) + command.keys)
             if mode == .insert { changeInProgress = change } else { lastChange = change }
@@ -1062,6 +1125,20 @@ struct VimEngine {
             commandLine = name
         case ".": repeatLastChange(count: count)
         case "increment", "decrement": addToNumber(name == "increment" ? n : -n)
+        case "R":
+            checkpoint()
+            mode = .replace
+            replaced = []
+            replaceKeys = []
+            replaceCount = min(n, 10_000)
+        case "gv":
+            guard let last = lastVisual else {
+                failed = true
+                return nil
+            }
+            mode = last.mode
+            anchor = min(last.anchor, text.count)
+            cursor = min(last.cursor, text.count)
         case "&":
             // & repeats the last :s on this line, without its flags, as vim does.
             guard var last = lastSubstitute else {
