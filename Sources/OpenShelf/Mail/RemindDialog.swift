@@ -12,6 +12,18 @@ protocol DialogNode {
     /// Sets a date picker's date; false when it can't be set.
     func setDate(_ date: Date) -> Bool
     func press() -> Bool
+    /// What the control holds, for the snooze log: "date 2026-11-20T13:25:00Z", "no value".
+    var valueDescription: String { get }
+    /// Presses, and says how it went for the snooze log ("ok", "AXError -25204").
+    func pressReporting() -> (ok: Bool, detail: String)
+}
+
+extension DialogNode {
+    var valueDescription: String { date.map { "date " + ISO8601DateFormatter().string(from: $0) } ?? "no date" }
+    func pressReporting() -> (ok: Bool, detail: String) {
+        let ok = press()
+        return (ok, ok ? "ok" : "failed")
+    }
 }
 
 /// Fills in Mail's "Remind Me Later…" dialog. On David's Mac (screenshot, 2026-11-20) it
@@ -30,8 +42,11 @@ enum RemindDialog {
     static let maxPickers = 4
 
     enum Outcome: Equatable {
-        case reminded
-        /// The dialog was cancelled, and why.
+        /// Schedule was pressed. `pressOK` is what Accessibility answered, which can be an
+        /// error although Mail took the press (2026-11-20: the sheet closes during it), so
+        /// it is logged and never shown as a failure.
+        case scheduled(pressOK: Bool)
+        /// Cancel was pressed and Schedule never was, with a short reason.
         case cancelled(String)
     }
 
@@ -41,29 +56,44 @@ enum RemindDialog {
             && !all(in: node, where: { datePickerRoles.contains($0.role) }).isEmpty
     }
 
-    /// Sets `date` on every picker and presses Schedule, or cancels with the reason.
-    static func fill(_ window: DialogNode, with date: Date, calendar: Calendar = .current) -> Outcome {
+    /// Sets `date` on every picker and presses Schedule, or cancels with a short reason.
+    /// Every step goes to `note`, for the snooze log. Nothing is cancelled once Schedule
+    /// has been pressed.
+    static func fill(_ window: DialogNode, with date: Date, calendar: Calendar = .current, note: (String) -> Void = { _ in }) -> Outcome {
         let pickers = all(in: window) { datePickerRoles.contains($0.role) }
         let confirm = buttons(confirmTitles, in: window)
         let cancel = buttons([cancelTitle], in: window)
+        note("found \(pickers.count) pickers; buttons: \(all(in: window) { $0.role == kAXButtonRole }.map { $0.title ?? "?" }.joined(separator: ", "))")
         func giveUp(_ reason: String) -> Outcome {
-            _ = cancel.first?.press()
+            let pressed = cancel.first?.pressReporting().detail ?? "no Cancel button"
+            note("cancelled: \(reason); Cancel press \(pressed)")
             return .cancelled(reason)
         }
-        guard (1...maxPickers).contains(pickers.count) else { return giveUp("expected a date and a time picker, found \(pickers.count) pickers") }
-        guard confirm.count == 1, let button = confirm.first else { return giveUp("no single “Schedule” button") }
-        for (index, picker) in pickers.enumerated() where !picker.setDate(date) {
-            return giveUp("picker \(index + 1) of \(pickers.count) couldn't be set")
-        }
-        // Mail keeps minutes: every picker must read back the time asked for, to the minute.
+        guard (1...maxPickers).contains(pickers.count) else { return giveUp("found \(pickers.count) time pickers") }
+        guard confirm.count == 1, let button = confirm.first else { return giveUp("no single Schedule button") }
         for (index, picker) in pickers.enumerated() {
-            guard let set = picker.date, calendar.isDate(set, equalTo: date, toGranularity: .minute) else {
-                let shown = picker.date.map { SnoozeTime.describe($0, calendar: calendar) } ?? "nothing"
-                return giveUp("picker \(index + 1) of \(pickers.count) read back \(shown)")
-            }
+            note("picker \(index + 1): \(picker.role), before \(picker.valueDescription)")
+            guard picker.setDate(date) else { return giveUp("picker \(index + 1) wouldn't take the time") }
         }
-        guard button.press() else { return giveUp("“Schedule” couldn't be pressed") }
-        return .reminded
+        // Read back: a picker may show only the day or only the time (Mail keeps minutes), so
+        // each must match the day or the time, and together they must give both.
+        let day = calendar.dateComponents([.year, .month, .day], from: date)
+        let time = calendar.dateComponents([.hour, .minute], from: date)
+        var dayShown = false, timeShown = false
+        for (index, picker) in pickers.enumerated() {
+            note("picker \(index + 1): after \(picker.valueDescription)")
+            guard let set = picker.date else { return giveUp("picker \(index + 1) read back nothing") }
+            let sameDay = calendar.dateComponents([.year, .month, .day], from: set) == day
+            let sameTime = calendar.dateComponents([.hour, .minute], from: set) == time
+            guard sameDay || sameTime else { return giveUp("picker \(index + 1) read back \(SnoozeTime.describe(set, calendar: calendar))") }
+            dayShown = dayShown || sameDay
+            timeShown = timeShown || sameTime
+        }
+        guard dayShown else { return giveUp("no picker shows the day") }
+        guard timeShown else { return giveUp("no picker shows the time") }
+        let press = button.pressReporting()
+        note("pressed \(button.title ?? "Schedule"): \(press.detail)")
+        return .scheduled(pressOK: press.ok)
     }
 
     /// Presses the dialog's Cancel.
@@ -108,7 +138,20 @@ struct AXDialogNode: DialogNode {
         AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, date as CFDate) == .success
     }
 
-    func press() -> Bool {
-        AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
+    func press() -> Bool { pressReporting().ok }
+
+    func pressReporting() -> (ok: Bool, detail: String) {
+        let result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+        return (result == .success, result == .success ? "ok" : "AXError \(result.rawValue)")
+    }
+
+    var valueDescription: String {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
+        guard result == .success, let value else { return "no value (AXError \(result.rawValue))" }
+        if let date = value as? Date { return "date " + ISO8601DateFormatter().string(from: date) }
+        var settable = DarwinBoolean(false)
+        AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
+        return "\(CFCopyTypeIDDescription(CFGetTypeID(value)) as String), settable \(settable.boolValue)"
     }
 }

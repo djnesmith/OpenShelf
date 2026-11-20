@@ -18,13 +18,12 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    icon › **Check Mail (read only)**, then Cancel in Mail's dialog.
    *Expect:* a toast "Checked Mail". Send `~/Library/Logs/OpenShelf/mail-check.txt` (it holds
    no message text). It shows whether OpenShelf finds the dialog and can set both pickers. (#58)
-2. **Snooze** (fixed 2026-11-20: the dialog's button is Schedule, and there are two pickers).
+2. **Snooze** (works on your Mail as of 8:05 AM; its false "Not snoozed" toast is fixed).
    Select a test message, press **b** (single keys on) or **⌃⌥S**: the cursor is already in
    the field. Type `in 2 minutes`, **Return**.
-   *Expect:* Mail's dialog flashes and closes, "Snoozed" shows, and the message moves to
-   "Remind Me" as Mail's own Remind Me does, then comes back two minutes later. A "Not
-   snoozed: …" toast means a picker didn't take the time; Mail's dialog is cancelled, not left
-   open: send that line. (#58)
+   *Expect:* Mail's dialog flashes and closes, "Snoozed, Until …" shows, and the message moves to
+   "Remind Me" as Mail's own Remind Me does, then comes back two minutes later. Whatever the
+   toast says, send `~/Library/Logs/OpenShelf/snooze.log` (no message text). (#58)
 3. **Send.** In a message you are writing, **⌘↩** always sends. Reply to a test message to
    yourself and press **⇧⌘↩**.
    *Expect:* the reply in Sent, the original in Archive. The first time, macOS asks to let

@@ -52,6 +52,8 @@ struct MailMenuTests {
         /// What the control keeps when set (a picker that drops minutes, say).
         let keep: (Date) -> Date
         var pressed = 0
+        /// What a press answers; Mail's Schedule can answer an error although it worked.
+        var pressAnswers = true
         init(_ role: String, _ title: String? = nil, date: Date? = nil, settable: Bool = true, keep: @escaping (Date) -> Date = { $0 }, _ children: [DialogNode] = []) {
             self.role = role
             self.title = title
@@ -65,7 +67,7 @@ struct MailMenuTests {
             date = keep(new)
             return true
         }
-        func press() -> Bool { pressed += 1; return true }
+        func press() -> Bool { pressed += 1; return pressAnswers }
     }
 
     static let when = Date(timeIntervalSince1970: 1_800_000_000)
@@ -94,17 +96,70 @@ struct MailMenuTests {
     @Test func setsEveryPickerThenPressesSchedule() {
         for count in [1, 2, 4] {
             let dialog = Self.dialog(pickers: count)
-            #expect(RemindDialog.fill(dialog.sheet, with: Self.when) == .reminded)
+            #expect(RemindDialog.fill(dialog.sheet, with: Self.when) == .scheduled(pressOK: true))
             #expect(dialog.pickers.allSatisfy { $0.date == Self.when })
             #expect(dialog.schedule.pressed == 1)
             #expect(dialog.cancel.pressed == 0)
         }
     }
 
+    /// Mail's date picker holding only the day and its time picker only the time
+    /// (reference date 2001-01-01): the pair is right, so Schedule is pressed.
+    @Test func aDateOnlyAndATimeOnlyPickerTogetherSchedule() {
+        let calendar = Calendar.current
+        let dateOnly: (Date) -> Date = { calendar.startOfDay(for: $0) }
+        let timeOnly: (Date) -> Date = { date in
+            let parts = calendar.dateComponents([.hour, .minute], from: date)
+            return calendar.date(from: DateComponents(year: 2001, month: 1, day: 1, hour: parts.hour, minute: parts.minute))!
+        }
+        let dialog = Self.dialog(pickers: 2, keep: { index, date in index == 0 ? dateOnly(date) : timeOnly(date) })
+        #expect(RemindDialog.fill(dialog.sheet, with: Self.when) == .scheduled(pressOK: true))
+        #expect(dialog.schedule.pressed == 1)
+        #expect(dialog.cancel.pressed == 0)
+        // The day picker on the wrong day, or the time picker an hour off: cancelled.
+        let wrongDay: (Int, Date) -> Date = { index, date in index == 0 ? dateOnly(date.addingTimeInterval(86_400)) : timeOnly(date) }
+        let wrongTime: (Int, Date) -> Date = { index, date in index == 0 ? dateOnly(date) : timeOnly(date.addingTimeInterval(3600)) }
+        // Only times shown (no day), or the time picker some minutes off: cancelled too.
+        let onlyTimes: (Int, Date) -> Date = { _, date in timeOnly(date) }
+        let minutesOff: (Int, Date) -> Date = { index, date in index == 0 ? dateOnly(date) : timeOnly(date.addingTimeInterval(20 * 60)) }
+        for keep in [wrongDay, wrongTime, onlyTimes, minutesOff] {
+            let wrong = Self.dialog(pickers: 2, keep: keep)
+            guard case .cancelled = RemindDialog.fill(wrong.sheet, with: Self.when) else { Issue.record("not cancelled"); continue }
+            #expect(wrong.schedule.pressed == 0)
+            #expect(wrong.cancel.pressed == 1)
+        }
+    }
+
+    /// Mail's Schedule can answer an error while it closes its sheet (2026-11-20, the
+    /// reminder was set): that is still Scheduled, never Cancel.
+    @Test func aScheduleThatAnswersAnErrorIsNotCancelled() {
+        let dialog = Self.dialog()
+        dialog.schedule.pressAnswers = false
+        var notes: [String] = []
+        #expect(RemindDialog.fill(dialog.sheet, with: Self.when, note: { notes.append($0) }) == .scheduled(pressOK: false))
+        #expect(dialog.schedule.pressed == 1)
+        #expect(dialog.cancel.pressed == 0)
+        #expect(notes.contains("pressed Schedule: failed"))
+        #expect(notes.first == "found 4 pickers; buttons: Cancel, Schedule")
+    }
+
+    /// The snooze log is appended to and kept short.
+    @Test func theSnoozeLogAppendsAndStaysSmall() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("snooze-\(UUID().uuidString).log")
+        defer { try? FileManager.default.removeItem(at: url) }
+        SnoozeLog.append(["one", "two"], to: url, now: Self.when)
+        SnoozeLog.append(["three"], to: url, now: Self.when)
+        let lines = try String(contentsOf: url, encoding: .utf8).split(separator: "\n")
+        #expect(lines.map { $0.split(separator: " ", maxSplits: 1)[1] } == ["one", "two", "three"])
+        try Data(count: 300_000).write(to: url)
+        SnoozeLog.append(["last"], to: url, now: Self.when)
+        #expect(try Data(contentsOf: url).count < 200_000)
+    }
+
     /// Mail 16's older title still works.
     @Test func anOlderRemindMeTitleStillWorks() {
         let dialog = Self.dialog(confirm: ["Remind Me"])
-        #expect(RemindDialog.fill(dialog.sheet, with: Self.when) == .reminded)
+        #expect(RemindDialog.fill(dialog.sheet, with: Self.when) == .scheduled(pressOK: true))
         #expect(dialog.schedule.pressed == 1)
     }
 
@@ -112,12 +167,12 @@ struct MailMenuTests {
     /// time, a date picker that drops to midnight, no or two Schedule buttons: Cancel is
     /// pressed, never Schedule.
     @Test func anythingUnexpectedCancels() {
-        let midnight: (Int, Date) -> Date = { index, date in index == 0 ? Calendar.current.startOfDay(for: date) : date }
+        let midnight: (Int, Date) -> Date = { _, date in Calendar.current.startOfDay(for: date) }
         let cases: [Dialog] = [
             Self.dialog(pickers: 0),
             Self.dialog(pickers: 5),
             Self.dialog(settable: false),
-            Self.dialog(keep: { index, date in index == 1 ? date.addingTimeInterval(3600) : date }),
+            Self.dialog(keep: { index, date in index == 1 ? date.addingTimeInterval(86_400 + 3600) : date }),
             Self.dialog(keep: midnight),
             Self.dialog(confirm: []),
             Self.dialog(confirm: ["Schedule", "Schedule"]),
@@ -132,7 +187,7 @@ struct MailMenuTests {
         }
         // Seconds dropped is fine: Mail keeps minutes.
         let dialog = Self.dialog(keep: { _, date in Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60) })
-        #expect(RemindDialog.fill(dialog.sheet, with: Self.when.addingTimeInterval(20)) == .reminded)
+        #expect(RemindDialog.fill(dialog.sheet, with: Self.when.addingTimeInterval(20)) == .scheduled(pressOK: true))
         #expect(dialog.schedule.pressed == 1)
     }
 

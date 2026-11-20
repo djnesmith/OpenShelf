@@ -108,39 +108,49 @@ final class MailHelpers {
         }
     }
 
-    /// Mail's Remind Me at `date`, then Archive when that setting is on.
+    /// Mail's Remind Me at `date`, then Archive when that setting is on. Every run writes
+    /// its steps to SnoozeLog (no message text).
     func snooze(until date: Date) {
         guard let mail = MailMenu.running else { return }
         mail.activate()
         Task { @MainActor in
+            var log = ["snooze to \(ISO8601DateFormatter().string(from: date))"]
+            @MainActor func tell(_ title: String, _ subtitle: String, seconds: Int = 4) {
+                log.append("toast: \(title): \(subtitle)")
+                SnoozeLog.append(log)
+                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: title, subtitle: subtitle), for: .seconds(seconds))
+            }
             // Mail takes back the front and its message list before its menu is used.
             try? await Task.sleep(for: .milliseconds(250))
             guard let bar = MailMenu.menuBar(), Self.problem(with: bar) == nil,
                   let remind = MailMenu.find(MailMenu.remindMeLater, in: bar), remind.press() else {
-                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Can't snooze", subtitle: Self.problem(with: MailMenu.menuBar()) ?? "Remind Me Later… didn't open"), for: .seconds(4))
+                tell("Can't snooze", Self.problem(with: MailMenu.menuBar()) ?? "Remind Me Later… didn't open")
                 return
             }
             guard let dialog = await Self.waitForDialog(pid: mail.processIdentifier, seconds: 4) else {
                 // Late after all: cancelled, so nothing is left half done.
                 let late = await Self.waitForDialog(pid: mail.processIdentifier, seconds: 1)
-                if let late { _ = RemindDialog.cancel(late) }
-                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Can't snooze", subtitle: late == nil ? "Mail's Remind Me dialog didn't appear" : "Mail's Remind Me dialog came too late; cancelled"), for: .seconds(4))
+                if let late { log.append("late dialog, Cancel: \(RemindDialog.cancel(late))") }
+                tell("Can't snooze", late == nil ? "Mail's dialog didn't appear" : "Mail's dialog came late; cancelled")
                 return
             }
-            switch RemindDialog.fill(dialog, with: date) {
-            case .reminded:
-                // Mail closes the dialog once the reminder is set; if it stays, nothing is claimed.
-                guard await Self.waitForDialogToClose(pid: mail.processIdentifier, seconds: 2) else {
-                    ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Not sure it snoozed", subtitle: "Mail's Remind Me dialog is still open"), for: .seconds(5))
+            log.append("dialog: \(dialog.role)")
+            switch RemindDialog.fill(dialog, with: date, note: { log.append($0) }) {
+            case .scheduled:
+                // Schedule was pressed, so "Not snoozed" is never said from here on.
+                let closed = await Self.waitForDialogToClose(pid: mail.processIdentifier, seconds: 3)
+                log.append("dialog closed: \(closed)")
+                guard closed else {
+                    tell("Not sure it snoozed", "Mail's dialog is still open", seconds: 5)
                     return
                 }
                 if archivesAfterRemind, let archive = MailMenu.find(MailMenu.archive, in: MailMenu.menuBar() ?? []) {
                     try? await Task.sleep(for: .milliseconds(300))
-                    _ = archive.press()
+                    log.append("archive: \(archive.press())")
                 }
-                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Snoozed", subtitle: SnoozeTime.describe(date, calendar: .current)))
+                tell("Snoozed", "Until " + SnoozeTime.describe(date, calendar: .current))
             case .cancelled(let reason):
-                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Not snoozed", subtitle: "Mail's Remind Me dialog: \(reason). Menu bar › Check Mail writes what OpenShelf sees."), for: .seconds(6))
+                tell("Not snoozed", reason, seconds: 6)
             }
         }
     }
@@ -176,5 +186,24 @@ final class MailHelpers {
             try? await Task.sleep(for: .milliseconds(100))
         } while Date() < deadline
         return false
+    }
+}
+
+/// The snooze's steps, appended to ~/Library/Logs/OpenShelf/snooze.log: what was found,
+/// each picker's role and value, which buttons were pressed and how that went. No
+/// message text. Kept under about 256 KB.
+enum SnoozeLog {
+    static var fileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/snooze.log")
+    }
+
+    static func append(_ lines: [String], to url: URL = fileURL, now: Date = .now) {
+        let stamp = ISO8601DateFormatter().string(from: now)
+        let entry = lines.map { "\(stamp) \($0)" }.joined(separator: "\n") + "\n"
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var data = (try? Data(contentsOf: url)) ?? Data()
+        if data.count > 256_000 { data = data.suffix(128_000) }
+        data.append(Data(entry.utf8))
+        try? data.write(to: url, options: .atomic)
     }
 }
