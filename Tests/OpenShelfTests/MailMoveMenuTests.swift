@@ -313,4 +313,17 @@ struct MailMoveMenuTests {
         #expect(MoveMenu.flatFind([["A"], ["C"]], in: flat) == .twoOrMore)
         #expect(MoveMenu.flatFind([["A"], ["B"]], in: flat) == .found(2))
     }
+
+    /// Titles are matched without the leading spaces Mail may indent with, in a submenu too.
+    @Test func indentedTitlesMatchWithoutTheirSpaces() async {
+        let events = Fake.Events()
+        let info = FlatMenus.item("  [Info]", events)
+        let gmail = Fake("Gmail", [FlatMenus.item("  Inbox", events), info], lazy: true, events: events)
+        let moveTo = Fake("Move to", [gmail], lazy: true, events: events)
+        let message = Fake("Message", [moveTo], lazy: true, events: events)
+        let outcome = await MoveMenu.walk(MoveMenu.titles(for: .init(account: "Gmail", path: "[Info]")), bar: [message], folders: [],
+                                          anyOpen: { message.isOpen }, limits: Self.fast) { _ in }
+        #expect(outcome == .pressed)
+        #expect(info.presses == 1)
+    }
 }
