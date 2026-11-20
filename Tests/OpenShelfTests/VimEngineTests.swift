@@ -20,7 +20,7 @@ struct VimEngineTests {
                 case "Up": keys.append(.up)
                 case "Down": keys.append(.down)
                 default:
-                    if name.hasPrefix("C-"), let c = name.last { keys.append(.ctrl(c)) } else { keys.append(contentsOf: VimKey.keys(String(rest[...close]))) }
+                    if name.hasPrefix("C-"), let c = name.last { keys.append(.ctrl(c)) } else if name.hasPrefix("A-"), let c = name.last { keys.append(.alt(c)) } else { keys.append(contentsOf: VimKey.keys(String(rest[...close]))) }
                 }
                 rest = rest[rest.index(after: close)...]
             } else {

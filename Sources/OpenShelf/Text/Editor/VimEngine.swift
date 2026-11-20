@@ -4,6 +4,8 @@ import Foundation
 enum VimKey: Equatable, Sendable {
     case char(Character)
     case ctrl(Character)
+    /// ⌥ with a letter, by key code ("j", "k"): the Edit window's line moves.
+    case alt(Character)
     case escape, enter, backspace
     case left, right, up, down
 
@@ -284,6 +286,8 @@ struct VimEngine {
             }
         case .left: cursor = max(cursor - 1, 0)
         case .right: cursor = min(cursor + 1, text.count)
+        // In insert mode ⌥ keys type their own characters (the window lets them through).
+        case .alt: break
         case .up, .down:
             let line = lineIndex(cursor) + (key == .up ? -1 : 1)
             guard line >= 0, line < lineStarts.count else { return }
@@ -443,6 +447,44 @@ struct VimEngine {
         }
         cursor = firstNonBlank(lineStarts[min(lastLine, lineStarts.count - 1)])
         wantedColumn = nil
+    }
+
+    // MARK: - Moving lines
+
+    /// ⌥J / ⌥K (David's Doom config, ~/.doom.d/config.el my/move-line-*): the cursor's line,
+    /// or every line a visual selection touches, swaps places with the `count` lines below or
+    /// above, in one undo step. The cursor stays on the moved line at its column; a selection
+    /// is selected again in visual line mode, so the keys can be pressed again. Past the first
+    /// or last line nothing moves.
+    private mutating func moveLines(down: Bool, count: Int) {
+        let visual = inVisual
+        let first = lineIndex(visual ? min(anchor, cursor) : cursor)
+        let last = lineIndex(visual ? max(anchor, cursor) : cursor)
+        var lines = string.components(separatedBy: "\n")
+        guard down ? last + count < lines.count : first - count >= 0 else {
+            failed = true
+            return
+        }
+        let column = cursor - lineStart(cursor)
+        let cursorAtBottom = !visual || lineIndex(cursor) == last
+        let block = Array(lines[first...last])
+        lines.removeSubrange(first...last)
+        let target = down ? first + count : first - count
+        lines.insert(contentsOf: block, at: target)
+        checkpoint()
+        text = Array(lines.joined(separator: "\n"))
+        let newFirst = target, newLast = target + block.count - 1
+        func position(_ line: Int) -> Int {
+            let start = lineStarts[line]
+            return start + min(column, max(lineEnd(start) - start - 1, 0))
+        }
+        if visual {
+            mode = .visualLine
+            anchor = lineStarts[cursorAtBottom ? newFirst : newLast]
+            cursor = position(cursorAtBottom ? newLast : newFirst)
+        } else {
+            cursor = position(newFirst)
+        }
     }
 
     // MARK: - Visual block
@@ -785,6 +827,10 @@ struct VimEngine {
         guard let key = next() else { return .incomplete }
         index += 1
 
+        // ⌥J / ⌥K (and ⌥↓ / ⌥↑): move the line, or the selected lines, as David's Doom config does.
+        if case .alt(let c) = key, c == "j" || c == "k" {
+            return .done(Command(count: count, action: .simple(c == "j" ? "moveDown" : "moveUp")))
+        }
         if case .ctrl(let c) = key {
             switch c {
             case "r": return .done(Command(count: count, action: .simple("redo")))
@@ -1072,6 +1118,9 @@ struct VimEngine {
         case .operate(_, let motion): motion
         default: nil
         }
+        if case .simple(let name) = command.action, name == "moveDown" || name == "moveUp" {
+            return "\(keys): no line \(name == "moveDown" ? "below" : "above")"
+        }
         let reason: String = switch motion {
         // A count on j, k or $ only fails on the last (or first) line.
         case .down?, .lineEnd?: "no line below"
@@ -1089,6 +1138,7 @@ struct VimEngine {
             switch key {
             case .char(let c): String(c)
             case .ctrl(let c): "⌃\(c)"
+            case .alt(let c): "⌥\(c.uppercased())"
             case .escape: "Esc"
             case .enter: "↩"
             default: ""
@@ -1246,6 +1296,9 @@ struct VimEngine {
                 let anchorColumn = anchor - lineStart(anchor), cursorColumn = cursor - lineStart(cursor)
                 anchor = min(lineStart(anchor) + cursorColumn, lineEnd(anchor))
                 cursor = min(lineStart(cursor) + anchorColumn, lineEnd(cursor))
+            case "moveDown", "moveUp":
+                moveLines(down: name == "moveDown", count: n)
+                return nil
             case "blockI", "blockA":
                 startBlockInsert(append: name == "blockA")
                 return nil
@@ -1294,6 +1347,7 @@ struct VimEngine {
             commandLine = name
         case ".": repeatLastChange(count: count)
         case "increment", "decrement": addToNumber(name == "increment" ? n : -n)
+        case "moveDown", "moveUp": moveLines(down: name == "moveDown", count: n)
         case "block":
             anchor = cursor
             mode = .visualBlock
@@ -2460,6 +2514,8 @@ struct VimEngine {
         case .right: "\u{F703}"
         case .up: "\u{F700}"
         case .down: "\u{F701}"
+        // Private-use characters, so a macro holding ⌥J or ⌥K plays it back.
+        case .alt(let c): c == "j" ? "\u{F8F0}" : "\u{F8F1}"
         }
     }
 
@@ -2472,6 +2528,8 @@ struct VimEngine {
         case "\u{F703}": .right
         case "\u{F700}": .up
         case "\u{F701}": .down
+        case "\u{F8F0}": .alt("j")
+        case "\u{F8F1}": .alt("k")
         default:
             if let value = character.asciiValue, value < 0x20, character != "\n", character != "\t" {
                 .ctrl(Character(UnicodeScalar(value | 0x60)))

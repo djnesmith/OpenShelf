@@ -1,6 +1,6 @@
 # Morning page
 
-What is new in the installed OpenShelf (built 2026-11-19 night), what to try in order, and
+What is new in the installed OpenShelf (built 2026-11-19 night), what to try in order (16 items), and
 what is left for you to decide. Details for each item are in FORK-FEATURES.md (#numbers).
 
 ## Try, in this order
@@ -50,6 +50,9 @@ The Mail helpers have not been tried on real Mail yet. Use test messages.
 14. **More vim** in the Edit window: `:%s/old/new/g` then `u`; `jk` quickly leaves insert mode;
     **⌃A** on a number adds one; `R` overwrites; `gqip` re-wraps a long paragraph; **⌃V**, `jj`,
     `I// ` then Esc puts `// ` on three lines. (#53)
+16. **Move lines.** In the Edit window, **⌥J** / **⌥K** (or ⌥↓ / ⌥↑) move the line down / up;
+    `Vjj` then ⌥J moves three lines and keeps them selected. *Expect:* nothing is typed, line
+    numbers follow, `u` undoes one move; at the last line nothing moves and a gray note shows. (#53)
 15. **Clean Image.** Drag a photo with a location, Tools › **Clean**, mark a small logo, Clean.
     *Expect:* a report naming what it removed (EXIF, GPS location, …) and the filled area, with
     Copy Report; the copy has no location and no logo. (#67)

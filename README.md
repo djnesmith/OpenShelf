@@ -43,7 +43,7 @@ the file on a wedge and it's done, saved right next to the original.
 - **Edit window with vim keys:** the selection in a window with vim's motions, counts,
   operators, text objects, registers (yank goes to the Mac clipboard), macros, `.` and
   surround, visual block (⌃V with I and A), `:s` find and replace, `gq`, `jk`, ⌃A/⌃X, `R`,
-  `gv`, checked against real vim; relative line numbers (⌥⌘L),
+  `gv`, ⌥J/⌥K to move lines, checked against real vim; relative line numbers (⌥⌘L),
   wrap (⌥⌘Z), and a quiet
   note when a command does nothing.
 - **Tools:** still frame, reverse, strip metadata, mono, even out loudness, volume, frame

@@ -671,6 +671,14 @@ final class VimTextView: NSTextView {
     }
 
     static func vimKey(for event: NSEvent) -> VimKey? {
+        // ⌥J ⌥K ⌥↓ ⌥↑ by key code, so "∆" and "˚" are never typed outside insert mode.
+        if event.modifierFlags.intersection([.command, .control, .option, .shift]) == .option {
+            switch event.keyCode {
+            case 38, 125: return .alt("j")
+            case 40, 126: return .alt("k")
+            default: break
+            }
+        }
         switch event.keyCode {
         case 53: return .escape
         case 36, 76: return .enter
