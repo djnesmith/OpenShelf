@@ -8,7 +8,7 @@ import ApplicationServices
 @MainActor
 enum MailCheck {
     static var fileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/mail-check.txt")
+        OpenShelfFiles.logs.appendingPathComponent("mail-check.txt")
     }
 
     /// Looks at Mail now and writes the file. Returns its location, or why it couldn't.

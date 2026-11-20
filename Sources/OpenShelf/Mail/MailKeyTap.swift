@@ -653,7 +653,7 @@ enum MailWindowBindings {
 @MainActor
 enum KeysLog {
     static var fileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/keys.log")
+        OpenShelfFiles.logs.appendingPathComponent("keys.log")
     }
 
     static func note(_ line: String) {

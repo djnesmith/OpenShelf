@@ -187,4 +187,13 @@ struct MailFilingTests {
         #expect(bad.error != nil)
         #expect(bad.text == nil)
     }
+
+    /// Tests write their logs and state to a temporary folder, never David's real ones.
+    @Test func testsNeverWriteTheRealLogs() {
+        #expect(OpenShelfFiles.isTesting)
+        let temp = FileManager.default.temporaryDirectory.path
+        for url in [MailScript.logURL, KeysLog.fileURL, MailSend.logURL, SnoozeLog.fileURL, PreviewLog.fileURL, ActivityState.fileURL, MailCheck.fileURL] {
+            #expect(url.path.hasPrefix(temp), "\(url.lastPathComponent)")
+        }
+    }
 }

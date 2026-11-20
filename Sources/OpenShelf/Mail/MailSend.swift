@@ -74,7 +74,7 @@ enum MailSend {
     }
 
     static var logURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/send.log")
+        OpenShelfFiles.logs.appendingPathComponent("send.log")
     }
 
     /// ⌘↩: Send, when Mail has it enabled and the keyboard. Otherwise a short gray reason.

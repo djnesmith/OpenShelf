@@ -15,7 +15,7 @@ final class ActivityState {
     private var timer: Timer?
 
     static var fileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/OpenShelf/state.json")
+        OpenShelfFiles.support.appendingPathComponent("state.json")
     }
 
     func start() {

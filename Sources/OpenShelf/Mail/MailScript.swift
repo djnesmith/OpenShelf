@@ -17,7 +17,7 @@ enum MailScript {
     static let notPermitted = -1743
 
     static var logURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/mail-scripts.log")
+        OpenShelfFiles.logs.appendingPathComponent("mail-scripts.log")
     }
 
     /// One serial queue for every Mail script, off the main thread: a slow Mail must not

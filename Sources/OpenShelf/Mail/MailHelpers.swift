@@ -199,7 +199,7 @@ final class MailHelpers {
 /// message text. Kept under about 256 KB.
 enum SnoozeLog {
     static var fileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/snooze.log")
+        OpenShelfFiles.logs.appendingPathComponent("snooze.log")
     }
 
     static func append(_ lines: [String], to url: URL = fileURL, now: Date = .now) {
@@ -220,7 +220,7 @@ enum SnoozeLog {
 @MainActor
 enum PreviewLog {
     static var fileURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/preview.log")
+        OpenShelfFiles.logs.appendingPathComponent("preview.log")
     }
     private static var last = ""
 
