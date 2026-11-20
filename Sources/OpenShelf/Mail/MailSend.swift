@@ -73,7 +73,7 @@ enum MailSend {
                 toast("Sent, not archived", "The message isn't selected any more")
                 return
             }
-            toast("Sent and archived", original.subject)
+            toast("Sent and archived", original.subject, for: MailHelpers.successToast)
         }
     }
 
@@ -87,8 +87,8 @@ enum MailSend {
         return false
     }
 
-    private static func toast(_ title: String, _ subtitle: String) {
-        ToastController.shared.show(Toast(systemImage: "paperplane", title: title, subtitle: subtitle), for: .seconds(4))
+    private static func toast(_ title: String, _ subtitle: String, for duration: Duration = MailHelpers.problemToast) {
+        ToastController.shared.show(Toast(systemImage: "paperplane", title: title, subtitle: subtitle), for: duration)
     }
 }
 

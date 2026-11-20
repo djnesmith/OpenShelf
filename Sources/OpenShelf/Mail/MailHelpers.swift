@@ -80,6 +80,11 @@ final class MailHelpers {
 
     static func shouldListen(front bundleID: String?) -> Bool { bundleID == MailMenu.bundleID }
 
+    /// How long the Mail helpers' toasts stay: a plain success goes quickly (David,
+    /// 2026-11-20: "the toast stays on too long"); anything to read stays longer.
+    static let successToast: Duration = .milliseconds(1500)
+    static let problemToast: Duration = .seconds(4)
+
     func showPrompt() {
         // Checked first, so the prompt doesn't open over a compose window or with no message.
         if let problem = Self.problem(with: MailMenu.menuBar()) {
@@ -115,10 +120,10 @@ final class MailHelpers {
         mail.activate()
         Task { @MainActor in
             var log = ["snooze to \(ISO8601DateFormatter().string(from: date))"]
-            @MainActor func tell(_ title: String, _ subtitle: String, seconds: Int = 4) {
+            @MainActor func tell(_ title: String, _ subtitle: String, for duration: Duration = MailHelpers.problemToast) {
                 log.append("toast: \(title): \(subtitle)")
                 SnoozeLog.append(log)
-                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: title, subtitle: subtitle), for: .seconds(seconds))
+                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: title, subtitle: subtitle), for: duration)
             }
             // Mail takes back the front and its message list before its menu is used.
             try? await Task.sleep(for: .milliseconds(250))
@@ -141,16 +146,16 @@ final class MailHelpers {
                 let closed = await Self.waitForDialogToClose(pid: mail.processIdentifier, seconds: 3)
                 log.append("dialog closed: \(closed)")
                 guard closed else {
-                    tell("Not sure it snoozed", "Mail's dialog is still open", seconds: 5)
+                    tell("Not sure it snoozed", "Mail's dialog is still open", for: .seconds(5))
                     return
                 }
                 if archivesAfterRemind, let archive = MailMenu.find(MailMenu.archive, in: MailMenu.menuBar() ?? []) {
                     try? await Task.sleep(for: .milliseconds(300))
                     log.append("archive: \(archive.press())")
                 }
-                tell("Snoozed", "Until " + SnoozeTime.describe(date, calendar: .current))
+                tell("Snoozed", "Until " + SnoozeTime.describe(date, calendar: .current), for: MailHelpers.successToast)
             case .cancelled(let reason):
-                tell("Not snoozed", reason, seconds: 6)
+                tell("Not snoozed", reason, for: .seconds(6))
             }
         }
     }

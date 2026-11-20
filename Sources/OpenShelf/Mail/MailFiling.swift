@@ -76,7 +76,7 @@ enum MailFiling {
                 ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Not moved", subtitle: problem), for: .seconds(4))
             } else {
                 saveRecent(remember(chosen, in: loadRecent()))
-                ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Moved", subtitle: chosen.display))
+                ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Moved", subtitle: chosen.display), for: MailHelpers.successToast)
             }
         }
     }

@@ -21,7 +21,7 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
 2. **Snooze** (works on your Mail as of 8:05 AM; its false "Not snoozed" toast is fixed).
    Select a test message, press **b** (single keys on) or **⌃⌥S**: the cursor is already in
    the field. Type `in 2 minutes`, **Return**.
-   *Expect:* Mail's dialog flashes and closes, "Snoozed, Until …" shows, and the message moves to
+   *Expect:* Mail's dialog flashes and closes, "Snoozed, Until …" shows briefly (1.5 s), and the message moves to
    "Remind Me" as Mail's own Remind Me does, then comes back two minutes later. Whatever the
    toast says, send `~/Library/Logs/OpenShelf/snooze.log` (no message text). (#58)
 3. **Send.** In a message you are writing, **⌘↩** always sends. Reply to a test message to

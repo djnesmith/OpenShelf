@@ -106,12 +106,25 @@ struct MailFilingTests {
         let board = NSPasteboard(name: NSPasteboard.Name("OpenShelfTests.link.\(UUID())"))
         board.clearContents()
         board.setString("before", forType: .string)
-        MailLinks.copyLink(scripting: FakeScripting(selected: []), pasteboard: board, tell: { _ in })
+        MailLinks.copyLink(scripting: FakeScripting(selected: []), pasteboard: board, tell: { _, _ in })
         #expect(board.string(forType: .string) == "before")
-        MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A"), .init(id: "b@x", subject: "B")]), pasteboard: board, tell: { _ in })
+        MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A"), .init(id: "b@x", subject: "B")]), pasteboard: board, tell: { _, _ in })
         #expect(board.string(forType: .string) == "before")
-        MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A")]), pasteboard: board, tell: { _ in })
+        MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A")]), pasteboard: board, tell: { _, _ in })
         #expect(board.string(forType: .string) == "message://%3Ca@x%3E")
+        board.releaseGlobally()
+    }
+
+    /// A success toast goes quickly; one to read stays longer (David, 2026-11-20).
+    @Test func successToastsAreShort() {
+        #expect(MailHelpers.successToast == .milliseconds(1500))
+        #expect(MailHelpers.problemToast >= .seconds(4))
+        let board = NSPasteboard(name: NSPasteboard.Name("OpenShelfTests.linkToast.\(UUID())"))
+        var shown: [(String, Duration)] = []
+        MailLinks.copyLink(scripting: FakeScripting(selected: [.init(id: "a@x", subject: "A")]), pasteboard: board, tell: { shown.append(($0.title, $1)) })
+        MailLinks.copyLink(scripting: FakeScripting(selected: []), pasteboard: board, tell: { shown.append(($0.title, $1)) })
+        #expect(shown.map(\.0) == ["Link copied", "No link copied"])
+        #expect(shown.map(\.1) == [MailHelpers.successToast, .seconds(3)])
         board.releaseGlobally()
     }
 }

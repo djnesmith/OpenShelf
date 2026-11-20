@@ -18,15 +18,15 @@ enum MailLinks {
     static func copyLink(
         scripting: MailScripting = AppleScriptMail(),
         pasteboard: NSPasteboard = .general,
-        tell: (Toast) -> Void = { ToastController.shared.show($0, for: .seconds(3)) }
+        tell: (Toast, Duration) -> Void = { ToastController.shared.show($0, for: $1) }
     ) {
         let selected = scripting.selectedMessages()
         guard selected.count == 1, let message = selected.first, let url = link(forMessageID: message.id) else {
-            tell(Toast(systemImage: "link", title: "No link copied", subtitle: selected.isEmpty ? "Select a message in Mail first" : "Select one message"))
+            tell(Toast(systemImage: "link", title: "No link copied", subtitle: selected.isEmpty ? "Select a message in Mail first" : "Select one message"), .seconds(3))
             return
         }
         pasteboard.clearContents()
         pasteboard.setString(url.absoluteString, forType: .string)
-        tell(Toast(systemImage: "link", title: "Link copied", subtitle: message.subject))
+        tell(Toast(systemImage: "link", title: "Link copied", subtitle: message.subject), MailHelpers.successToast)
     }
 }
