@@ -1,6 +1,6 @@
 # Mail helpers: build plan
 
-Slices A to E are built (FORK-FEATURES #58 to #61), not yet tried against Mail; F and G are planned. It follows ROADMAP I4 (snooze) and I5 (send, and the Gmail
+Slices A to E and G are built (FORK-FEATURES #58 to #62), not yet tried against Mail; F waits for the Snippets wheel (C8). It follows ROADMAP I4 (snooze) and I5 (send, and the Gmail
 keys) as David decided them on 2026-11-19. Each slice can be installed and tried on its own;
 say yes or no to each.
 

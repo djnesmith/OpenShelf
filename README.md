@@ -50,7 +50,8 @@ the file on a wedge and it's done, saved right next to the original.
   and the wheel on selected shelf items.
 - **Mail helpers** (not yet proven on real Mail): ⌃⌥S snoozes with Mail's own Remind Me,
   ⌘↩ always sends and ⇧⌘↩ sends and archives, ⌃⌥M files to a mailbox by typing part of
-  its name, ⌃⌥K copies a link to the message, and optional Gmail-style single keys.
+  its name, ⌃⌥K copies a link to the message, ⌃⌥U unsubscribes and blocks through Mail's own
+  menu (it asks first), and optional Gmail-style single keys.
 - **Different from upstream:** no in-app updates (Sparkle is off), signed with the fork's
   own identity, a minimal environment for helper processes, and locked-down data tools.
   The text wheel and Mail helpers need Accessibility, unlike the file wheels below.

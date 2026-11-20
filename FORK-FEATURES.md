@@ -510,6 +510,13 @@ Menu bar › Mail Single Keys (off by default, `MailSingleKeys`) turns on Gmail-
 - Files: `Sources/OpenShelf/Mail/MailKeys.swift`, `Mail/MailKeyTap.swift`, `Mail/MailHelpers.swift`, `App/OpenShelfApp.swift`
 - Check: `swift test --filter MailKeysTests`. In the app: turn Mail Single Keys on, click Mail's message list, j and k move, ? shows the list; then type in a reply, the To field and the search field: no letter may be swallowed.
 
+### 62. Mail: unsubscribe and block in one step (MAIL-PLAN slice G)
+**Not yet proven on real Mail** (built and tested against fakes).
+While Mail is in front, ⌃⌥U opens Mail's own right-click menu on the one selected message (Accessibility's show-menu action) to see what Mail offers, closes it, and asks: "Unsubscribe from <sender> and block it?", or "Mail offers no unsubscribe for this message. Block <sender>?" when Mail has no Unsubscribe for it. On yes it presses Mail's "Unsubscribe" then "Block Sender" (titles from Mail 16's `MessageViewerContextMenu.loctable`), reopening the menu for each; an item that isn't there stops it with a message. Mail does the unsubscribing, so OpenShelf opens no link and reads no header; the sender's address comes from Mail's AppleScript. It asks every time.
+- Commits: this one
+- Files: `Sources/OpenShelf/Mail/MailUnsubscribe.swift`, `Mail/MailHelpers.swift`, `App/GlobalHotKey.swift`
+- Check: `swift test --filter MailUnsubscribeTests`. In the app: select a newsletter, ⌃⌥U, confirm; Mail unsubscribes and the sender is in Mail › Settings › Junk Mail › Blocked.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

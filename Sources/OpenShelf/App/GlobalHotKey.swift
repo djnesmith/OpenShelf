@@ -114,6 +114,8 @@ final class GlobalHotKey {
     /// Quick filing and message links (MAIL-PLAN C, D), while Mail is in front.
     static let mailMove = GlobalHotKey(id: 5)
     static let mailLink = GlobalHotKey(id: 6)
+    /// Unsubscribe and block (MAIL-PLAN G), while Mail is in front.
+    static let mailUnsubscribe = GlobalHotKey(id: 7)
 
     var onPress: (() -> Void)?
 

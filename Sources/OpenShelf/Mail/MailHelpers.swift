@@ -45,6 +45,7 @@ final class MailHelpers {
         GlobalHotKey.mailSendAndArchive.onPress = { MailSend.sendAndArchive() }
         GlobalHotKey.mailMove.onPress = { MailFiling.showPicker() }
         GlobalHotKey.mailLink.onPress = { MailLinks.copyLink() }
+        GlobalHotKey.mailUnsubscribe.onPress = { MailUnsubscribe.run() }
         observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             MainActor.assumeIsolated { self?.frontAppChanged(to: app?.bundleIdentifier) }
@@ -61,10 +62,12 @@ final class MailHelpers {
             GlobalHotKey.mail.register(promptShortcut)
             GlobalHotKey.mailMove.register(Self.moveShortcut)
             GlobalHotKey.mailLink.register(Self.linkShortcut)
+            GlobalHotKey.mailUnsubscribe.register(MailUnsubscribe.shortcut)
         } else {
             GlobalHotKey.mail.unregister()
             GlobalHotKey.mailMove.unregister()
             GlobalHotKey.mailLink.unregister()
+            GlobalHotKey.mailUnsubscribe.unregister()
         }
         if listen, sendKeys {
             GlobalHotKey.mailSend.register(MailSend.sendShortcut)
