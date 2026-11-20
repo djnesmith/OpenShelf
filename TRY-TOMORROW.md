@@ -31,6 +31,8 @@ Not Mail:
 10. **Snippets.** Cursor in a TextEdit document, ⌃⌥I, Dates & Times ▸, ISO Date: today's
    date appears. Settings › Wheels › Snippets folder › Show, add `Reply.txt` holding
    `Dear {cursor},`, then ⌃⌥I › Reply: the cursor lands before the comma. (#63)
+   Then the same in a Mail reply (MAIL-PLAN F): a snippet of several lines goes in where
+   the cursor is, and the reply's formatting around it is kept.
 
 Open decisions (built with these defaults, easy to change): ⌃⌥S, ⌃⌥M, ⌃⌥K and ⌃⌥U while Mail
 is in front; ⌃⌥I for Snippets; single keys off by default; `u`, `n`/`p` and `* n` left out; `[` archives then

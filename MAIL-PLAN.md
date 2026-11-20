@@ -1,6 +1,6 @@
 # Mail helpers: build plan
 
-Slices A to E and G are built (FORK-FEATURES #58 to #62), not yet tried against Mail; F waits for the Snippets wheel (C8). It follows ROADMAP I4 (snooze) and I5 (send, and the Gmail
+Slices A to E and G are built (FORK-FEATURES #58 to #62), not yet tried against Mail. F is covered by the Snippets wheel (C8, #63), which works in Mail's compose window like any app. It follows ROADMAP I4 (snooze) and I5 (send, and the Gmail
 keys) as David decided them on 2026-11-19. Each slice can be installed and tried on its own;
 say yes or no to each.
 
@@ -81,7 +81,9 @@ and how we notice · tests with no screen · what to try by hand · size.
 - **Tests, no screen:** the key table, the prefix timeout and focus rules on fake trees.
 - **By hand:** type in a reply, a search field and the To field; no key may be swallowed.
 
-### F. Snippets in compose (M)
+### F. Snippets in compose (M) — covered by C8
+The Snippets wheel (⌃⌥I, FORK-FEATURES #63) pastes at the cursor in any app, Mail's compose
+window included, and moves to `{cursor}`; nothing Mail-only was needed.
 - **Gets:** the Snippets wheel's snippets (C8) typed into a compose window.
 - **Needs:** C8 first. Accessibility (already used for pasting).
 - **By hand:** a snippet with several lines into a rich-text reply.
