@@ -50,6 +50,8 @@ struct MailKeysTests {
         #expect(!may(nil))
         #expect(!may("AXTable", [.other]))
         #expect(!may("AXTable", [.shift, .other]))
+        // A panel over Mail (Spotlight, Alfred) has the keys.
+        #expect(!MailKeys.mayTake(focusedRole: "AXTable", isEditable: false, sendEnabled: false, modifiers: [], mailHasFocus: false))
     }
 
     @Test func jAndKStopAtTheEnds() {

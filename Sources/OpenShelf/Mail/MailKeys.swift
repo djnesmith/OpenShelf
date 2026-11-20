@@ -65,7 +65,9 @@ enum MailKeys {
     /// Whether a key may be taken from Mail at all. Fails open: anything unknown, any
     /// modifier but ⇧, or focus anywhere but the message list or a message being read
     /// (never a text field or a message being written) lets the key through.
-    static func mayTake(focusedRole: String?, isEditable: Bool, sendEnabled: Bool, modifiers: Modifiers) -> Bool {
+    static func mayTake(focusedRole: String?, isEditable: Bool, sendEnabled: Bool, modifiers: Modifiers, mailHasFocus: Bool = true) -> Bool {
+        // A panel over Mail (Spotlight, Alfred) has the keys: never take them.
+        guard mailHasFocus else { return false }
         guard modifiers.isEmpty || modifiers == .shift else { return false }
         guard !sendEnabled, !isEditable, let role = focusedRole else { return false }
         return listRoles.contains(role) || role == "AXWebArea"

@@ -46,6 +46,18 @@ enum MailMenu {
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
     }
 
+    /// Whether Mail itself has the keyboard: the app macOS sends keys to, not only the app
+    /// in front. A panel such as Spotlight, Alfred or a password manager takes keys while
+    /// Mail stays in front. Anything unreadable counts as no.
+    static func hasKeyboardFocus() -> Bool {
+        guard let mail = running else { return false }
+        let systemWide = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(systemWide, 0.1)
+        guard let focused = AXMenuNode.element(systemWide, kAXFocusedApplicationAttribute) else { return false }
+        var pid: pid_t = 0
+        return AXUIElementGetPid(focused, &pid) == .success && pid == mail.processIdentifier
+    }
+
     /// Mail's menu bar through Accessibility, or nil when Mail isn't running or
     /// OpenShelf may not read it.
     static func menuBar() -> [MenuNode]? {

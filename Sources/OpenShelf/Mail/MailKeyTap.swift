@@ -117,7 +117,8 @@ final class MailKeyTap {
             focusedRole: role,
             isEditable: (editable as? Bool) ?? false,
             sendEnabled: sendEnabled,
-            modifiers: modifiers
+            modifiers: modifiers,
+            mailHasFocus: MailMenu.hasKeyboardFocus()
         )
     }
 }

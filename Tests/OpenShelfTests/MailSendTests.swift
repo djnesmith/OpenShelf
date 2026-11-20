@@ -31,6 +31,13 @@ struct MailSendTests {
         #expect(MailSend.original(forReply: "Re: Lunch", selected: [MailSend.Selected(id: "", subject: "Lunch")]) == nil)
     }
 
+    /// ⌘↩ typed into a panel over Mail never sends; nor does it with Send disabled.
+    @Test func sendsOnlyWhenMailHasTheKeyboard() {
+        #expect(MailSend.mayPress(sendEnabled: true, mailHasFocus: true))
+        #expect(!MailSend.mayPress(sendEnabled: true, mailHasFocus: false))
+        #expect(!MailSend.mayPress(sendEnabled: false, mailHasFocus: true))
+    }
+
     @Test func theSendKeysAreCommandReturnAndShiftCommandReturn() {
         #expect(MailSend.sendShortcut.displayString == "⌘↩")
         #expect(MailSend.sendAndArchiveShortcut.displayString == "⇧⌘↩")

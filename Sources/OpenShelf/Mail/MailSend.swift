@@ -37,14 +37,20 @@ enum MailSend {
     /// ⌘↩: Send, when Mail has it enabled (a message is being written). Otherwise nothing,
     /// as before.
     static func send() {
-        guard let bar = MailMenu.menuBar(), let item = MailMenu.find(MailMenu.send, in: bar), item.isEnabled else { return }
+        guard let bar = MailMenu.menuBar(), let item = MailMenu.find(MailMenu.send, in: bar),
+              mayPress(sendEnabled: item.isEnabled, mailHasFocus: MailMenu.hasKeyboardFocus()) else { return }
         _ = item.press()
     }
+
+    /// Send is pressed only when Mail has it enabled and Mail itself has the keyboard: ⌘↩
+    /// typed into a panel over Mail (Spotlight, Alfred) never sends a draft.
+    static func mayPress(sendEnabled: Bool, mailHasFocus: Bool) -> Bool { sendEnabled && mailHasFocus }
 
     /// ⇧⌘↩: Send, then Archive the message the reply answers.
     static func sendAndArchive(scripting: MailScripting = AppleScriptMail()) {
         guard let mail = MailMenu.running, let bar = MailMenu.menuBar(),
-              let sendItem = MailMenu.find(MailMenu.send, in: bar), sendItem.isEnabled else { return }
+              let sendItem = MailMenu.find(MailMenu.send, in: bar),
+              mayPress(sendEnabled: sendItem.isEnabled, mailHasFocus: MailMenu.hasKeyboardFocus()) else { return }
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 1)
         guard let compose = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return }

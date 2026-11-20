@@ -31,6 +31,11 @@ enum MailUnsubscribe {
         }
     }
 
+    /// Whether the message confirmed is still the one selected: exactly one, the same Message-ID.
+    static func stillSame(asked: [MailSend.Selected], now: [MailSend.Selected]) -> Bool {
+        asked.count == 1 && now == asked
+    }
+
     /// The confirm question for `plan` and the sender's address.
     static func question(for plan: Plan, sender: String) -> String? {
         switch plan {
@@ -47,6 +52,8 @@ enum MailUnsubscribe {
             return
         }
         let sender = scripting.selectedSenders().first ?? "this sender"
+        // The message asked about; after the question it must still be the one selected.
+        let asked = scripting.selectedMessages()
         guard let items = openMenu(on: row) else {
             tell("Nothing done", "Mail's message menu didn't open")
             return
@@ -63,10 +70,18 @@ enum MailUnsubscribe {
         alert.addButton(withTitle: "Cancel")
         NSApp.activate()
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard stillSame(asked: asked, now: scripting.selectedMessages()) else {
+            tell("Nothing done", "A different message is selected now")
+            return
+        }
         mail.activate()
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(300))
             for title in plan == .unsubscribeAndBlock ? [unsubscribeTitle, blockTitle] : [blockTitle] {
+                guard stillSame(asked: asked, now: scripting.selectedMessages()) else {
+                    tell("Stopped", "A different message is selected now")
+                    return
+                }
                 guard let row = selectedRow(pid: mail.processIdentifier), let items = openMenu(on: row),
                       let item = MailMenu.findAnywhere(title, in: items), item.isEnabled, item.press() else {
                     if let row = selectedRow(pid: mail.processIdentifier) { cancelMenu(on: row) }

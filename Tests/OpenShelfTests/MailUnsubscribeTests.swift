@@ -22,4 +22,14 @@ struct MailUnsubscribeTests {
         #expect(MailUnsubscribe.question(for: .nothing, sender: "a@b.example") == nil)
         #expect(MailUnsubscribe.shortcut.displayString == "⌃⌥U")
     }
+
+    /// After the question, only the same one message may be unsubscribed and blocked.
+    @Test func actsOnlyOnTheMessageConfirmed() {
+        let a = MailSend.Selected(id: "<a@x>", subject: "News"), b = MailSend.Selected(id: "<b@x>", subject: "Other")
+        #expect(MailUnsubscribe.stillSame(asked: [a], now: [a]))
+        #expect(!MailUnsubscribe.stillSame(asked: [a], now: [b]))
+        #expect(!MailUnsubscribe.stillSame(asked: [a], now: []))
+        #expect(!MailUnsubscribe.stillSame(asked: [a, b], now: [a, b]))
+        #expect(!MailUnsubscribe.stillSame(asked: [], now: []))
+    }
 }
