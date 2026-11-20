@@ -296,4 +296,48 @@ struct MailKeysTests {
         #expect(MailKeys.help.contains { $0.0 == "u" })
         #expect(MailKeys.help.contains { $0.0.contains("g g") && $0.0.contains("G") })
     }
+
+    /// In a message open on its own, the keys that act on one message are taken; moving,
+    /// mailboxes and anything editable, a field or Send on are not (2026-11-20).
+    @Test func oneMessageKeysInAMessageWindow() {
+        func may(_ role: String?, _ action: MailKeys.Action?, editable: Bool = false, send: Bool = false) -> Bool {
+            MailKeys.mayTake(focusedRole: role, isEditable: editable, sendEnabled: send, modifiers: [], inMessageWindow: true, action: action)
+        }
+        for action in [MailKeys.Action.menu("Message", "Reply"), .menu("Message", "Reply All"), .menu("Message", "Forward"),
+                       .menu("Message", "Archive"), .menu("Edit", "Delete"), .menu("Message", "Toggle Flag"), .snooze, .file,
+                       .menu("Message", "Mute"), .menu("Message", "Move to Junk"), .menu("Message", "Unread"), .backToList, .showKeys] {
+            #expect(may("AXWebArea", action), "\(action)")
+            #expect(may("AXGroup", action), "\(action)")
+        }
+        // j/k: Mail has no next-message command in a message window, so they go to Mail.
+        #expect(!may("AXWebArea", .nextMessage))
+        #expect(!may("AXWebArea", .favorite("Inbox")))
+        #expect(!may("AXWebArea", .firstMessage))
+        #expect(!may("AXWebArea", nil))
+        #expect(!may("AXWebArea", .menu("Message", "Reply"), editable: true))
+        #expect(!may("AXWebArea", .menu("Message", "Reply"), send: true))
+        #expect(!may("AXTextField", .menu("Message", "Reply")))
+    }
+
+    /// e and x in a message window act through the list only when its one selected row is
+    /// this message's conversation; anything unsure is this message alone. Nothing here
+    /// touches real mail.
+    @MainActor @Test func conversationPlanForEAndX() {
+        typealias S = MailSend.Selected
+        let thread = [S(id: "a@x", subject: "Lunch"), S(id: "b@x", subject: "Re: Lunch"), S(id: "c@x", subject: "RE: re: lunch")]
+        #expect(MailKeys.conversationPlan(windowTitle: "Re: Lunch", selectedRows: 1, selected: thread) == .viaList(messages: 3))
+        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 1, selected: [thread[0]]) == .viaList(messages: 1))
+        // A different conversation selected in the list (a subject twin is not enough: here it differs).
+        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 1, selected: [S(id: "d@x", subject: "Dinner")]) == .thisMessage)
+        // One of the selected messages is from another thread.
+        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 1, selected: thread + [S(id: "e@x", subject: "Dinner")]) == .thisMessage)
+        // Two rows, no row, nothing reported, no title.
+        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 2, selected: thread) == .thisMessage)
+        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 0, selected: thread) == .thisMessage)
+        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 1, selected: []) == .thisMessage)
+        #expect(MailKeys.conversationPlan(windowTitle: nil, selectedRows: 1, selected: thread) == .thisMessage)
+        #expect(MailKeys.conversationPlan(windowTitle: "Re:", selectedRows: 1, selected: thread) == .thisMessage)
+        // No subject on either side: nothing to confirm with.
+        #expect(MailKeys.conversationPlan(windowTitle: "Re:", selectedRows: 1, selected: [S(id: "f@x", subject: "")]) == .thisMessage)
+    }
 }

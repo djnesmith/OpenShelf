@@ -80,12 +80,18 @@ enum MailKeys {
     /// `inMessageViewer`: the focus is somewhere else in Mail's viewer window, such as one
     /// message of a conversation in the reading pane (David, 2026-11-20: r, a, f did
     /// nothing there). Only keys that act on one message are taken then.
+    /// `inMessageWindow`: a message open in its own window (David, 2026-11-20: "r/a/f
+    /// should work as well for an open message"): only the keys that act on one message.
     static func mayTake(focusedRole: String?, isEditable: Bool, sendEnabled: Bool, modifiers: Modifiers, mailHasFocus: Bool = true,
-                        inMessageViewer: Bool = false, action: Action? = nil) -> Bool {
+                        inMessageViewer: Bool = false, inMessageWindow: Bool = false, action: Action? = nil) -> Bool {
         // A panel over Mail (Spotlight, Alfred) has the keys: never take them.
         guard mailHasFocus else { return false }
         guard modifiers.isEmpty || modifiers == .shift else { return false }
         guard !sendEnabled, !isEditable, let role = focusedRole else { return false }
+        if inMessageWindow {
+            guard !textRoles.contains(role), let action else { return false }
+            return actsOnOneMessage(action)
+        }
         if listRoles.contains(role) || role == "AXWebArea" { return true }
         guard inMessageViewer, !textRoles.contains(role), let action else { return false }
         return actsOnOneMessage(action)
@@ -170,6 +176,26 @@ enum MailKeys {
         guard let window, !window.hasSheetOrPopover else { return .nothing }
         if window.isViewer { return focusInList ? .nothing : .focusList }
         return mayCloseWithEscape(window, focusedRole: nil, isEditable: false, sendEnabled: sendEnabled, modifiers: [], mailHasFocus: true) ? .close : .nothing
+    }
+
+    /// How `e` or `x` in a message window acts (David, 2026-11-20: "whatever e and x do when
+    /// a message is selected in the list").
+    enum ConversationPlan: Equatable {
+        /// The viewer's one selected row is this message's conversation: close the window
+        /// and press Archive or Delete in the viewer, so Mail does what it does for that row.
+        case viaList(messages: Int)
+        /// Anything unsure: Archive or Delete on the open message only.
+        case thisMessage
+    }
+
+    /// The selected row counts as the open message's only when the list has exactly one row
+    /// selected and every message Mail reports for it has the window's subject (Re:, Fwd:
+    /// aside). The subject only confirms; it never picks a message.
+    @MainActor static func conversationPlan(windowTitle: String?, selectedRows: Int, selected: [MailSend.Selected]) -> ConversationPlan {
+        guard selectedRows == 1, !selected.isEmpty, let windowTitle else { return .thisMessage }
+        let subject = MailSend.baseSubject(windowTitle)
+        guard !subject.isEmpty, selected.allSatisfy({ MailSend.baseSubject($0.subject) == subject }) else { return .thisMessage }
+        return .viaList(messages: selected.count)
     }
 
     /// A message list's selection, by row index. A protocol, so tests use a fake.

@@ -126,7 +126,8 @@ final class MailKeyTap {
         // Only a web area is ambiguous (a message read, or one being written), so only then
         // is Mail's menu asked whether Send is enabled; an unanswered question counts as yes.
         let inViewer = !MailKeys.listRoles.contains(role ?? "") && role != "AXWebArea" && isInMessageViewer(focused)
-        let sendEnabled = role == "AXWebArea" || inViewer ? (MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? true) : false
+        let inWindow = !isInMessageViewer(focused) && isMessageWindow(app)
+        let sendEnabled = role == "AXWebArea" || inViewer || inWindow ? (MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? true) : false
         let action: MailKeys.Action? = if case .act(let action) = outcome { action } else { nil }
         return MailKeys.mayTake(
             focusedRole: role,
@@ -136,6 +137,7 @@ final class MailKeyTap {
             mailHasFocus: MailMenu.hasKeyboardFocus(),
             // A prefix (g, *) has no action yet, so it is taken only in the list.
             inMessageViewer: inViewer,
+            inMessageWindow: inWindow,
             action: action
         )
     }
@@ -157,6 +159,14 @@ final class MailKeyTap {
 }
 
 extension MailKeyTap {
+    /// Whether Mail's front window is a message open on its own (not the viewer, not one
+    /// being written), as the Esc rule reads it.
+    static func isMessageWindow(_ app: AXUIElement) -> Bool {
+        guard let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return false }
+        let facts = facts(window, app: app)
+        return MailKeys.mayCloseWithEscape(facts, focusedRole: nil, isEditable: false, sendEnabled: false, modifiers: [], mailHasFocus: true)
+    }
+
     /// Mail's front window when Esc should close it (a message open on its own), or nil.
     func closesMessageWindow(_ event: CGEvent) -> AXUIElement? {
         guard let mail = MailMenu.running else { return nil }
@@ -276,6 +286,9 @@ struct AXSelectableList: MailKeys.SelectableList {
 enum MailKeyActions {
     static func perform(_ action: MailKeys.Action) {
         switch action {
+        case .menu("Message", "Archive"), .menu("Edit", "Delete"):
+            guard case .menu(let top, let title) = action else { return }
+            if !conversationAction(archive: title == "Archive") { press(title, under: top) }
         case .menu(let top, let title):
             press(title, under: top)
         case .favorite(let name):
@@ -285,6 +298,7 @@ enum MailKeyActions {
         case .previousMessage:
             moveSelection(by: -1)
         case .archiveThenPrevious:
+            if conversationAction(archive: true) { return }
             press("Archive", under: "Message")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { MainActor.assumeIsolated { moveSelection(by: -1) } }
         case .snooze:
@@ -320,6 +334,42 @@ enum MailKeyActions {
             menu = inner
         }
         return MailMenu.findAnywhere(title, in: menu.children)
+    }
+
+    /// `e` or `x` in a message window: what Archive or Delete does with that message's row
+    /// selected in the list. False when the front window isn't a message window (the caller
+    /// then presses the menu item as usual).
+    static func conversationAction(archive: Bool, scripting: MailScripting = AppleScriptMail()) -> Bool {
+        guard let mail = MailMenu.running else { return false }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        guard MailKeyTap.isMessageWindow(app), let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return false }
+        let title = AXMenuNode.string(window, kAXTitleAttribute)
+        var windowsValue: CFTypeRef?
+        AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsValue)
+        let viewer = ((windowsValue as? [AXUIElement]) ?? []).first {
+            AXMenuNode.string($0, kAXIdentifierAttribute)?.hasPrefix("Mail.messageViewer.window") == true
+        }
+        let list = viewer.flatMap(AXSelectableList.inViewer)
+        let plan = MailKeys.conversationPlan(windowTitle: title, selectedRows: list?.selectedRows.count ?? 0, selected: scripting.selectedMessages())
+        let verb = archive ? "Archived" : "Trashed"
+        switch plan {
+        case .viaList(let count):
+            close(window)
+            if let viewer { AXUIElementPerformAction(viewer, kAXRaiseAction as CFString) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                MainActor.assumeIsolated {
+                    press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit")
+                    ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(verb) the conversation",
+                                                      subtitle: "As from the list: \(count) message\(count == 1 ? "" : "s") selected there"), for: MailHelpers.successToast)
+                }
+            }
+        case .thisMessage:
+            press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit")
+            ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(verb) 1 message",
+                                              subtitle: "Not found in the list, so only this one"), for: .seconds(4))
+        }
+        return true
     }
 
     /// `u`: a message open in its own window closes, as Esc does; in the viewer the keyboard
