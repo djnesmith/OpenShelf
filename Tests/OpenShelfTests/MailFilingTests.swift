@@ -282,4 +282,28 @@ struct MailFilingTests {
         #expect(MailFiling.loadCache(defaults) == cache)
         #expect(MailFiling.loadCache(UserDefaults(suiteName: "OpenShelfTests.empty.\(UUID())")!).isEmpty)
     }
+
+    /// The script's move takes one message per statement (a list of two failed with -1700)
+    /// and answers how many moved and failed; anything else is a reason, shown as such.
+    @Test func theScriptsMoveGoesOneByOne() {
+        let script = MailScripts.move(to: "mailbox \"INBOX\" of account \"Gmail\"")
+        #expect(script.contains("move osMessage to osDestination"))
+        #expect(!script.contains("move osPicked"))
+        #expect(MailFiling.scriptMoveCounts("#MOVED\t2\t0") ?? (0, 9) == (2, 0))
+        #expect(MailFiling.scriptMoveCounts("#MOVED\t2\t1\n") ?? (0, 9) == (2, 1))
+        #expect(MailFiling.scriptMoveCounts("Select a message in Mail first") == nil)
+        #expect(MailFiling.scriptMoveCounts("") == nil)
+        #expect(MailFiling.scriptMoveCounts("Error\t1\t2") == nil)
+    }
+
+    /// How far a Move to path goes in Mail's menu, and how many items the last level has
+    /// (0: Mail builds that submenu only when it opens).
+    @MainActor @Test func moveMenuDepth() {
+        typealias Item = MailMenuTests.FakeItem
+        let bar: [MenuNode] = [Item("Message", [Item("Move to", [Item("Gmail")])])]
+        let depth = MailFiling.menuDepth(["Message", "Move to", "Gmail", "INBOX"], in: bar)
+        #expect(depth.found == 3)
+        #expect(depth.itemsAtLast == 0)
+        #expect(MailFiling.menuDepth(["Mailbox"], in: bar).found == 0)
+    }
 }

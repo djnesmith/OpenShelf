@@ -99,6 +99,26 @@ enum MailFiling {
         return .partial
     }
 
+    /// The script's move answer: how many moved and failed; nil when it said something else
+    /// (a reason, shown as such).
+    static func scriptMoveCounts(_ text: String) -> (moved: Int, failed: Int)? {
+        let parts = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\t").map(String.init)
+        guard parts.count == 3, parts[0] == "#MOVED", let moved = Int(parts[1]), let failed = Int(parts[2]) else { return nil }
+        return (moved, failed)
+    }
+
+    /// How far a menu path goes in `bar`: the number of its parts found, and how many items
+    /// the last level found has (0 when Mail builds that submenu only when it opens).
+    static func menuDepth(_ path: [String], in bar: [MenuNode]) -> (found: Int, itemsAtLast: Int) {
+        var level = bar, found = 0
+        for title in path {
+            guard let next = level.first(where: { $0.title == title }) else { break }
+            found += 1
+            level = next.children
+        }
+        return (found, level.count)
+    }
+
     /// The paths Mail's Message › Move to menu may give `mailbox`: the account (or On My Mac),
     /// then each part of its path; an IMAP "INBOX" shows as "Inbox".
     static func moveMenuPaths(for mailbox: Mailbox) -> [[String]] {
@@ -450,7 +470,11 @@ struct AppleScriptMailFiling: MailFilingScripting {
             route = "script"
             let outcome = await MailScript.run("move selection", MailScripts.move(to: destination))
             if let problem = MailScript.problem(outcome) { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: "\(problem.title): \(problem.subtitle)") }
-            if let text = outcome.text, !text.isEmpty { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: text) }
+            guard let counts = MailFiling.scriptMoveCounts(outcome.text ?? "") else {
+                return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: outcome.text ?? "Mail didn't answer")
+            }
+            SnoozeLog.append(["move: the script moved \(counts.moved), failed \(counts.failed)"], to: MailScript.logURL)
+            if counts.moved == 0 { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: "Mail refused to move \(counts.failed == 1 ? "it" : "them")") }
         }
         // Mail moves in the background; up to 3 s for the messages to arrive.
         var counts = (inSource: places.count, inDestination: 0)
@@ -485,7 +509,11 @@ struct AppleScriptMailFiling: MailFilingScripting {
     static func pressMoveMenu(for mailbox: MailFiling.Mailbox) async -> Bool {
         guard let mail = MailMenu.running, let bar = MailMenu.menuBar() else { return false }
         guard let item = MailFiling.moveMenuPaths(for: mailbox).lazy.compactMap({ MailMenu.find($0, in: bar) }).first else {
-            KeysLog.note("move: no Message › Move to item for that mailbox; using the script's move")
+            // How far the path went, and how many items the last level had: 0 there means
+            // Mail builds that submenu only when it opens, which a closed menu can't show.
+            let path = MailFiling.moveMenuPaths(for: mailbox)[0]
+            let depth = MailFiling.menuDepth(path, in: bar)
+            KeysLog.note("move: no Message › Move to item: \(depth.found) of \(path.count) parts found, \(depth.itemsAtLast) items at the last one; using the script's move")
             return false
         }
         let app = AXUIElementCreateApplication(mail.processIdentifier)

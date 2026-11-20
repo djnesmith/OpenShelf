@@ -163,15 +163,27 @@ enum MailScripts {
         """
     }
 
-    /// Moves the viewer's selected messages to `target` (a mailbox specifier).
+    /// Moves the viewer's selected messages to `target` (a mailbox specifier), one message
+    /// per statement, each in its own try (2026-11-20: moving a list of two messages at once
+    /// failed with -1700 "Can't make {…} into type specifier"). Answers "#MOVED moved failed",
+    /// or a sentence when nothing is selected.
     static func move(to target: String) -> String {
         """
-        tell application id "com.apple.mail"
-            set picked to selection as list
-            if (count of picked) is 0 then return "Select a message in Mail first"
-            move picked to \(target)
-            return ""
-        end tell
+        tell application id "com.apple.mail" to set osPicked to selection as list
+        if (count of osPicked) is 0 then return "Select a message in Mail first"
+        tell application id "com.apple.mail" to set osDestination to \(target)
+        set osMoved to 0
+        set osFailed to 0
+        repeat with osIndex from 1 to (count of osPicked)
+            set osMessage to item osIndex of osPicked
+            try
+                tell application id "com.apple.mail" to move osMessage to osDestination
+                set osMoved to osMoved + 1
+            on error
+                set osFailed to osFailed + 1
+            end try
+        end repeat
+        return "#MOVED" & tab & (osMoved as text) & tab & (osFailed as text)
         """
     }
 }
