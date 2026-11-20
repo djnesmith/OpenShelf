@@ -254,6 +254,74 @@ enum MailKeys {
         return windowGone ? .done : .unsure
     }
 
+    // MARK: Verified actions (2026-11-20: Message › Archive "pressed" and nothing happened)
+
+    /// Ways to make Mail do a command, tried in this order until Mail shows a change.
+    enum ActionRoute: Equatable {
+        /// The main viewer's own toolbar button (Archive, Delete, Junk).
+        case toolbar
+        /// The message list gets the keyboard first, then the menu item is pressed.
+        case listThenMenu
+    }
+
+    enum ActionStep: Equatable {
+        case attempt(ActionRoute)
+        case done(ActionRoute)
+        case gaveUp
+    }
+
+    /// The next step: stop as soon as the last route changed something (never a second
+    /// route after a change), else the next route not yet tried, else give up.
+    static func nextActionStep(tried: [ActionRoute], lastChanged: Bool, toolbarAvailable: Bool) -> ActionStep {
+        if let last = tried.last, lastChanged { return .done(last) }
+        let order: [ActionRoute] = toolbarAvailable ? [.toolbar, .listThenMenu] : [.listThenMenu]
+        guard let next = order.first(where: { !tried.contains($0) }) else { return .gaveUp }
+        return .attempt(next)
+    }
+
+    /// What Mail shows before and after a command: the list's row count, the selected
+    /// messages' ids, and their flag and read states.
+    struct ListSnapshot: Equatable {
+        var rows: Int
+        var selected: Set<String>
+        var flagged: [String: Bool] = [:]
+        var read: [String: Bool] = [:]
+    }
+
+    /// How a command's effect shows in Mail.
+    enum Verification: Equatable { case rowsLeave, flag, read, none }
+
+    static func verification(for title: String) -> Verification {
+        switch title {
+        case "Archive", "Delete", "Move to Junk": .rowsLeave
+        case "Toggle Flag", "Flag": .flag
+        case "Mark as Read", "Unread", "Mark as Unread": .read
+        default: .none
+        }
+    }
+
+    /// The viewer's toolbar button for a command, where it has one.
+    static func toolbarLabel(for title: String) -> String? {
+        switch title {
+        case "Archive": "Archive"
+        case "Delete": "Delete"
+        case "Move to Junk": "Junk"
+        default: nil
+        }
+    }
+
+    /// Whether Mail changed the way the command should: rows left (or the selection moved
+    /// on) for archive, delete and junk; the flag or read state for those; `.none` can't be
+    /// seen, so it counts as changed and is logged as not verifiable.
+    static func changed(_ before: ListSnapshot, _ after: ListSnapshot, _ kind: Verification) -> Bool {
+        switch kind {
+        case .rowsLeave: after.rows < before.rows || (!before.selected.isEmpty && after.selected != before.selected)
+        case .flag: !before.flagged.isEmpty && after.flagged != before.flagged
+        case .read: !before.read.isEmpty && after.read != before.read
+        case .none: true
+        }
+    }
+
     /// A window a key may close, as the close rule sees it. A protocol, so tests use a fake.
     @MainActor
     protocol ClosableWindow {

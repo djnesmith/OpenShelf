@@ -311,7 +311,9 @@ enum MailKeyActions {
             openAndBind()
         case .menu("Message", "Archive"), .menu("Edit", "Delete"):
             guard case .menu(let top, let title) = action else { return }
-            if !conversationAction(archive: title == "Archive") { press(title, under: top) }
+            if !conversationAction(archive: title == "Archive") { performVerified(title, under: top) }
+        case .menu(let top, let title) where verifiedTitles.contains(title):
+            performVerified(title, under: top)
         case .menu(let top, let title):
             press(title, under: top)
         case .favorite(let name):
@@ -322,8 +324,7 @@ enum MailKeyActions {
             moveSelection(by: -1)
         case .archiveThenPrevious:
             if conversationAction(archive: true) { return }
-            press("Archive", under: "Message")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { MainActor.assumeIsolated { moveSelection(by: -1) } }
+            performVerified("Archive", under: "Message") { moveSelection(by: -1) }
         case .snooze:
             MailHelpers.shared.showPrompt()
         case .file:
@@ -383,6 +384,100 @@ enum MailKeyActions {
             menu = inner
         }
         return MailMenu.findAnywhere(title, in: menu.children)
+    }
+
+    /// Commands whose effect is checked in Mail after the key (archive, delete, junk, flag,
+    /// read, mute).
+    static let verifiedTitles: Set<String> = ["Archive", "Delete", "Move to Junk", "Toggle Flag", "Mark as Read", "Unread", "Mute"]
+
+    /// Does the command in the main viewer and checks it happened: the viewer's toolbar
+    /// button first (one press), then the list gets the keyboard and the menu item is
+    /// pressed; each try is followed by up to a second of looking at Mail, and a try that
+    /// changed something ends it. Nothing changed: a toast says so (2026-11-20: Message ›
+    /// Archive answered "pressed" and Mail did nothing).
+    static func performVerified(_ title: String, under top: String, then afterDone: (() -> Void)? = nil) {
+        guard let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        guard let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute), MailKeys.isMainViewer(AXDialogNode(element: viewer)) else {
+            // Not the main viewer: the menu item, as before.
+            if press(title, under: top) { afterDone?() }
+            return
+        }
+        let kind = MailKeys.verification(for: title)
+        Task { @MainActor in
+            let before = await snapshot(viewer)
+            let focusRole = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) } ?? "?"
+            KeysLog.note("\(title): focus \(focusRole), \(before.rows) rows, \(before.selected.count) selected")
+            let label = MailKeys.toolbarLabel(for: title)
+            let button = label.flatMap { MailKeys.toolbarButton($0, in: AXDialogNode(element: viewer)) } as? AXDialogNode
+            if label != nil, button == nil { KeysLog.note("\(title): no \(label!) button in the viewer's toolbar") }
+            var tried: [MailKeys.ActionRoute] = []
+            var changedNow = false
+            while true {
+                switch MailKeys.nextActionStep(tried: tried, lastChanged: changedNow, toolbarAvailable: button != nil) {
+                case .done(let route):
+                    KeysLog.note("\(title): done via \(route)\(kind == .none ? " (not verifiable)" : "")")
+                    afterDone?()
+                    return
+                case .gaveUp:
+                    KeysLog.note("\(title): no change after every route")
+                    ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "\(title) did nothing",
+                                                      subtitle: "Mail showed no change; ⌘-key in Mail still works"), for: .seconds(5))
+                    return
+                case .attempt(let route):
+                    tried.append(route)
+                    switch route {
+                    case .toolbar:
+                        let answer = button.map { AXUIElementPerformAction($0.element, kAXPressAction as CFString) } ?? .failure
+                        KeysLog.note("\(title): pressed the toolbar button, \(answer == .success ? "ok" : "AXError \(answer.rawValue)")")
+                    case .listThenMenu:
+                        if let list = AXSelectableList.inViewer(viewer) {
+                            AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                        }
+                        try? await Task.sleep(for: .milliseconds(100))
+                        _ = press(title, under: top)
+                    }
+                    changedNow = await waitForChange(from: before, in: viewer, kind)
+                    KeysLog.note("\(title): \(route) \(changedNow ? "changed Mail" : "no change")")
+                }
+            }
+        }
+    }
+
+    /// Up to a second of looking for the command's effect.
+    private static func waitForChange(from before: MailKeys.ListSnapshot, in viewer: AXUIElement, _ kind: MailKeys.Verification) async -> Bool {
+        if kind == .none { return true }
+        for _ in 0..<5 {
+            try? await Task.sleep(for: .milliseconds(200))
+            if MailKeys.changed(before, await snapshot(viewer), kind) { return true }
+        }
+        return false
+    }
+
+    /// The viewer's list row count and the selected messages' ids, flag and read states
+    /// (Mail's AppleScript; never a subject or body).
+    static func snapshot(_ viewer: AXUIElement) async -> MailKeys.ListSnapshot {
+        let rows = AXSelectableList.inViewer(viewer)?.rows.count ?? 0
+        let source = """
+        tell application id "com.apple.mail"
+            set out to ""
+            repeat with m in (selection as list)
+                set out to out & (message id of m) & tab & (flagged status of m as text) & tab & (read status of m as text) & linefeed
+            end repeat
+            return out
+        end tell
+        """
+        let text = await MailScript.run("selection state", source).text ?? ""
+        var snapshot = MailKeys.ListSnapshot(rows: rows, selected: [])
+        for line in text.split(separator: "\n") {
+            let parts = line.split(separator: "\t").map(String.init)
+            guard parts.count == 3 else { continue }
+            snapshot.selected.insert(parts[0])
+            snapshot.flagged[parts[0]] = parts[1] == "true"
+            snapshot.read[parts[0]] = parts[2] == "true"
+        }
+        return snapshot
     }
 
     /// `e` or `x` in a message window: what Archive or Delete does with that message's row
