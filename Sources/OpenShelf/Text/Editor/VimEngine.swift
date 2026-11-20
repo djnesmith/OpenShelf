@@ -82,6 +82,10 @@ struct VimEngine {
     private var wantedColumn: Int?
     private var lastFind: (command: Character, target: Character)?
     private var lastSearch: (pattern: String, forward: Bool, wholeWord: Bool)?
+    /// The last `:s`, for `&` and a bare `:s`.
+    private var lastSubstitute: VimSubstitute.Command?
+    /// The lines of the visual selection `:` was typed in, for `'<,'>`.
+    private var visualLines: (first: Int, last: Int)?
     /// The text when insert mode began, to drop an insert that changed nothing.
     private var insertStartText: [Character]?
     /// The text once insert mode began, after any automatic text (o's line
@@ -363,6 +367,10 @@ struct VimEngine {
             }
             return .cancel
         default:
+            if let substitute = VimSubstitute.parse(command) {
+                self.substitute(substitute)
+                return nil
+            }
             if let number = Int(command) {
                 cursor = firstNonBlank(lineStarts[min(max(number, 1), lineStarts.count) - 1])
                 wantedColumn = nil
@@ -372,6 +380,87 @@ struct VimEngine {
             }
             return nil
         }
+    }
+
+    // MARK: - Substitute
+
+    /// Runs `:s` (ROADMAP C12): each line of the range has its first match (every match with
+    /// `g`) replaced, in one undo step; the cursor goes to the last line changed. An empty
+    /// pattern is the last one searched for; a bare `:s` repeats the last replacement.
+    private mutating func substitute(_ given: VimSubstitute.Command) {
+        var command = given
+        if command.pattern.isEmpty {
+            guard let last = lastSearch?.pattern ?? lastSubstitute?.pattern else {
+                message = "E35: No previous regular expression"
+                failed = true
+                return
+            }
+            command.pattern = last
+        }
+        if command.replacement == "~", given.pattern.isEmpty { command.replacement = lastSubstitute?.replacement ?? "" }
+        let (icu, caseOverride) = VimSubstitute.icuPattern(command.pattern)
+        let ignoreCase = caseOverride ?? command.ignoreCase ?? !command.pattern.contains(where: \.isUppercase)
+        guard let regex = try? NSRegularExpression(pattern: icu, options: ignoreCase ? [.caseInsensitive] : []) else {
+            message = "E486: Pattern not found: \(command.pattern)"
+            failed = true
+            return
+        }
+        let lines = string.components(separatedBy: "\n")
+        let current = lineIndex(cursor)
+        func resolve(_ bound: VimSubstitute.Bound) -> Int {
+            switch bound {
+            case .number(let n): min(max(n, 1), lines.count) - 1
+            case .current: current
+            case .last: lines.count - 1
+            }
+        }
+        let range: ClosedRange<Int>
+        switch command.range {
+        case .current: range = current...current
+        case .all: range = 0...(lines.count - 1)
+        case .lines(let a, let b): range = min(resolve(a), resolve(b))...max(resolve(a), resolve(b))
+        case .visual: range = (visualLines?.first ?? current)...(visualLines?.last ?? current)
+        }
+        let template = VimSubstitute.template(command.replacement)
+        var out: [String] = []
+        var substitutions = 0
+        var changedLines = 0
+        var lastChanged: Int?
+        for (index, line) in lines.enumerated() {
+            guard range.contains(index) else {
+                out.append(line)
+                continue
+            }
+            let whole = NSRange(line.startIndex..., in: line)
+            let matches = command.global ? regex.matches(in: line, range: whole) : regex.firstMatch(in: line, range: whole).map { [$0] } ?? []
+            guard !matches.isEmpty else {
+                out.append(line)
+                continue
+            }
+            var changed = line as NSString
+            for match in matches.reversed() {
+                let replacement = regex.replacementString(for: match, in: line, offset: 0, template: template)
+                changed = changed.replacingCharacters(in: match.range, with: replacement) as NSString
+            }
+            substitutions += matches.count
+            changedLines += 1
+            // A replacement with line breaks makes more than one line.
+            let pieces = (changed as String).components(separatedBy: "\n")
+            out += pieces
+            lastChanged = out.count - 1
+        }
+        lastSearch = (command.pattern, true, false)
+        lastSubstitute = command
+        guard let lastChanged else {
+            message = "E486: Pattern not found: \(command.pattern)"
+            failed = true
+            return
+        }
+        checkpoint()
+        text = Array(out.joined(separator: "\n"))
+        cursor = firstNonBlank(lineStarts[min(lastChanged, lineStarts.count - 1)])
+        wantedColumn = nil
+        if changedLines > 2 { message = "\(substitutions) substitutions on \(changedLines) lines" }
     }
 
     // MARK: - Parsing
@@ -584,7 +673,7 @@ struct VimEngine {
             case "~": return .done(Command(count: count, action: .operate(.toggleCase, nil)))
             case "u": return .done(Command(count: count, action: .operate(.lower, nil)))
             case "U": return .done(Command(count: count, action: .operate(.upper, nil)))
-            case "o", "v", "V", "J", "p", "P": return .done(Command(count: count, action: .simple(String(c))))
+            case "o", "v", "V", "J", "p", "P", ":": return .done(Command(count: count, action: .simple(String(c))))
             case "q" where recording != nil: return .done(Command(count: nil, action: .simple("q")))
             default: return .invalid
             }
@@ -597,7 +686,7 @@ struct VimEngine {
             guard index < keys.count else { return .incomplete }
             guard case .char(let name) = keys[index], name == "@" && c == "@" || name.isASCII && name.isLetter || (c == "@" && (name == "+" || name == "*")) else { return .invalid }
             return .done(Command(count: count, action: .simple("\(c)\(name)")))
-        case "x", "X", "s", "S", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".":
+        case "x", "X", "s", "S", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".", "&":
             return .done(Command(count: count, action: .simple(String(c))))
         case "r":
             guard case .char(let target)? = next() else { return next() == nil ? .incomplete : .invalid }
@@ -915,6 +1004,12 @@ struct VimEngine {
                 mode = mode == wanted ? .normal : wanted
             case "p", "P":
                 replaceSelection()
+            case ":":
+                // As vim: the command line starts with the selection's lines.
+                visualLines = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
+                mode = .commandLine
+                commandLine = ":'<,'>"
+                return nil
             default: break
             }
             clampCursor()
@@ -944,6 +1039,17 @@ struct VimEngine {
             mode = .commandLine
             commandLine = name
         case ".": repeatLastChange(count: count)
+        case "&":
+            // & repeats the last :s on this line, without its flags, as vim does.
+            guard var last = lastSubstitute else {
+                message = "E35: No previous regular expression"
+                failed = true
+                return nil
+            }
+            last.range = .current
+            last.global = false
+            last.ignoreCase = nil
+            substitute(last)
         case "q":
             // vim: "The 'q' command is disabled while executing a register".
             if playDepth == 0 { stopRecording() }

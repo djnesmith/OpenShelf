@@ -42,7 +42,8 @@ the file on a wedge and it's done, saved right next to the original.
   in a folder, with placeholders like `{date offset="+3d"}`, `{clipboard}` and `{cursor}`.
 - **Edit window with vim keys:** the selection in a window with vim's motions, counts,
   operators, text objects, registers (yank goes to the Mac clipboard), macros, `.` and
-  surround, checked against real vim; relative line numbers (⌥⌘L), wrap (⌥⌘Z), and a quiet
+  surround, `:s` find and replace, checked against real vim; relative line numbers (⌥⌘L),
+  wrap (⌥⌘Z), and a quiet
   note when a command does nothing.
 - **Tools:** still frame, reverse, strip metadata, mono, even out loudness, volume, frame
   rate, fit under a size, export in a chosen codec, transcribe, OCR, PDF pages to images,
