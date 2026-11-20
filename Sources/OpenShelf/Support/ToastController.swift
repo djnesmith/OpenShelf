@@ -115,6 +115,7 @@ final class ToastController {
             defer: true
         )
         panel.level = .popUpMenu
+        panel.identifier = ActivityState.passive
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
         panel.isOpaque = false
         panel.backgroundColor = .clear

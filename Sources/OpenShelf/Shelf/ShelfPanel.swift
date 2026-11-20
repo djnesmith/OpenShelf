@@ -16,6 +16,7 @@ final class ShelfPanel: NSPanel {
             defer: false
         )
         isFloatingPanel = true
+        identifier = ActivityState.passive
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isOpaque = false

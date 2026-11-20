@@ -44,6 +44,7 @@ final class EdgeTab {
             defer: true
         )
         panel.level = .floating
+        panel.identifier = ActivityState.passive
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.isOpaque = false
         panel.backgroundColor = .clear

@@ -15,6 +15,8 @@ final class ConversionRunner {
     /// started from, if any. Wired once at launch to add them back to that
     /// shelf when Settings → Shelves allows it.
     var onSaved: (([URL], Shelf.ID?) -> Void)?
+    /// Batches queued or running, for ActivityState: a relaunch would cut them off.
+    private(set) var activeBatches = 0
 
     /// Called with each job's files as soon as they're written, before the
     /// rest of the batch finishes. Wired once at launch so watched folders
@@ -61,10 +63,12 @@ final class ConversionRunner {
     ) {
         guard !jobs.isEmpty else { return }
         let previous = current
+        activeBatches += 1
         current = Task { [weak self] in
             // Batches queue behind each other so their toasts don't collide.
             await previous?.value
             await self?.execute(title: title, jobs: jobs, savedSubtitle: savedSubtitle, keepsFormat: keepsFormat, unchangedLabel: unchangedLabel, near: location, sourceShelfID: sourceShelfID, operation: operation)
+            self?.activeBatches -= 1
         }
     }
 

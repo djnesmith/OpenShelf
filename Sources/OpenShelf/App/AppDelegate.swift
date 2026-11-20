@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Keeps the app out of the Dock when launched without the bundle's LSUIElement (e.g. `swift run`).
         NSApp.setActivationPolicy(.accessory)
+        ActivityState.shared.start()
         MailHelpers.shared.start()
 
         wheel.onDrop = { [weak self] item, urls, modifiers, sourceShelfID in
