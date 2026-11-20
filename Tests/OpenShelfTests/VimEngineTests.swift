@@ -385,4 +385,14 @@ struct VimEngineTests {
         _ = engine.handle(Self.keys(notation))
         #expect(engine.cursor <= engine.text.count)
     }
+
+    /// A quote object that finds nothing says why (vim's quotes stay on one line, so a
+    /// docstring over two lines has none), and so does a bracket object outside brackets.
+    @Test func failedTextObjectsSayWhy() {
+        #expect(Self.run("  \"Says hel|lo\n  more\"", "ci\"").failureHint == "ci\": no \"…\" on this line")
+        #expect(Self.run("(= \\\" (fi|rst s))", "di\"").failureHint == "di\": no \"…\" on this line")
+        #expect(Self.run("no br|ackets", "ci(").failureHint == "ci(: not inside ( )")
+        #expect(Self.run("no br|ackets", "di{").failureHint == "di{: not inside { }")
+        #expect(Self.run("\"o|k\"", "ci\"").failureHint == nil)
+    }
 }

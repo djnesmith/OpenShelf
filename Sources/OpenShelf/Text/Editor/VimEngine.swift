@@ -1110,6 +1110,16 @@ struct VimEngine {
         return effect
     }
 
+    /// "( )" for any of b ( ), "[ ]", "{ }" for B { }, "< >".
+    private static func bracketPair(_ kind: Character) -> String {
+        switch kind {
+        case "[", "]": "[ ]"
+        case "{", "}", "B": "{ }"
+        case "<", ">": "< >"
+        default: "( )"
+        }
+    }
+
     /// A few words on why `command` did nothing, after the keys typed.
     private func failureHint(for command: Command) -> String {
         let keys = Self.describe(typed)
@@ -1127,6 +1137,9 @@ struct VimEngine {
         case .up?: "no line above"
         case .wordBackward?: "at the start"
         case .find(_, let target)?: "no “\(target)” on the line"
+        case .textObject(_, let kind)? where "\"'`".contains(kind): "no \(kind)…\(kind) on this line"
+        case .textObject(_, let kind)? where "([{<)]}>bB".contains(kind): "not inside \(Self.bracketPair(kind))"
+        case .textObject(_, "t")?: "not inside a tag"
         default: "nothing to do"
         }
         return "\(keys): \(reason)"

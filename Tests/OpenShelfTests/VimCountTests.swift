@@ -103,7 +103,7 @@ struct VimCountTests {
             ("|abc", "fx", "fx: no “x” on the line"),
             ("|abc", "dfx", "dfx: no “x” on the line"),
             ("|abc", "b", "b: at the start"),
-            ("|abc", "di(", "di(: nothing to do"),
+            ("|abc", "di(", "di(: not inside ( )"),
             ("|a\nb\nc\nd", "d3j", nil),
             // p with nothing to paste fails with its own message (E353), so no hint.
             ("|abc", "p", nil),

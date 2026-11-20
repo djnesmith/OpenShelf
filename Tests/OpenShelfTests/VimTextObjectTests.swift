@@ -22,6 +22,16 @@ struct VimTextObjectTests {
         ("one tw|o three", "ciwX<Esc>", "one |X three"),
         ("foo b|ar baz", "gUiw", "foo |BAR baz"),
         // Quotes: on the line, around the cursor or the next pair after it.
+        // Clojure from Emacs (David, 2026-11-20), each checked with vim --clean.
+        ("(defn f [x] (foo \"ba|r\" :k \"v\"))", "ci\"X<Esc>", "(defn f [x] (foo \"|X\" :k \"v\"))"),
+        ("(fo|o \"bar\" :k \"v\")", "ci\"X<Esc>", "(foo \"|X\" :k \"v\")"),
+        ("(foo \"bar\" :|k \"v\")", "ci\"X<Esc>", "(foo \"bar\"|X\"v\")"),
+        ("(str \"a \\\"b|\\\" c\")", "ci\"X<Esc>", "(str \"|X\")"),
+        ("(re-find #\"\\d|+\" s)", "ci\"X<Esc>", "(re-find #\"|X\" s)"),
+        ("\t(foo \"b|ar\")", "ci\"X<Esc>", "\t(foo \"|X\")"),
+        ("(foo \"bar|\")", "ci\"X<Esc>", "(foo \"|X\")"),
+        ("(foo \"b|ar\" \"baz\")", "da\"", "(foo |\"baz\")"),
+        ("(foo \"b|ar\")\r", "ci\"X<Esc>", "(foo \"|X\")\r"),
         ("say \"hel|lo\" now", "di\"", "say \"|\" now"),
         ("say \"hel|lo\" now", "da\"", "say |now"),
         ("|say \"hello\" now", "di\"", "say \"|\" now"),
