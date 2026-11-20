@@ -23,6 +23,19 @@ struct VimTextObjectTests {
         ("foo b|ar baz", "gUiw", "foo |BAR baz"),
         // Quotes: on the line, around the cursor or the next pair after it.
         // Clojure from Emacs (David, 2026-11-20), each checked with vim --clean.
+        // Brackets across lines, nested, on a bracket, before the form (vim 9 seeks on the line).
+        ("(defn f [x]\n  (let [a 1\n        b| 2]\n    (+ a b)))", "ci[X<Esc>", "(defn f [x]\n  (let [|X]\n    (+ a b)))"),
+        ("(defn f [x]\n  (let [a 1\n        b| 2]\n    (+ a b)))", "ci(X<Esc>", "(defn f [x]\n  (|X))"),
+        ("(defn f [x]\n  (let [a 1\n        b| 2]\n    (+ a b)))", "cibX<Esc>", "(defn f [x]\n  (|X))"),
+        ("(defn f [x]\n  (let [a 1\n        b| 2]\n    (+ a b)))", "2ci(X<Esc>", "(|X)"),
+        ("(defn f [x]\n  (let [a 1\n        b| 2]\n    (+ a b)))", "da(", "(defn f [x]\n  |)"),
+        ("(foo |(bar baz))", "ci(X<Esc>", "(foo (|X))"),
+        ("(foo (bar baz)|)", "ci(X<Esc>", "(|X)"),
+        ("|  (foo bar)", "ci(X<Esc>", "  (|X)"),
+        ("(= \\( (fi|rst s))", "ci(X<Esc>", "(= \\( (|X))"),
+        ("{:a |1 :b {:c 2}}", "ci{X<Esc>", "{|X}"),
+        ("{:a 1 :b {:c |2}}", "ca{X<Esc>", "{:a 1 :b |X}"),
+        ("(a\n  b|\n  )", "ci(X<Esc>", "(|X\n  )"),
         ("(defn f [x] (foo \"ba|r\" :k \"v\"))", "ci\"X<Esc>", "(defn f [x] (foo \"|X\" :k \"v\"))"),
         ("(fo|o \"bar\" :k \"v\")", "ci\"X<Esc>", "(foo \"|X\" :k \"v\")"),
         ("(foo \"bar\" :|k \"v\")", "ci\"X<Esc>", "(foo \"bar\"|X\"v\")"),
