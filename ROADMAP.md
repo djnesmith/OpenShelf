@@ -104,7 +104,7 @@ Size: **S** = a tool or action on an existing wheel. **M** = a new wheel, drop t
 
 ### B. Selected text with the hotkey
 
-**B1. Selected text becomes a file** (M, the core plumbing)
+**B1. Selected text becomes a file** (M, the core plumbing) — built
 1. Read the selection (B3).
 2. Write it to a temporary file. Rich selections (from a browser, Mail, Pages, Word) also keep
    their HTML or RTF version.
@@ -114,7 +114,7 @@ Size: **S** = a tool or action on an existing wheel. **M** = a new wheel, drop t
 
 For pure-Swift tools the text stays in memory, with no temporary file, to keep it fast (B7).
 
-**B2. One hotkey decides** (M)
+**B2. One hotkey decides** (M) — built
 
 The order, checked on every press of ⌃⌥Space:
 
@@ -133,7 +133,7 @@ The order, checked on every press of ⌃⌥Space:
 - A **second hotkey** opens the Snippets wheel even when text is selected, to replace a
   selection with a date (planned, David 2026-11-18; see C8).
 
-**B3. Read the selection** (L: Accessibility)
+**B3. Read the selection** (L: Accessibility) — built
 - Accessibility first: the focused element's `kAXSelectedTextAttribute`. For Electron apps,
   first set `AXManualAccessibility` on the app.
 - Fallback: post ⌘C and watch the pasteboard `changeCount`. This route also captures HTML and
@@ -149,7 +149,7 @@ The order, checked on every press of ⌃⌥Space:
   Accessibility. They switch OpenShelf on, and may need to relaunch it. macOS updates
   sometimes reset this switch.
 
-**B4. Put the result back** (L: Accessibility)
+**B4. Put the result back** (L: Accessibility) — built
 1. Give focus back to the app the text came from. The keyboard wheel can activate OpenShelf
    (`WheelController.takeKeyboard`), so the target app must be active again before pasting.
 2. Snapshot the clipboard (every item, every type).
@@ -166,7 +166,7 @@ The order, checked on every press of ⌃⌥Space:
 - Risk: the restore is best effort. Data an app only promised, and slow apps that read the
   clipboard late, can break it.
 
-**B5. Undo in the app** (no new code; a reason for B4's choice)
+**B5. Undo in the app** (no new code; a reason for B4's choice) — built
 - A paste is an ordinary edit, so ⌘Z in the app should bring the original back. This is
   expected, not tested.
 - An Accessibility write probably skips the app's undo stack. An old developer report says
@@ -174,7 +174,7 @@ The order, checked on every press of ⌃⌥Space:
 - **Must be tested in Stage 1** in TextEdit, Mail, Notes, Safari, Slack and VS Code: paste vs
   Accessibility write, then one ⌘Z.
 
-**B6. OpenShelf's own undo** (S-M)
+**B6. OpenShelf's own undo** (S-M) — partly built: no keep-nothing or keep-on-disk setting (NOT-BUILT.md)
 - Keep the last 10 transforms in memory (original, result, app, time). Cleared on quit.
 - A setting keeps nothing; another keeps them on disk. Never kept from secure input or a
   secure text field.
@@ -183,7 +183,7 @@ The order, checked on every press of ⌃⌥Space:
 - After a paste nothing is selected. Where the field supports `kAXSelectedTextRangeAttribute`,
   re-select the inserted range first. Otherwise offer **Copy Original**.
 
-**B7. Speed** (no code; a budget)
+**B7. Speed** (no code; a budget) — built
 
 Measured on the author's Mac with tiny input, best of three:
 
@@ -220,7 +220,7 @@ Measured on the author's Mac with tiny input, best of three:
 David's named tools first. Every tool works on a selection (B1) and on a text file or text
 item on a shelf.
 
-**C1. Trim and clean up** (S, pure Swift)
+**C1. Trim and clean up** (S, pure Swift) — built
 - Trim: strip whitespace from the start and end of the whole text.
 - Trim lines: strip trailing (optionally leading) whitespace on each line.
 - Clean up:
@@ -231,7 +231,7 @@ item on a shelf.
 - Tabs to spaces and back (width from Settings: 4 by default, 2 for JSON, YAML and Clojure).
 - Straighten smart quotes and dashes, and the reverse.
 
-**C2. Re-indent code** (S-M)
+**C2. Re-indent code** (S-M) — built
 - Builds on `Tools/PrettyPrint.swift` `PrettyPrint.formatter(forExtension:)`. It already maps
   extensions to formatters and runs them on standard input in an empty folder.
 - **How the language is found** (the extension comes from the first that answers):
@@ -255,7 +255,7 @@ item on a shelf.
 - Limit: real re-indentation of code needs a formatter for that language. Without one, the
   honest tools are Dedent, Indent/Outdent and tabs to spaces.
 
-**C3. Convert data: EDN, JSON, YAML, XML, TOML, CSV, plist** (S-M)
+**C3. Convert data: EDN, JSON, YAML, XML, TOML, CSV, plist** (S-M) — partly built: text has no CSV or plist yet (NOT-BUILT.md)
 - **Exists for files:**
   - `Convert/DataConversion.swift` `DataConversion.formats(forExtension:tools:)`:
     - JSON → YAML, XML, plist, CSV
@@ -283,7 +283,7 @@ item on a shelf.
   - **YAML:** comments and anchors are lost.
   - **CSV** works only for lists of flat records.
 
-**C4. To Markdown, and save text as a file** (S-M)
+**C4. To Markdown, and save text as a file** (S-M) — built
 - **Exists for files:**
   - HTML, Word, RTF and ODT → Markdown with pandoc (`Convert/PandocConversion.swift`
     `PandocConversion.readers`).
@@ -316,7 +316,7 @@ item on a shelf.
   - No length limit is documented.
   - The first call loads the model.
 
-**C6. The text catalogue** (S each, pure Swift unless noted)
+**C6. The text catalogue** (S each, pure Swift unless noted) — partly built: no chosen separator, prefix or suffix, or lines matching a pattern (NOT-BUILT.md)
 
 | Group | Tools |
 |---|---|
@@ -332,7 +332,7 @@ item on a shelf.
 | Markdown | link from the selection plus a link on the clipboard (`[text](url)`), align a Markdown table, headings up or down |
 | Generate | UUID, timestamp, placeholder text, random password (overlaps with C8) |
 
-**C7. Sub-wheels, recent first, favourites** (M)
+**C7. Sub-wheels, recent first, favourites** (M) — built
 - **Sub-wheels:** a wedge marked ▸ opens a wheel of its own in the same place. Back returns.
   Needed because a wheel shows 7 wedges and the catalogue has dozens of tools.
 - **Page 1 of the text wheel:** Trim · Clean up · Re-indent · Convert ▸ · To Markdown ·
@@ -351,7 +351,7 @@ item on a shelf.
   sub-wheels; the matches become the wedges. Recent tools win ties, kept for one launch
   only until recent-first has a store. Not yet: formats the 12-wedge Convert cap hides.
 
-**C8. Snippets: dates, times and your own text** (M)
+**C8. Snippets: dates, times and your own text** (M) — built 2026-11-19 (FORK-FEATURES #63)
 - **Built-in, no setup:**
   - ISO date (`2026-11-17`)
   - long date (`November 17, 2026`)
@@ -676,7 +676,7 @@ file was copied or moved to and open on that instead of the current dir".
 - A `.http` file is sent with curl, and the response is saved next to it.
 - Risk: it sends network requests, so it asks first.
 
-**I4. Mail shortcuts and snooze** (M; first slice S-M)
+**I4. Mail shortcuts and snooze** (M; first slice S-M) — built 2026-11-19 (FORK-FEATURES #58, #60, #61, #62)
 David, 2026-11-19, after looking at a third-party Mail helper: "i feel like i wouldn't want the
 openshelf wheel popping up", and "the snooze feature should work like it does now, the only
 difference would be the natural language would set it to the right time/date and then archive the
@@ -727,7 +727,7 @@ back at the right time."
   “Remind Me”" is off. Then the single-key layer.
 - Tests without a screen: the phrase table and parsing (pure functions with a fixed "now").
 
-**I5. Send that always works, and Send and Archive** (S-M; not to be built yet)
+**I5. Send that always works, and Send and Archive** (S-M; not to be built yet) — built 2026-11-19 (FORK-FEATURES #59)
 David, 2026-11-19: "i would like command - enter to always work when i send an email. it
 sometimes doesn't and i don't know why. so command shift enter would send and Archive".
 - Wanted: ⌘↩ always sends from a compose or reply window; ⇧⌘↩ sends, then archives the message

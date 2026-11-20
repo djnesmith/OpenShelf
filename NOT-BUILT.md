@@ -1,0 +1,163 @@
+# Not built yet
+
+What is left of ROADMAP.md, MAIL-PLAN.md and TRY-TOMORROW.md, checked against the code at
+1902ad8 (2026-11-19). Sizes come from ROADMAP.md: S small, M medium, L large.
+"Needs first" names what must happen before work starts. "—" means nothing.
+
+## Count
+
+| Group | Built | Partly built | Not built |
+|---|---|---|---|
+| Stage 1: select, press, fix it | 10 | 2 | 0 |
+| Stage 2: the text catalogue | 1 | 1 | 0 |
+| Stage 3: text on the shelf | 0 | 0 | 5 |
+| Stage 4: snippets | 1 | 0 | 0 |
+| Stage 5: translate | 0 | 0 | 1 |
+| Stage 6: links and the web | 0 | 0 | 6 |
+| Stage 7: more actions | 0 | 0 | 6 |
+| Stage 8: images, colour and media | 0 | 0 | 6 |
+| Stage 9: files, PDFs and detection | 0 | 0 | 6 |
+| Stage 10: capture, services and power tools | 0 | 1 | 6 |
+| Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
+| Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 1 | 1 |
+| Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
+
+## Stage 1: select, press, fix it
+
+Built: B1, B2, B3, B4, B5, B7, C1, C2, C4, C7 sub-wheels.
+
+Partly built:
+
+| Id | What is missing | Size | Needs first |
+|---|---|---|---|
+| B6 | OpenShelf's own undo works (last 10 changes, in memory). Missing: the setting that keeps nothing, and the one that keeps them on disk. | S | — |
+| C3 | Convert text works for JSON, YAML, EDN, XML and TOML (`TextSniffer`). Missing for text: CSV and plist. Files already convert both (`Convert/DataConversion.swift`). | S | — |
+
+## Stage 2: the text catalogue
+
+Built: C7 recent first and favorites; every "Left in Stage 2" group (Cleanup, Encode and
+decode, Extract, Count, Hash, Dates, Wrap, Markdown, Generate).
+
+Partly built:
+
+| Id | What is missing | Size | Needs first |
+|---|---|---|---|
+| C6 | Join and split work only on commas and spaces: no separator you choose. No add a prefix or suffix. No "lines matching a pattern" in Extract. | S each | A way to type the separator, prefix or pattern (a small prompt) |
+
+## Stage 3: text on the shelf
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| A1 | Drop text on a shelf; it becomes a text item. `ShelfDropView` takes file URLs only. | M | Decide: does a dragged link arrive as text or as a link (D1) |
+| A2 | Drag a text item out as text, not as a file. | S | A1; a test of how Mail, Notes, Safari, Slack and VS Code pick between text and file |
+| A3 | New shelf item from the clipboard. | S | A1 |
+| A4 | Pin a text item: copied, not moved, when dragged out. | S | A2 |
+| A5 | Text History shelf: originals of recent text changes as items to drag back. | S | A1; B6 keeps history in memory today |
+
+## Stage 4: snippets
+
+Built: C8.
+
+## Stage 5: translate
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| C5 | Translate selected text on the device. | M | Apple's language downloads (the system asks per language) |
+
+## Stage 6: links and the web
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| D1 | Drop a link on a shelf; it becomes a link item with wedges. | M | A1 |
+| D2 | Drop web images and promised files (`NSFilePromise`). | M | A1 |
+| D3 | Save a web page's article as Markdown. | M | D1; the network |
+| D4 | Download media from a link. | M | D1; yt-dlp installed through the tool installer |
+| E1 | Make a QR code from text or a link. | S | — |
+| C6 on links | Remove tracking parameters from dropped links. The text tool exists (Fix › Strip Tracking). | S | D1 |
+
+## Stage 7: more actions
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| H1 | Email it: a new Mail message with the file attached. | S | — |
+| H2 | Send in Messages. | S | — |
+| H3 | Open With… a chosen app. | S | — |
+| H4 | Copy a file's SHA-256 or MD5; Verify against a hash on the clipboard. Text Hash exists, files have none. | S | — |
+| H9 | Remove the quarantine flag. | S-M | Decide: a safety question (it skips Gatekeeper's check) |
+| I1 | Run a Shortcut on an item. | S-M | — |
+
+## Stage 8: images, colour and media
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| E2 | Pick a color from the screen. | S | — |
+| E3 | Color palette from an image. | S | — |
+| E4 | Describe an image (Vision labels and text). | S | — |
+| E5 | Wi-Fi QR code. | S-M | E1 |
+| F1 | Waveform image of an audio file. | S | ffmpeg (already used) |
+| F2 | Contact sheet of a video. | S | ffmpeg (already used) |
+
+## Stage 9: files, PDFs and detection
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| H5 | Batch rename. | M | — |
+| H6 | Compare two items. | M | — |
+| H7 | Find duplicates. | M | — |
+| G1 | PDF page numbers, watermark, stamp. | S-M | — |
+| G2 | Fake-redaction check: black boxes with text still under them. | M | — |
+| C11 | Detect dates, places and people in text: Make Event, Make Contact, Open in Maps, Copy Number. | S-M | — |
+
+## Stage 10: capture, services and power tools
+
+Partly built:
+
+| Id | What is missing | Size | Needs first |
+|---|---|---|---|
+| F3 | A Watched Folder on the screenshot folder already puts screenshots on a shelf. Missing: a shortcut that takes one. | S | Screen Recording permission may be asked |
+
+Not built:
+
+| Id | What it is | Size | Needs first |
+|---|---|---|---|
+| F4 | Screen recording. | L | Screen Recording permission |
+| C9 | Text wheel during a text drag. | M | — |
+| C10 | Services menu entries ("Transform with OpenShelf", "Add to Shelf"). | M | — |
+| I2 | Your own scripts as wedges. | M-L | Decide: running his scripts is a safety question |
+| I3 | Run an HTTP request file (`.http`). | M | — |
+| H8 | Upload and copy a link. | M-L | Decide: which upload service; opt-in |
+
+## Outside the stages
+
+Built: C12 items 1-6 (#53), C13 (#65), F5 (#64), H10 (#57), I4 (#58, #60, #61, #62),
+I5 (#59).
+
+Partly built:
+
+| Id | What is missing | Size | Needs first |
+|---|---|---|---|
+| E6 | Clean works with a smooth fill (#67). Missing: a fill that copies nearby texture, or a LaMa model, for busy backgrounds. | M | David's yes to the model (about 100-200 MB) |
+
+C12's "left out for now" list (marks, `:g`, `:sort`, `:normal`, `:!`, his vim config, keeping
+macros) stays out by choice.
+
+## Mail leftovers
+
+| Item | What it is | Size | Needs first |
+|---|---|---|---|
+| Command palette | Type to run any of Mail's menu actions (ROADMAP I5 list). | M | Decide: wanted at all |
+| Single keys left out (partly built) | `u`, `n`/`p`, `* n`; Mail has no direct command for `n`/`p` or `* n`. | S | David's decision (TRY-TOMORROW) |
+
+## Edit window, different from vim
+
+From TRY-TOMORROW "Not built, or different from vim". All S.
+
+- `:s` lacks the `c` flag, `~` in a replacement, `\u` `\l` `\U` `\L` and `\v`.
+- `.` does not repeat visual-mode changes.
+- `R` ignores Return, and Backspace in `R` drops its count.
+- Visual block and `j`/`k` count tabs as one column.
+- `J` and `gq` put one space after a period (vim: two); `gq` keeps the first line's indent.
+- Shift-Return breaks become plain line breaks when the text also has Return paragraphs.
+
+Known limits, not features: the live preview's UUID and password differ from the result,
+Clean's fill smears on detail, and the shelf-focus test fails when another app is in front.
