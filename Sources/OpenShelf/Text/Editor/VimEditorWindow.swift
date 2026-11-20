@@ -85,6 +85,14 @@ final class VimEditorWindow: NSObject, NSWindowDelegate {
     /// end: the one the text used, when it used only one kind; otherwise "\n".
     /// Without this, lines the window shows apart are one line to vim, and j does nothing.
     static func splitLines(_ text: String) -> (text: String, lineBreak: String) {
+        // Most text has only "\n": one pass over its scalars says so, and nothing is copied.
+        let hasOtherBreaks = text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x0D, 0x85, 0x2028, 0x2029: true
+            default: false
+            }
+        }
+        guard hasOtherBreaks else { return (text, "\n") }
         // "\r\n" goes first: searching for "\n" or "\r" alone would find it too.
         var rest = text
         var used: [String] = []

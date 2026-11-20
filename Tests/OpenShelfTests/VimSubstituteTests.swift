@@ -28,6 +28,10 @@ struct VimSubstituteTests {
         ("a\n|b\nc\nd", "Vj:s/./X/<CR>", "a\nX\n|X\nd"),
         // An empty pattern is the last one searched for with /.
         ("|abc\nabc", "/b<CR>:s//X/<CR>", "|aXc\nabc"),
+        // A bare :s repeats the last substitute's pattern, not the last search.
+        ("|a b\na b", ":s/a/X/<CR>j0/b<CR>:s<CR>", "X b\n|X b"),
+        // '<,'> typed by hand is the latest selection.
+        ("|a\nb\nc\nd", "Vj:s/./X/<CR>jjVj<Esc>gg:'<,'>s/./Y/<CR>", "X\nX\nc\n|Y"),
         // & repeats without the g flag.
         ("|aa\naa", ":s/a/X/g<CR>j&", "XX\n|Xa"),
     ])

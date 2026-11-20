@@ -21,27 +21,42 @@ enum VimNumber {
         return nil
     }
 
+    /// The token after adding `amount`, with vim's arithmetic (do_addsub): unsigned 64
+    /// bits and a separate sign; a number too big to read is taken as the largest and not
+    /// changed; decimal wraps through the sign, hex and binary wrap around.
     static func changed(_ token: String, by amount: Int) -> String {
         let lower = token.lowercased()
+        let step = amount.magnitude
         if lower.hasPrefix("0x") || lower.hasPrefix("0b") {
             let radix = lower.hasPrefix("0x") ? 16 : 2
             let digits = String(token.dropFirst(2))
-            let value = UInt64(digits, radix: radix) ?? 0
-            let result = amount >= 0 ? value &+ UInt64(amount) : value &- UInt64(-amount)
-            var text = String(result, radix: radix)
+            var value = UInt64(digits, radix: radix) ?? .max
+            if UInt64(digits, radix: radix) != nil { value = amount >= 0 ? value &+ UInt64(step) : value &- UInt64(step) }
+            var text = String(value, radix: radix)
             // Hex letters take the case of the last letter written.
             if radix == 16, digits.last(where: \.isLetter)?.isUppercase == true { text = text.uppercased() }
             text = String(repeating: "0", count: max(digits.count - text.count, 0)) + text
             return String(token.prefix(2)) + text
         }
-        let negative = token.hasPrefix("-")
+        var negative = token.hasPrefix("-")
         let digits = negative ? String(token.dropFirst()) : token
-        let value = (Int(digits) ?? 0) * (negative ? -1 : 1)
-        let (result, overflow) = value.addingReportingOverflow(amount)
-        let total = overflow ? value : result
-        var text = String(abs(total))
+        var value = UInt64(digits) ?? .max
+        if UInt64(digits) != nil {
+            let subtract = (amount < 0) != negative
+            let old = value
+            value = subtract ? value &- UInt64(step) : value &+ UInt64(step)
+            if subtract, value > old {
+                value = 1 &+ ~value
+                negative.toggle()
+            } else if !subtract, value < old {
+                value = ~value
+                negative.toggle()
+            }
+        }
+        if value == 0 { negative = false }
+        var text = String(value)
         // Leading zeros keep the number's width.
         if digits.hasPrefix("0"), digits.count > 1 { text = String(repeating: "0", count: max(digits.count - text.count, 0)) + text }
-        return (total < 0 ? "-" : "") + text
+        return (negative ? "-" : "") + text
     }
 }

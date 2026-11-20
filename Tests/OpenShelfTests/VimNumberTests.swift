@@ -23,6 +23,12 @@ struct VimNumberTests {
         ("|-0", "<C-x>", "-|1"),
         ("|x 0x", "<C-a>", "x |1x"),
         ("|0xAE", "<C-a>", "0xA|F"),
+        // Too big to read: the largest number, unchanged; past it decimal wraps through the sign.
+        ("|x 99999999999999999999 y", "<C-a>", "x 1844674407370955161|5 y"),
+        ("|x 18446744073709551615 y", "<C-a>", "x -1844674407370955161|5 y"),
+        ("|-99999999999999999999", "<C-x>", "-1844674407370955161|5"),
+        ("|a 0xffffffffffffffff", "<C-a>", "a 0x000000000000000|0"),
+        ("|a 0x1ffffffffffffffff", "<C-a>", "a 0x0fffffffffffffff|f"),
         ("|0x00ff", "<C-a>", "0x010|0"),
         ("|0b0011", "<C-a>", "0b010|0"),
     ])

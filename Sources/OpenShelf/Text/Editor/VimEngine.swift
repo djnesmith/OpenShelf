@@ -100,8 +100,6 @@ struct VimEngine {
     private var lastVisual: (mode: VimMode, anchor: Int, cursor: Int)?
     /// The last `:s`, for `&` and a bare `:s`.
     private var lastSubstitute: VimSubstitute.Command?
-    /// The lines of the visual selection `:` was typed in, for `'<,'>`.
-    private var visualLines: (first: Int, last: Int)?
     /// The text when insert mode began, to drop an insert that changed nothing.
     private var insertStartText: [Character]?
     /// The text once insert mode began, after any automatic text (o's line
@@ -606,7 +604,9 @@ struct VimEngine {
     private mutating func substitute(_ given: VimSubstitute.Command) {
         var command = given
         if command.pattern.isEmpty {
-            guard let last = lastSearch?.pattern ?? lastSubstitute?.pattern else {
+            // A bare :s repeats the last substitute's pattern; :s//x/ uses the last search, as in vim.
+            let bare = given.replacement == "~"
+            guard let last = bare ? (lastSubstitute?.pattern ?? lastSearch?.pattern) : (lastSearch?.pattern ?? lastSubstitute?.pattern) else {
                 message = "E35: No previous regular expression"
                 failed = true
                 return
@@ -635,7 +635,10 @@ struct VimEngine {
         case .current: range = current...current
         case .all: range = 0...(lines.count - 1)
         case .lines(let a, let b): range = min(resolve(a), resolve(b))...max(resolve(a), resolve(b))
-        case .visual: range = (visualLines?.first ?? current)...(visualLines?.last ?? current)
+        case .visual:
+            // '<,'> is the last visual selection, typed or filled in.
+            let lines = lastVisual.map { (lineIndex(min($0.anchor, $0.cursor, text.count)), lineIndex(min(max($0.anchor, $0.cursor), text.count))) } ?? (current, current)
+            range = lines.0...lines.1
         }
         let template = VimSubstitute.template(command.replacement)
         var out: [String] = []
@@ -1258,7 +1261,6 @@ struct VimEngine {
                 replaceSelection()
             case ":":
                 // As vim: the command line starts with the selection's lines.
-                visualLines = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
                 mode = .commandLine
                 commandLine = ":'<,'>"
                 return nil
