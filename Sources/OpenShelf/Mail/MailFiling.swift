@@ -67,7 +67,8 @@ enum MailFiling {
     static func showPicker(scripting: MailFilingScripting = AppleScriptMailFiling()) {
         let mailboxes = scripting.mailboxes()
         guard !mailboxes.isEmpty else {
-            ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Can't file", subtitle: "Mail listed no mailboxes (Automation permission?)"), for: .seconds(4))
+            let problem = scripting.lastProblem ?? (title: "Can't file", subtitle: "Mail returned no mailboxes")
+            ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: problem.title, subtitle: problem.subtitle), for: .seconds(8))
             return
         }
         MailboxPicker.shared.show(mailboxes: mailboxes, recent: loadRecent()) { chosen in
@@ -86,11 +87,18 @@ enum MailFiling {
 @MainActor
 protocol MailFilingScripting {
     func mailboxes() -> [MailFiling.Mailbox]
+    /// Why the last listing came back empty, when Mail's script said so.
+    var lastProblem: (title: String, subtitle: String)? { get }
     /// Moves the viewer's selected messages; nil when done, or why not.
     func moveSelection(to mailbox: MailFiling.Mailbox) -> String?
 }
 
 struct AppleScriptMailFiling: MailFilingScripting {
+    /// Why the last listing came back empty, when a script error says so.
+    var lastProblem: (title: String, subtitle: String)? { AppleScriptMailFiling.problemBox.value }
+    final class Box { var value: (title: String, subtitle: String)? }
+    static let problemBox = Box()
+
     func mailboxes() -> [MailFiling.Mailbox] {
         let source = """
         on walk(boxes, prefix, accountName)
@@ -103,20 +111,44 @@ struct AppleScriptMailFiling: MailFilingScripting {
             return out
         end walk
         tell application id "com.apple.mail"
-            set out to my walk(mailboxes, "", "")
-            repeat with a in accounts
-                if enabled of a then set out to out & my walk(mailboxes of a, "", name of a)
-            end repeat
-            return out
+            with timeout of 20 seconds
+                set out to ""
+                try
+                    set out to my walk(mailboxes, "", "")
+                on error number n
+                    set out to out & "#ERR" & tab & "On My Mac " & n & linefeed
+                end try
+                -- One account that can't be read (Exchange, a Gmail label, a slow server)
+                -- doesn't hide the rest; its error number is reported, not its name.
+                set i to 0
+                repeat with a in accounts
+                    set i to i + 1
+                    try
+                        if enabled of a then set out to out & my walk(mailboxes of a, "", name of a)
+                    on error number n
+                        set out to out & "#ERR" & tab & "account " & i & " " & n & linefeed
+                    end try
+                end repeat
+                return out
+            end timeout
         end tell
         """
-        var error: NSDictionary?
-        guard let text = NSAppleScript(source: source)?.executeAndReturnError(&error).stringValue else { return [] }
-        return text.split(separator: "\n").compactMap { line in
+        let outcome = MailScript.run("list mailboxes", source)
+        Self.problemBox.value = MailScript.problem(outcome)
+        guard let text = outcome.text else { return [] }
+        let failures = text.split(separator: "\n").filter { $0.hasPrefix("#ERR\t") }.map { $0.dropFirst(5) }
+        if !failures.isEmpty { SnoozeLog.append(["list mailboxes: not read: \(failures.joined(separator: ", "))"], to: MailScript.logURL) }
+        let boxes: [MailFiling.Mailbox] = text.split(separator: "\n").filter { !$0.hasPrefix("#ERR\t") }.compactMap { line in
             let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2, !parts[1].isEmpty else { return nil }
             return MailFiling.Mailbox(account: String(parts[0]), path: String(parts[1]))
         }
+        SnoozeLog.append(["list mailboxes: \(boxes.count) mailboxes"], to: MailScript.logURL)
+        if boxes.isEmpty, Self.problemBox.value == nil {
+            let first = failures.first.map { " (\($0))" } ?? ""
+            Self.problemBox.value = (title: "Can't file", subtitle: "Mail returned no mailboxes\(first)")
+        }
+        return boxes
     }
 
     func moveSelection(to mailbox: MailFiling.Mailbox) -> String? {
@@ -130,11 +162,9 @@ struct AppleScriptMailFiling: MailFilingScripting {
             return ""
         end tell
         """
-        var error: NSDictionary?
-        guard let result = NSAppleScript(source: source)?.executeAndReturnError(&error) else {
-            return (error?[NSAppleScript.errorMessage] as? String) ?? "Mail didn't move it"
-        }
-        let text = result.stringValue ?? ""
+        let outcome = MailScript.run("move selection", source)
+        if let problem = MailScript.problem(outcome) { return "\(problem.title): \(problem.subtitle)" }
+        let text = outcome.text ?? ""
         return text.isEmpty ? nil : text
     }
 }

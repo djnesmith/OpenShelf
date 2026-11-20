@@ -171,8 +171,11 @@ private struct ConfirmationPill: View {
                     Text(subtitle)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        // Two lines, cut at the end; a path is still cut in the middle so its
+                        // file name shows (2026-11-20: Mail toasts were cut mid-sentence).
+                        .lineLimit(2)
+                        .truncationMode(ToastText.looksLikePath(subtitle) ? .middle : .tail)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 220, alignment: .leading)
                 }
             }
@@ -251,5 +254,12 @@ private struct ProgressCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityValue(fraction.map { "\(Int($0 * 100)) percent" } ?? "In progress")
+    }
+}
+
+enum ToastText {
+    /// A file path or name with folders, which reads best cut in the middle.
+    static func looksLikePath(_ text: String) -> Bool {
+        text.hasPrefix("/") || text.hasPrefix("~/") || (text.contains("/") && !text.contains(" "))
     }
 }

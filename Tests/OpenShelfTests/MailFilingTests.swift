@@ -127,4 +127,26 @@ struct MailFilingTests {
         #expect(shown.map(\.1) == [MailHelpers.successToast, .seconds(3)])
         board.releaseGlobally()
     }
+
+    /// Mail script errors are told as they are: the permission and where to give it, or the
+    /// error number; quoted names never reach the log (2026-11-20: "Mail listed no
+    /// mailboxes (Automation permission?)" guessed wrong).
+    @Test func mailScriptProblemsSayWhatHappened() {
+        #expect(MailScript.problem(.init(text: "x", error: nil, message: nil)) == nil)
+        let denied = MailScript.problem(.init(text: nil, error: -1743, message: "Not authorized"))
+        #expect(denied?.title == "Allow OpenShelf to control Mail")
+        #expect(denied?.subtitle == "System Settings › Privacy & Security › Automation › OpenShelf › Mail")
+        #expect(MailScript.problem(.init(text: nil, error: -1712, message: nil))?.subtitle.hasPrefix("Error -1712, Mail was slow to answer") == true)
+        #expect(MailScript.problem(.init(text: nil, error: -1728, message: nil))?.subtitle.hasPrefix("Error -1728") == true)
+        #expect(MailScript.scrubbed("Can’t get mailbox “Secret Project” of account \"Work\".") == "Can’t get mailbox “…” of account “…”.")
+    }
+
+    /// Toast subtitles wrap to two lines and are cut at the end; a path is cut in the middle.
+    @Test func toastsCutPathsInTheMiddleAndSentencesAtTheEnd() {
+        #expect(ToastText.looksLikePath("~/Library/Logs/OpenShelf/send.log"))
+        #expect(ToastText.looksLikePath("/Users/x/file.pdf"))
+        #expect(ToastText.looksLikePath("Inbox/Receipts"))
+        #expect(!ToastText.looksLikePath("Mail returned no mailboxes (account 2 -1712)"))
+        #expect(!ToastText.looksLikePath("System Settings › Privacy & Security › Automation › OpenShelf › Mail"))
+    }
 }

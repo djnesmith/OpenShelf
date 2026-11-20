@@ -150,8 +150,7 @@ struct AppleScriptMail: MailScripting {
             return out
         end tell
         """
-        var error: NSDictionary?
-        guard let text = NSAppleScript(source: source)?.executeAndReturnError(&error).stringValue else { return [] }
+        guard let text = MailScript.run("selected messages", source).text else { return [] }
         return text.split(separator: "\n").compactMap { line in
             let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2 else { return nil }
