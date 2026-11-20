@@ -52,3 +52,17 @@ struct TextRecentsTests {
         #expect(TextRecents.load(defaults) == [.upperCase])
     }
 }
+
+/// Four favourites with Undo, Re-indent and Convert showing: the wheel still never pages.
+struct TextFavoritesFitTests {
+    @Test func favouritesGiveWaySoTheWheelNeverPages() {
+        let full = TextContext(text: "{\"a\": 1}", hasRichText: false, canUndo: true)
+        let items = TextWheel.items(for: full, favorites: [.upperCase, .lowerCase, .titleCase, .sentenceCase])
+        #expect(items.count <= WheelPaging.slotCount)
+        let commands = TextRecentsTests.commands(items)
+        #expect(commands.first == .undo)
+        #expect(commands.contains(.edit))
+        #expect(commands.last == .open(.more))
+        #expect(commands.contains(.tool(.upperCase)))
+    }
+}

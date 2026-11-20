@@ -548,6 +548,11 @@ enum TextWheel {
             // Formatted prose, not data or code, is what To Markdown is for.
             if context.hasRichText, context.dataFormat == nil, context.codeExtension == nil { body.append(.tool(.toMarkdown)) }
             body = body.reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
+            // Favourites give way so the wheel never pages; the ones left off are still found by search.
+            while head.count + body.count + 1 > WheelPaging.slotCount,
+                  let index = body.lastIndex(where: { if case .tool(let tool) = $0 { favorites.contains(tool) } else { false } }) {
+                body.remove(at: index)
+            }
             // A recent tool already on the wheel moves to the front; others take free slots.
             let room = WheelPaging.slotCount - head.count - body.count - 1
             var recents: [TextCommand] = []
