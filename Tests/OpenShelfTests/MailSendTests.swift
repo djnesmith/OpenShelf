@@ -43,4 +43,25 @@ struct MailSendTests {
         #expect(MailSend.sendAndArchiveShortcut.displayString == "⇧⌘↩")
         #expect(MailHelpers(defaults: UserDefaults(suiteName: "OpenShelfTests.mail.\(UUID())")!).sendKeys)
     }
+
+    /// ⌘↩ presses Send only when it is there, on, and Mail has the keyboard; otherwise it
+    /// says why (David's Check Mail, 2026-11-20: Send is "not found" in the viewer).
+    @Test func sendSaysWhyWhenItDoesNothing() {
+        #expect(MailSend.outcome(sendFound: true, sendEnabled: true, mailHasFocus: true) == .press)
+        #expect(MailSend.outcome(sendFound: false, sendEnabled: false, mailHasFocus: true) == .notWriting)
+        #expect(MailSend.outcome(sendFound: true, sendEnabled: false, mailHasFocus: true) == .sendOff)
+        #expect(MailSend.outcome(sendFound: true, sendEnabled: true, mailHasFocus: false) == .notMail)
+        #expect(MailSend.Outcome.press.reason == nil)
+        for outcome in [MailSend.Outcome.notWriting, .sendOff, .notMail] { #expect(outcome.reason?.isEmpty == false) }
+    }
+
+    /// Check Mail writes shortcuts as people do: Accessibility's 0 is ⌘ alone.
+    @Test func checkMailReadsShortcuts() {
+        #expect(MailCheck.readable(char: "E", modifiers: 0) == "⌘E")
+        #expect(MailCheck.readable(char: "↩", modifiers: 0) == "⌘↩")
+        #expect(MailCheck.readable(char: "D", modifiers: 1) == "⇧⌘D")
+        #expect(MailCheck.readable(char: "A", modifiers: 4) == "⌃⌘A")
+        #expect(MailCheck.readable(char: "x", modifiers: 8) == "x")
+        #expect(MailCheck.readable(char: nil, modifiers: 8) == "no shortcut")
+    }
 }

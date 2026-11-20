@@ -34,12 +34,53 @@ enum MailSend {
         return message
     }
 
-    /// ⌘↩: Send, when Mail has it enabled (a message is being written). Otherwise nothing,
-    /// as before.
+    /// What ⌘↩ (and ⇧⌘↩) do with Mail as it is.
+    enum Outcome: Equatable {
+        case press
+        /// No Message › Send: Mail shows it only while a message is being written
+        /// (David's Check Mail, 2026-11-20: "not found" with the viewer in front).
+        case notWriting
+        /// Send is there but Mail has it off for this message.
+        case sendOff
+        /// A panel over Mail (Spotlight, Alfred) has the keyboard.
+        case notMail
+
+        /// The gray reason shown when nothing is sent; the shortcut is taken either way,
+        /// so it never goes silently.
+        var reason: String? {
+            switch self {
+            case .press: nil
+            case .notWriting: "No message being written in front"
+            case .sendOff: "Mail has Send off for this message right now"
+            case .notMail: "Mail doesn't have the keyboard"
+            }
+        }
+    }
+
+    static func outcome(sendFound: Bool, sendEnabled: Bool, mailHasFocus: Bool) -> Outcome {
+        guard sendFound else { return .notWriting }
+        guard mailHasFocus else { return .notMail }
+        return mayPress(sendEnabled: sendEnabled, mailHasFocus: mailHasFocus) ? .press : .sendOff
+    }
+
+    /// Mail's Send item now, and what ⌘↩ would do; each run goes to send.log.
+    private static func check(_ keys: String) -> (Outcome, MenuNode?) {
+        let item = MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }
+        let hasFocus = MailMenu.hasKeyboardFocus()
+        let outcome = outcome(sendFound: item != nil, sendEnabled: item?.isEnabled ?? false, mailHasFocus: hasFocus)
+        SnoozeLog.append(["\(keys): Send \(item == nil ? "not found" : (item!.isEnabled ? "enabled" : "disabled")), Mail has the keyboard: \(hasFocus), \(outcome)"], to: logURL)
+        if let reason = outcome.reason { toast("Not sent", reason) }
+        return (outcome, item)
+    }
+
+    static var logURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/send.log")
+    }
+
+    /// ⌘↩: Send, when Mail has it enabled and the keyboard. Otherwise a short gray reason.
     static func send() {
-        guard let bar = MailMenu.menuBar(), let item = MailMenu.find(MailMenu.send, in: bar),
-              mayPress(sendEnabled: item.isEnabled, mailHasFocus: MailMenu.hasKeyboardFocus()) else { return }
-        _ = item.press()
+        guard case (.press, let item?) = check("⌘↩") else { return }
+        SnoozeLog.append(["⌘↩: pressed Send: \(item.press())"], to: logURL)
     }
 
     /// Send is pressed only when Mail has it enabled and Mail itself has the keyboard: ⌘↩
@@ -48,9 +89,7 @@ enum MailSend {
 
     /// ⇧⌘↩: Send, then Archive the message the reply answers.
     static func sendAndArchive(scripting: MailScripting = AppleScriptMail()) {
-        guard let mail = MailMenu.running, let bar = MailMenu.menuBar(),
-              let sendItem = MailMenu.find(MailMenu.send, in: bar),
-              mayPress(sendEnabled: sendItem.isEnabled, mailHasFocus: MailMenu.hasKeyboardFocus()) else { return }
+        guard let mail = MailMenu.running, case (.press, let sendItem?) = check("⇧⌘↩") else { return }
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 1)
         guard let compose = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return }

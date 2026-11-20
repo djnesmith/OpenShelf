@@ -120,6 +120,20 @@ enum MailCheck {
         var modifiers: CFTypeRef?
         AXUIElementCopyAttributeValue(item, kAXMenuItemCmdModifiersAttribute as CFString, &modifiers)
         let charText = char.map { "char “\($0)” (U+\(String(format: "%04X", $0.unicodeScalars.first?.value ?? 0)))" } ?? "no char"
-        return "\(charText), glyph \((glyph as? Int).map(String.init) ?? "none"), modifiers \((modifiers as? Int).map(String.init) ?? "none")"
+        let readable = Self.readable(char: char, modifiers: modifiers as? Int)
+        return "\(readable) (\(charText), glyph \((glyph as? Int).map(String.init) ?? "none"), modifiers \((modifiers as? Int).map(String.init) ?? "none"))"
+    }
+
+    /// A menu item's shortcut as people write it: Accessibility's modifiers count up from
+    /// ⌘ alone (0); 1 adds ⇧, 2 ⌥, 4 ⌃, and 8 means no ⌘. "⌘E" for char "E", modifiers 0.
+    static func readable(char: String?, modifiers: Int?) -> String {
+        guard let char, !char.isEmpty else { return "no shortcut" }
+        let bits = modifiers ?? 0
+        var keys = ""
+        if bits & 4 != 0 { keys += "⌃" }
+        if bits & 2 != 0 { keys += "⌥" }
+        if bits & 1 != 0 { keys += "⇧" }
+        if bits & 8 == 0 { keys += "⌘" }
+        return keys + char
     }
 }
