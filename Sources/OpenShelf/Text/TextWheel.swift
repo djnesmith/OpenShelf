@@ -535,18 +535,34 @@ enum TextWheel {
         return "Copied: \(short)"
     }
 
-    static func items(for context: TextContext, group: TextGroup? = nil) -> [WheelItem] {
+    /// The first wheel holds `favorites` (chosen in Settings; Trim and Clean Up when none)
+    /// and the tools `recent`ly used (newest first) in the slots left, so it never pages.
+    static func items(for context: TextContext, group: TextGroup? = nil, recent: [TextTool] = [], favorites: [TextTool] = []) -> [WheelItem] {
         switch group {
         case nil:
-            var commands: [TextCommand] = []
-            if context.canUndo { commands.append(.undo) }
-            commands += [.edit, .tool(.trim), .tool(.cleanUp)]
-            if context.codeExtension != nil { commands.append(.tool(.reindent)) }
-            if context.dataFormat != nil { commands.append(.open(.convert)) }
+            var head: [TextCommand] = []
+            if context.canUndo { head.append(.undo) }
+            var body: [TextCommand] = [.edit] + (favorites.isEmpty ? [.trim, .cleanUp] : Array(favorites.prefix(TextFavorites.limit))).map(TextCommand.tool)
+            if context.codeExtension != nil { body.append(.tool(.reindent)) }
+            if context.dataFormat != nil { body.append(.open(.convert)) }
             // Formatted prose, not data or code, is what To Markdown is for.
-            if context.hasRichText, context.dataFormat == nil, context.codeExtension == nil { commands.append(.tool(.toMarkdown)) }
-            commands.append(.open(.more))
-            return commands.map(WheelItem.text)
+            if context.hasRichText, context.dataFormat == nil, context.codeExtension == nil { body.append(.tool(.toMarkdown)) }
+            body = body.reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
+            // A recent tool already on the wheel moves to the front; others take free slots.
+            let room = WheelPaging.slotCount - head.count - body.count - 1
+            var recents: [TextCommand] = []
+            var added = 0
+            for tool in recent.prefix(TextRecents.shown) {
+                let command = TextCommand.tool(tool)
+                if let index = body.firstIndex(of: command) {
+                    body.remove(at: index)
+                    recents.append(command)
+                } else if added < room, tool.isOnWheel, !recents.contains(command) {
+                    recents.append(command)
+                    added += 1
+                }
+            }
+            return (head + recents + body + [.open(.more)]).map(WheelItem.text)
         case .convert:
             let targets = DataTextFormat.allCases.filter { $0 != context.dataFormat }
             return targets.map { WheelItem.text(.convert($0)) } + [WheelItem.text(.back(nil))]

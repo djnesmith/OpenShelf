@@ -37,6 +37,8 @@ Not Mail:
    cover, Save: the "… tagged" copy shows them in Finder's Get Info and in Music. (#64)
 12. **Live preview.** Select a few lines, ⌃⌥Space, More ▸ Lines ▸, move over Sort A to Z: the
    sorted lines show to the right of the wheel; nothing changes until you choose it. (#65)
+13. **Recent first.** Run Sort A to Z on some lines, then ⌃⌥Space again: Sort A to Z is the
+   first wedge. Settings › Wheels › Text wheel's first page: pick up to four tools. (#66)
 
 Open decisions (built with these defaults, easy to change): ⌃⌥S, ⌃⌥M, ⌃⌥K and ⌃⌥U while Mail
 is in front; ⌃⌥I for Snippets; single keys off by default; `u`, `n`/`p` and `* n` left out; `[` archives then

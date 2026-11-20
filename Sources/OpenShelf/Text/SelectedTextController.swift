@@ -81,7 +81,7 @@ final class SelectedTextController {
 
     private func show(group: TextGroup?, at location: NSPoint?) {
         guard let session else { return }
-        let items = TextWheel.items(for: session.context, group: group)
+        let items = TextWheel.items(for: session.context, group: group, recent: TextRecents.load(), favorites: TextFavorites.load())
         let count = session.text.count
         wheel.presentForKeyboard(
             items: items,
@@ -107,6 +107,7 @@ final class SelectedTextController {
             history.remove(entry)
             Task { await deliver(entry.original, done: "Original", fileExtension: "txt", modifiers: modifiers, recordsHistory: false) }
         case .tool(let tool):
+            TextRecents.record(tool)
             Task { await run(tool, on: session, modifiers: modifiers) }
         case .edit:
             edit(session, modifiers: modifiers.subtracting(.shift))

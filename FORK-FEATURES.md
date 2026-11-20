@@ -536,6 +536,12 @@ David, 2026-11-19: "a preview of the text changing ... to the right of the wheel
 - Files: `Sources/OpenShelf/Text/TextPreview.swift`, `Text/TextPreviewPanel.swift`, `Text/SelectedTextController.swift` (`previewHighlight`), `Wheel/WheelController.swift` (`onHighlightChange`), `App/AppDelegate.swift`, `Settings/SettingsPanes.swift`
 - Check: `swift test --filter TextPreviewTests`. In the app: select a few lines, ⌃⌥Space, More ▸ Lines ▸, move over Sort A to Z: the sorted lines show beside the wheel; nothing changes until you choose it.
 
+### 66. Text wheel: your last tools first, and your own first page (ROADMAP C7)
+The three text tools used last (kept between launches, `TextWheelRecentTools`) come first on the text wheel: one already on the first page moves to the front, others take the slots left free, so the wheel never pages (with Undo, Re-indent and Convert all showing, recents only reorder). Settings › Wheels › "Text wheel's first page" chooses up to four tools in place of Trim and Clean Up (`TextWheelFavorites`; "Back to Trim and Clean Up" undoes it); Edit, Undo, Re-indent, Convert and To Markdown still appear as before. Search ties already went to recent tools; that list still lasts one launch.
+- Commits: this one
+- Files: `Sources/OpenShelf/Text/TextRecents.swift`, `Text/TextWheel.swift` (`items(for:group:recent:favorites:)`), `Text/SelectedTextController.swift`, `Settings/SettingsPanes.swift`
+- Check: `swift test --filter 'TextRecentsTests|TextWheelTests'`. In the app: run Sort A to Z on some lines, then ⌃⌥Space again: Sort A to Z is the first wedge.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

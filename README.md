@@ -35,7 +35,8 @@ the file on a wedge and it's done, saved right next to the original.
 
 - **Text wheel:** select text anywhere (or copy it) and press ⌃⌥Space for tools on it: fix,
   case, lines, format, code (encode, decode, JWT, generate), extract, count and hash, with
-  search on the wheel, and a live preview beside it of what the hovered tool would do.
+  search on the wheel, your last tools first and your own first page, and a live preview
+  beside it of what the hovered tool would do.
   Password fields are refused.
 - **Snippets wheel:** ⌃⌥I in any app for dates, times and your own snippets: plain text files
   in a folder, with placeholders like `{date offset="+3d"}`, `{clipboard}` and `{cursor}`.

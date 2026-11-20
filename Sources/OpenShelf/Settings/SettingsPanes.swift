@@ -80,6 +80,7 @@ struct WheelsSettingsPane: View {
             }
 
             TextWheelPreviewSection()
+            TextWheelFavoritesSection()
             SnippetsFolderSection()
         }
         .settingsPane()
@@ -92,9 +93,39 @@ private struct TextWheelPreviewSection: View {
 
     var body: some View {
         Section {
-            Toggle("Show a preview beside the text wheel", isOn: $showsPreview)
+            Toggle("Preview a text tool's result beside the wheel", isOn: $showsPreview)
+        }
+    }
+}
+
+/// Settings → Wheels → the text wheel's first page (ROADMAP C7 favourites).
+private struct TextWheelFavoritesSection: View {
+    @State private var chosen = TextFavorites.load()
+
+    var body: some View {
+        Section {
+            LabeledContent("Text wheel's first page") {
+                Menu(chosen.isEmpty ? "Trim, Clean Up" : chosen.map(\.title).joined(separator: ", ")) {
+                    ForEach(TextTool.allCases.filter(\.isOnWheel), id: \.self) { tool in
+                        Toggle(tool.title, isOn: Binding(
+                            get: { chosen.contains(tool) },
+                            set: { on in
+                                if on { chosen.append(tool) } else { chosen.removeAll { $0 == tool } }
+                                TextFavorites.save(chosen)
+                            }
+                        ))
+                        .disabled(!chosen.contains(tool) && chosen.count >= TextFavorites.limit)
+                    }
+                    Divider()
+                    Button("Back to Trim and Clean Up") {
+                        chosen = []
+                        TextFavorites.save([])
+                    }
+                }
+                .fixedSize()
+            }
         } footer: {
-            Text("Hovering a tool, or moving to it with the arrow keys, shows the text as it would be after it runs. Nothing changes until you choose it.")
+            Text("Up to \(TextFavorites.limit); your last 3 tools also come first.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -123,7 +154,7 @@ private struct SnippetsFolderSection: View {
         } header: {
             Text("Snippets (\(SnippetWheel.shortcut.displayString))")
         } footer: {
-            Text("One snippet per text file; subfolders are groups. A file can hold {date format=\"yyyy-MM-dd\" offset=\"+3d\"}, {time}, {clipboard}, {selection}, {uuid}, {epoch} and one {cursor}.")
+            Text("One snippet per text file, subfolders as groups; {date}, {clipboard}, {cursor} and more.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

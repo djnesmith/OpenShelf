@@ -339,6 +339,7 @@ item on a shelf.
   Translate ▸, plus More.
 - **More** leads to Case ▸, Lines ▸, Cleanup ▸, Encode ▸, Extract ▸, Wrap ▸, Count, Hash,
   Dates.
+- **Built 2026-11-19 (FORK-FEATURES #66):** recent first and favourites.
 - **Recent first:** the last 3 tools used take the first slots, building on
   `Wheel/WheelOrdering.swift`.
 - **Favourites:** Settings lets David choose page 1.
