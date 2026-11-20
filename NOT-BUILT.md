@@ -207,6 +207,8 @@ Edit window only puts text back into an app or on the clipboard; "nothing is wri
 
 ## Vim: related features
 
+Every not-built and partly-built row below is on the roadmap as C16–C43 (ROADMAP.md); the Edit window surviving a relaunch is C44.
+
 Checked against the engine at 6833d73 by running each key sequence (2026-11-20). "Built" means
 it matches vim --clean where vim has it. Ordered by what David's Doom setup has: Doom's
 `:editor evil` module (`~/.config/emacs/sources/doom+/modules/editor/evil/packages.el` and

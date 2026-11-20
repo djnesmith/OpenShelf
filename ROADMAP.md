@@ -517,6 +517,48 @@ Today a text or source file reaches the file wheel, which has only Pretty Print 
   (`TextSniffer` already spots JSON, YAML, EDN, XML and TOML)?
 - Permissions: none.
 
+**C16–C43. Vim features related to text objects and surround** — not built (David, 2026-11-20: "add add features to roadmap"). Checked against the engine at 6833d73 (NOT-BUILT.md, "Vim: related features"). Ordered by what his Doom setup has (`:editor evil` packages and text objects, `~/.config/emacs/sources/doom+/modules/editor/evil/config.el:640-682`, and `~/.doom.d/config.el`), then plain vim. None is built until David picks.
+
+In his Doom setup:
+
+| Id | What | Size | Needs first |
+|---|---|---|---|
+| C16 | Surround a function call: `ysiwf` asks for a name and makes `foo(x)` (evil-surround/embrace `f`) | S | — |
+| C17 | `iq` / `aq`: the nearest quotes of any kind (Doom) | S | — |
+| C18 | `ia` / `aa`: one argument, with its comma or space (evil-args); Clojure forms split on spaces | M | — |
+| C19 | `ii` / `ai` (and `ij` `ik`): lines at the cursor's indent or deeper (evil-indent-plus) | S | — |
+| C20 | `ig` / `ag`: the whole text (Doom) | S | — |
+| C21 | `if` / `af`: the function; for Clojure the top-level form (Doom defun) | M | A rule per file type |
+| C22 | `ic` / `ac`: a comment (evil-nerd-commenter) | S | A comment string per file type |
+| C23 | `iu` URL and `ix` XML attribute (exato) | S each | — |
+| C24 | `iB` / `aB` as the nearest block of any kind, as Doom's anyblock (today `B` is `{ }`, as in vim) | S | David's choice: Doom's meaning or vim's |
+| C25 | Comment toggling: `gcc`, `gc{motion}`, visual `gc` (evil-nerd-commenter) | S-M | A comment string per file type (`;;` for Clojure) |
+| C26 | evil-snipe: `s` / `S` two-character find, repeated with `;` `,` | M | David's choice: today `s` is vim's substitute |
+| C27 | evil-exchange: `gx{motion}` twice swaps the two spans; `gX` cancels | S-M | — |
+| C28 | evil-lion: `gl{motion}{char}` / `gL` align on a character | M | — |
+| C29 | `g⌃A` / `g⌃X` in visual mode: numbers that count up line by line (evil-numbers) | S | — |
+| C30 | Visual `*` / `#`: search for the selected text (evil-visualstar) | S | — |
+| C31 | evil-multiedit: visual `R`, `M-d` / `M-D` edit every match at once (his `config.el:738-759`) | L | — |
+| C32 | Slurp, barf and raise for Lisp forms (smartparens; his `s-R` raise) | M | Key choices: smartparens has no vim keys in his setup |
+
+Plain vim:
+
+| Id | What | Size | Needs first |
+|---|---|---|---|
+| C33 | `is` / `as`: a sentence | S | — |
+| C34 | `=` re-indent (`==`, `=ip`) | S-M | Indent rules per file type, or the Re-indent tool (C2) |
+| C35 | Search highlight while searching, and `:noh` | S | — |
+| C36 | `gn` / `cgn`: the next match as an object, repeated with `.` | S | — |
+| C37 | Marks: `m{a-z}`, `'` and `` ` `` jumps | S | — |
+| C38 | Ex commands with ranges: `:g`, `:norm`, `:sort`, `:m`, `:t`, `:d` | M-L | — |
+| C39 | Scrolling: `zz` `zt` `zb`, `H` `M` `L`, `⌃D` `⌃U` `⌃E` `⌃Y` | S | Matters once files open in the window (C14) |
+| C40 | Jump and change lists: `⌃O` / `⌃I`, `g;` / `g,`, `gi` | S-M | — |
+| C41 | `gJ` join without spaces, `gp` / `gP`, `ga`, `[(` / `])` | S each | — |
+| C42 | An undo tree: `g-` / `g+` (today undo and redo are a line) | M | — |
+| C43 | `@:` repeats the last ex command | S | — |
+
+**C44. The Edit window survives a relaunch** (M) — not built (2026-11-20: an install relaunched OpenShelf and closed David's Edit window). Keep the window's text, cursor and where it came from on disk while it is open, and reopen it after a relaunch or crash. Needs first: a decision on where the result goes when the source app's selection is gone by then (the clipboard, as Edit does today when the selection changed).
+
 ### D. Links and the web
 
 **D1. Drop links** (M)
