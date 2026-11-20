@@ -13,7 +13,9 @@ struct MailScriptTermTests {
          ("selected messages", MailScripts.selectedMessages),
          ("selected senders", MailScripts.selectedSenders),
          ("selection state", MailScripts.selectionState),
-         ("move selection", MailScripts.move(to: "mailbox \"Archive\" of account \"Work\""))]
+         ("move selection", MailScripts.move(to: "mailbox \"Archive\" of account \"Work\"")),
+         ("selection places", MailScripts.selectionPlaces),
+         ("move check", MailScripts.placeCounts([(id: "a@x", source: "mailbox \"INBOX\" of account \"Work\"")], destination: "mailbox \"Archive\" of account \"Work\""))]
     }
 
     static let folder: URL = {

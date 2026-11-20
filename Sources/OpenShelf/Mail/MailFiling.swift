@@ -63,6 +63,53 @@ enum MailFiling {
         defaults.set(recent.map { [$0.account, $0.path] }, forKey: recentKey)
     }
 
+    /// What a move came to, from Mail: how many of the messages are in the destination and
+    /// how many are still in their source (2026-11-20: a move back to the Inbox reported
+    /// success and left the message in both).
+    enum MoveOutcome: Equatable {
+        case moved
+        /// In the destination and still in the source.
+        case copied
+        case notMoved
+        /// Some moved, some didn't.
+        case partial
+    }
+
+    struct MoveReport: Equatable {
+        var outcome: MoveOutcome
+        var title: String
+        var subtitle: String
+    }
+
+    /// What the toast says: only what Mail shows.
+    static func report(_ outcome: MoveOutcome, total: Int, to mailbox: Mailbox, problem: String? = nil) -> MoveReport {
+        let count = total == 1 ? "1 message" : "\(total) messages"
+        switch outcome {
+        case .moved: return MoveReport(outcome: outcome, title: "Moved to \(mailbox.path)", subtitle: count)
+        case .copied: return MoveReport(outcome: outcome, title: "Copied to \(mailbox.path)", subtitle: "\(count) still in the folder it was in")
+        case .partial: return MoveReport(outcome: outcome, title: "Partly moved to \(mailbox.path)", subtitle: "Check \(count) in Mail")
+        case .notMoved: return MoveReport(outcome: outcome, title: "Not moved", subtitle: problem ?? "Mail didn't move it")
+        }
+    }
+
+    static func moveOutcome(total: Int, inSource: Int, inDestination: Int) -> MoveOutcome {
+        guard total > 0, inDestination > 0 else { return .notMoved }
+        if inDestination >= total, inSource == 0 { return .moved }
+        if inSource > 0, inDestination >= total { return .copied }
+        return .partial
+    }
+
+    /// The paths Mail's Message › Move to menu may give `mailbox`: the account (or On My Mac),
+    /// then each part of its path; an IMAP "INBOX" shows as "Inbox".
+    static func moveMenuPaths(for mailbox: Mailbox) -> [[String]] {
+        let top = mailbox.account.isEmpty ? "On My Mac" : mailbox.account
+        let parts = mailbox.path.split(separator: "/").map(String.init)
+        var paths = [["Message", "Move to", top] + parts]
+        let friendly = parts.map { $0 == "INBOX" ? "Inbox" : $0 }
+        if friendly != parts { paths.append(["Message", "Move to", top] + friendly) }
+        return paths
+    }
+
     /// The mailboxes listed this session, so `v` opens at once after the first time; the
     /// list is refreshed in the background each time the picker opens.
     static var cache: [Mailbox]?
@@ -121,12 +168,10 @@ enum MailFiling {
         let choose: (Mailbox) -> Void = { chosen in
             MailMenu.running?.activate()
             Task { @MainActor in
-                if let problem = await scripting.moveSelection(to: chosen) {
-                    ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Not moved", subtitle: problem), for: .seconds(4))
-                } else {
-                    saveRecent(remember(chosen, in: loadRecent()))
-                    ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: "Moved", subtitle: chosen.display), for: MailHelpers.successToast)
-                }
+                let report = await scripting.move(to: chosen)
+                if report.outcome == .moved { saveRecent(remember(chosen, in: loadRecent())) }
+                ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: report.title, subtitle: report.subtitle),
+                                            for: report.outcome == .moved ? MailHelpers.successToast : .seconds(6))
             }
         }
         // With a list from this session the picker opens at once; without one it opens only
@@ -160,7 +205,7 @@ protocol MailFilingScripting {
     /// Why the last listing came back empty, when Mail's script said so.
     var lastProblem: (title: String, subtitle: String)? { get }
     /// Moves the viewer's selected messages; nil when done, or why not.
-    func moveSelection(to mailbox: MailFiling.Mailbox) async -> String?
+    func move(to mailbox: MailFiling.Mailbox) async -> MailFiling.MoveReport
 }
 
 struct AppleScriptMailFiling: MailFilingScripting {
@@ -268,13 +313,76 @@ struct AppleScriptMailFiling: MailFilingScripting {
         return boxes
     }
 
-    func moveSelection(to mailbox: MailFiling.Mailbox) async -> String? {
-        func quoted(_ text: String) -> String { "\"" + text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
-        let target = mailbox.account.isEmpty ? "mailbox \(quoted(mailbox.path))" : "mailbox \(quoted(mailbox.path)) of account \(quoted(mailbox.account))"
-        let source = MailScripts.move(to: target)
-        let outcome = await MailScript.run("move selection", source)
-        if let problem = MailScript.problem(outcome) { return "\(problem.title): \(problem.subtitle)" }
-        let text = outcome.text ?? ""
-        return text.isEmpty ? nil : text
+    /// Moves the viewer's selection to `mailbox` the way David's hands do: the list gets the
+    /// keyboard, then Mail's own Message › Move to › <account> › <mailbox> item (Mail treats
+    /// Gmail labels right there); the script's move only when that item isn't found. Then
+    /// Mail is asked where each message is, by Message-ID, in its source and in the
+    /// destination. Nothing is ever deleted to tidy up.
+    func move(to mailbox: MailFiling.Mailbox) async -> MailFiling.MoveReport {
+        let placesText = await MailScript.run("selection places", MailScripts.selectionPlaces).text ?? ""
+        let places: [(id: String, source: String)] = placesText.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 3, !parts[0].isEmpty else { return nil }
+            return (parts[0], MailScripts.specifier(account: parts[1], path: parts[2]))
+        }
+        guard !places.isEmpty else { return MailFiling.report(.notMoved, total: 0, to: mailbox, problem: "Select a message in Mail first") }
+        let destination = MailScripts.specifier(account: mailbox.account, path: mailbox.path)
+        let sameMailbox = places.allSatisfy { $0.source == destination }
+        guard !sameMailbox else { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: "It is already there") }
+        var route = "menu"
+        if !(await Self.pressMoveMenu(for: mailbox)) {
+            route = "script"
+            let outcome = await MailScript.run("move selection", MailScripts.move(to: destination))
+            if let problem = MailScript.problem(outcome) { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: "\(problem.title): \(problem.subtitle)") }
+            if let text = outcome.text, !text.isEmpty { return MailFiling.report(.notMoved, total: places.count, to: mailbox, problem: text) }
+        }
+        // Mail moves in the background; up to 3 s for the messages to arrive.
+        var counts = (inSource: places.count, inDestination: 0)
+        for _ in 0..<6 {
+            try? await Task.sleep(for: .milliseconds(500))
+            let text = await MailScript.run("move check", MailScripts.placeCounts(places, destination: destination)).text ?? ""
+            let numbers = text.split(separator: "\t").compactMap { Int($0) }
+            guard numbers.count == 2 else { continue }
+            counts = (numbers[0], numbers[1])
+            if MailFiling.moveOutcome(total: places.count, inSource: counts.inSource, inDestination: counts.inDestination) == .moved { break }
+        }
+        var outcome = MailFiling.moveOutcome(total: places.count, inSource: counts.inSource, inDestination: counts.inDestination)
+        // The menu answered but nothing moved at all (every message still in its source, none
+        // in the destination): the script's move once, then checked the same way.
+        if route == "menu", outcome == .notMoved, counts.inSource == places.count {
+            route = "menu, then script"
+            _ = await MailScript.run("move selection", MailScripts.move(to: destination))
+            try? await Task.sleep(for: .milliseconds(1000))
+            let text = await MailScript.run("move check", MailScripts.placeCounts(places, destination: destination)).text ?? ""
+            let numbers = text.split(separator: "\t").compactMap { Int($0) }
+            if numbers.count == 2 { counts = (numbers[0], numbers[1]) }
+            outcome = MailFiling.moveOutcome(total: places.count, inSource: counts.inSource, inDestination: counts.inDestination)
+        }
+        let accounts = Set(places.map(\.source)).count
+        SnoozeLog.append(["move: \(places.count) selected from \(accounts) source mailbox\(accounts == 1 ? "" : "es"), \(mailbox.account.isEmpty ? "to On My Mac" : "to an account mailbox"), via \(route); in the destination \(counts.inDestination) of \(places.count), still in the source \(counts.inSource): \(outcome)"], to: MailScript.logURL)
+        return MailFiling.report(outcome, total: places.count, to: mailbox)
+    }
+
+    /// Mail's own Move to item for `mailbox`, with the list given the keyboard first, as
+    /// Archive needs (2026-11-20). False when no such item is found.
+    @MainActor
+    static func pressMoveMenu(for mailbox: MailFiling.Mailbox) async -> Bool {
+        guard let mail = MailMenu.running, let bar = MailMenu.menuBar() else { return false }
+        guard let item = MailFiling.moveMenuPaths(for: mailbox).lazy.compactMap({ MailMenu.find($0, in: bar) }).first else {
+            KeysLog.note("move: no Message › Move to item for that mailbox; using the script's move")
+            return false
+        }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        if let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute), let list = AXSelectableList.inViewer(viewer) {
+            AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        }
+        try? await Task.sleep(for: .milliseconds(100))
+        guard item.isEnabled else {
+            KeysLog.note("move: the Move to item is off; using the script's move")
+            return false
+        }
+        KeysLog.note("move: pressed Message › Move to item: \(item.press())")
+        return true
     }
 }

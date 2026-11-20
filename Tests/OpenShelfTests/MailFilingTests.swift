@@ -221,4 +221,28 @@ struct MailFilingTests {
         #expect(handler.contains("tell application id \"com.apple.mail\" to set osChildren to mailboxes of osBox"))
         #expect(handler.contains("on error osMessage number osNumber"))
     }
+
+    /// A move counts only from where Mail shows the messages afterwards (2026-11-20: a
+    /// move back to the Inbox reported success and left the message in both places).
+    @Test func movesAreJudgedFromWhereTheMessagesAre() {
+        #expect(MailFiling.moveOutcome(total: 1, inSource: 0, inDestination: 1) == .moved)
+        #expect(MailFiling.moveOutcome(total: 1, inSource: 1, inDestination: 1) == .copied)
+        #expect(MailFiling.moveOutcome(total: 1, inSource: 1, inDestination: 0) == .notMoved)
+        #expect(MailFiling.moveOutcome(total: 3, inSource: 1, inDestination: 2) == .partial)
+        #expect(MailFiling.moveOutcome(total: 0, inSource: 0, inDestination: 0) == .notMoved)
+        let inbox = MailFiling.Mailbox(account: "Gmail", path: "INBOX")
+        #expect(MailFiling.report(.moved, total: 1, to: inbox).title == "Moved to INBOX")
+        #expect(MailFiling.report(.copied, total: 1, to: inbox) == MailFiling.MoveReport(outcome: .copied, title: "Copied to INBOX", subtitle: "1 message still in the folder it was in"))
+        #expect(MailFiling.report(.notMoved, total: 1, to: inbox, problem: "It is already there").subtitle == "It is already there")
+    }
+
+    /// Mail's Move to menu: the account (or On My Mac), then each part of the path, and an
+    /// IMAP INBOX as "Inbox".
+    @Test func moveMenuPaths() {
+        #expect(MailFiling.moveMenuPaths(for: .init(account: "Gmail", path: "INBOX")) ==
+                [["Message", "Move to", "Gmail", "INBOX"], ["Message", "Move to", "Gmail", "Inbox"]])
+        #expect(MailFiling.moveMenuPaths(for: .init(account: "", path: "Projects/2026")) == [["Message", "Move to", "On My Mac", "Projects", "2026"]])
+        #expect(MailScripts.specifier(account: "Work", path: "A \"B\"") == "mailbox \"A \\\"B\\\"\" of account \"Work\"")
+        #expect(MailScripts.specifier(account: "", path: "Old") == "mailbox \"Old\"")
+    }
 }
