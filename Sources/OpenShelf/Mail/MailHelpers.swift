@@ -120,45 +120,61 @@ final class MailHelpers {
                 ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Can't snooze", subtitle: Self.problem(with: MailMenu.menuBar()) ?? "Remind Me Later… didn't open"), for: .seconds(4))
                 return
             }
-            guard let window = await Self.waitForRemindWindow(pid: mail.processIdentifier) else {
-                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Can't snooze", subtitle: "Mail's Remind Me window didn't appear"), for: .seconds(4))
+            guard let dialog = await Self.waitForDialog(pid: mail.processIdentifier, seconds: 4) else {
+                // Late after all: cancelled, so nothing is left half done.
+                let late = await Self.waitForDialog(pid: mail.processIdentifier, seconds: 1)
+                if let late { _ = RemindDialog.cancel(late) }
+                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Can't snooze", subtitle: late == nil ? "Mail's Remind Me dialog didn't appear" : "Mail's Remind Me dialog came too late; cancelled"), for: .seconds(4))
                 return
             }
-            switch RemindDialog.fill(AXDialogNode(element: window), with: date) {
+            switch RemindDialog.fill(dialog, with: date) {
             case .reminded:
+                // Mail closes the dialog once the reminder is set; if it stays, nothing is claimed.
+                guard await Self.waitForDialogToClose(pid: mail.processIdentifier, seconds: 2) else {
+                    ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Not sure it snoozed", subtitle: "Mail's Remind Me dialog is still open"), for: .seconds(5))
+                    return
+                }
                 if archivesAfterRemind, let archive = MailMenu.find(MailMenu.archive, in: MailMenu.menuBar() ?? []) {
                     try? await Task.sleep(for: .milliseconds(300))
                     _ = archive.press()
                 }
                 ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Snoozed", subtitle: SnoozeTime.describe(date, calendar: .current)))
             case .cancelled(let reason):
-                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Not snoozed", subtitle: "Mail's Remind Me window: \(reason). Menu bar › Check Mail writes what OpenShelf sees."), for: .seconds(6))
+                ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Not snoozed", subtitle: "Mail's Remind Me dialog: \(reason). Menu bar › Check Mail writes what OpenShelf sees."), for: .seconds(6))
             }
         }
     }
 
-    /// Mail's Remind Me window: a sheet on its front window, or a window of its own, that
-    /// has a "Remind Me" button. Waits up to two seconds.
-    static func waitForRemindWindow(pid: pid_t) async -> AXUIElement? {
+    /// Mail's windows, front first, as dialog nodes.
+    static func windows(pid: pid_t) -> [DialogNode] {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 1)
-        for _ in 0..<20 {
-            var candidates: [AXUIElement] = []
-            if let front = AXMenuNode.element(app, kAXFocusedWindowAttribute) {
-                candidates.append(front)
-                candidates += AXMenuNode.childElements(front).filter { AXMenuNode.string($0, kAXRoleAttribute) == kAXSheetRole }
-            }
-            if let window = candidates.reversed().first(where: { hasRemindButton($0, depth: 0) }) { return window }
-            try? await Task.sleep(for: .milliseconds(100))
+        var elements: [AXUIElement] = []
+        if let front = AXMenuNode.element(app, kAXFocusedWindowAttribute) { elements.append(front) }
+        var value: CFTypeRef?
+        if AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success, let all = value as? [AXUIElement] {
+            elements += all.filter { window in !elements.contains { CFEqual($0, window) } }
         }
+        return elements.map(AXDialogNode.init)
+    }
+
+    /// Polls Mail's windows and their sheets for the Remind Me dialog.
+    static func waitForDialog(pid: pid_t, seconds: Double) async -> DialogNode? {
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            if let dialog = RemindDialog.find(in: windows(pid: pid)) { return dialog }
+            try? await Task.sleep(for: .milliseconds(100))
+        } while Date() < deadline
         return nil
     }
 
-    private static func hasRemindButton(_ element: AXUIElement, depth: Int) -> Bool {
-        guard depth < 6 else { return false }
-        return AXMenuNode.childElements(element).contains { child in
-            (AXMenuNode.string(child, kAXRoleAttribute) == kAXButtonRole && AXMenuNode.string(child, kAXTitleAttribute) == RemindDialog.remindTitle)
-                || hasRemindButton(child, depth: depth + 1)
-        }
+    /// True once no Remind Me dialog is left in Mail.
+    static func waitForDialogToClose(pid: pid_t, seconds: Double) async -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            if RemindDialog.find(in: windows(pid: pid)) == nil { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        } while Date() < deadline
+        return false
     }
 }

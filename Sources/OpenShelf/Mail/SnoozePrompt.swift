@@ -19,7 +19,9 @@ final class SnoozePrompt: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     func show(onChoose: @escaping (Date) -> Void) {
         let panel = prepare(onChoose: onChoose)
         panel.center()
-        NSApp.activate()
+        // A panel that takes the keyboard without making OpenShelf the active app: macOS
+        // may refuse to activate an app from a key tap or hotkey, which left the field
+        // without the cursor (David, 2026-11-20).
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
     }
@@ -45,7 +47,7 @@ final class SnoozePrompt: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     var understoodText: String { understood.stringValue }
 
     func makePanel() -> NSPanel {
-        let panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 280), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 280), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Snooze until…"
         panel.level = .floating
         panel.isReleasedWhenClosed = false
@@ -71,6 +73,7 @@ final class SnoozePrompt: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         stack.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
         field.widthAnchor.constraint(equalToConstant: 330).isActive = true
         panel.contentView = stack
+        panel.initialFirstResponder = field
         self.panel = panel
         return panel
     }

@@ -4,7 +4,8 @@ import ApplicationServices
 /// The single-key layer's key tap (MAIL-PLAN slice E). Off by default; installed only
 /// while the setting is on and Mail is in front, removed as soon as Mail isn't. It takes
 /// a key only when MailKeys says so and passes everything else to Mail untouched; it
-/// never records or logs keys. While installed, a menu bar item says "Mail keys".
+/// never records or logs keys. No menu bar item (David, 2026-11-20: "i don't want any menu bar
+/// item for it"); the checkmark on Mail Single Keys in OpenShelf's menu is the only sign.
 @MainActor
 final class MailKeyTap {
     static let shared = MailKeyTap()
@@ -12,7 +13,6 @@ final class MailKeyTap {
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
-    private var indicator: NSStatusItem?
     private var pending: Character?
     private var pendingSince = Date.distantPast
 
@@ -41,11 +41,6 @@ final class MailKeyTap {
         source = CFMachPortCreateRunLoopSource(nil, port, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: port, enable: true)
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "Mail keys"
-        item.button?.font = .systemFont(ofSize: 11, weight: .medium)
-        item.button?.toolTip = "OpenShelf's single keys are on while Mail is in front; ? lists them"
-        indicator = item
     }
 
     func remove() {
@@ -54,8 +49,6 @@ final class MailKeyTap {
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tap = nil
         source = nil
-        if let indicator { NSStatusBar.system.removeStatusItem(indicator) }
-        indicator = nil
         MailKeyHelp.shared.close()
     }
 
@@ -67,6 +60,9 @@ final class MailKeyTap {
             return false
         }
         guard type == .keyDown, let key = Self.character(of: event) else { return false }
+        // One of OpenShelf's own panels (the snooze prompt, the folder picker) has the
+        // keyboard over Mail: every key is typed there.
+        if NSApp.keyWindow != nil, !MailKeyHelp.shared.isOpen { return false }
         if MailKeyHelp.shared.isOpen {
             MailKeyHelp.shared.close()
             return true

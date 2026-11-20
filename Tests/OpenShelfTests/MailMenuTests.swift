@@ -70,43 +70,97 @@ struct MailMenuTests {
 
     static let when = Date(timeIntervalSince1970: 1_800_000_000)
 
-    static func window(pickers: Int = 1, settable: Bool = true, keep: @escaping (Date) -> Date = { $0 }) -> (FakeNode, [FakeNode], FakeNode, FakeNode) {
-        let pickerNodes = (0..<pickers).map { _ in FakeNode("AXDateTimeArea", date: .distantPast, settable: settable, keep: keep) }
-        let remind = FakeNode("AXButton", "Remind Me")
+    /// Mail's dialog as on David's Mac (2026-11-20): a sheet with a line of text, a date
+    /// picker and a time picker (each with a calendar or clock), Cancel and Schedule.
+    struct Dialog {
+        let sheet: FakeNode
+        let pickers: [FakeNode]
+        let schedule: FakeNode
+        let cancel: FakeNode
+    }
+
+    static func dialog(pickers: Int = 4, settable: Bool = true, keep: @escaping (Int, Date) -> Date = { $1 },
+                       confirm: [String] = ["Schedule"], hasCancel: Bool = true) -> Dialog {
+        let pickerNodes = (0..<pickers).map { index in
+            FakeNode("AXDateTimeArea", date: .distantPast, settable: settable, keep: { keep(index, $0) })
+        }
+        let confirms = confirm.map { FakeNode("AXButton", $0) }
         let cancel = FakeNode("AXButton", "Cancel")
-        let group = FakeNode("AXGroup", nil, pickerNodes + [FakeNode("AXButton", "Schedule")])
-        return (FakeNode("AXSheet", nil, [group, cancel, remind]), pickerNodes, remind, cancel)
+        let group = FakeNode("AXGroup", nil, pickerNodes)
+        let sheet = FakeNode("AXSheet", nil, [FakeNode("AXStaticText"), group] + (hasCancel ? [cancel] : []) + confirms)
+        return Dialog(sheet: sheet, pickers: pickerNodes, schedule: confirms.first ?? FakeNode("AXButton", "none"), cancel: cancel)
     }
 
-    @Test func setsTheDateThenPressesRemindMe() {
-        let (window, pickers, remind, cancel) = Self.window()
-        #expect(RemindDialog.fill(window, with: Self.when) == .reminded)
-        #expect(pickers[0].date == Self.when)
-        #expect(remind.pressed == 1)
-        #expect(cancel.pressed == 0)
+    @Test func setsEveryPickerThenPressesSchedule() {
+        for count in [1, 2, 4] {
+            let dialog = Self.dialog(pickers: count)
+            #expect(RemindDialog.fill(dialog.sheet, with: Self.when) == .reminded)
+            #expect(dialog.pickers.allSatisfy { $0.date == Self.when })
+            #expect(dialog.schedule.pressed == 1)
+            #expect(dialog.cancel.pressed == 0)
+        }
     }
 
-    /// No picker, two pickers, a picker that won't take the date or keeps a different
-    /// time: the window is cancelled, never "Remind Me".
+    /// Mail 16's older title still works.
+    @Test func anOlderRemindMeTitleStillWorks() {
+        let dialog = Self.dialog(confirm: ["Remind Me"])
+        #expect(RemindDialog.fill(dialog.sheet, with: Self.when) == .reminded)
+        #expect(dialog.schedule.pressed == 1)
+    }
+
+    /// No picker, too many, one that won't take the date, a time picker that keeps another
+    /// time, a date picker that drops to midnight, no or two Schedule buttons: Cancel is
+    /// pressed, never Schedule.
     @Test func anythingUnexpectedCancels() {
-        let cases: [(FakeNode, FakeNode, FakeNode)] = [
-            { let w = Self.window(pickers: 0); return (w.0, w.2, w.3) }(),
-            { let w = Self.window(pickers: 2); return (w.0, w.2, w.3) }(),
-            { let w = Self.window(settable: false); return (w.0, w.2, w.3) }(),
-            { let w = Self.window(keep: { $0.addingTimeInterval(3600) }); return (w.0, w.2, w.3) }(),
+        let midnight: (Int, Date) -> Date = { index, date in index == 0 ? Calendar.current.startOfDay(for: date) : date }
+        let cases: [Dialog] = [
+            Self.dialog(pickers: 0),
+            Self.dialog(pickers: 5),
+            Self.dialog(settable: false),
+            Self.dialog(keep: { index, date in index == 1 ? date.addingTimeInterval(3600) : date }),
+            Self.dialog(keep: midnight),
+            Self.dialog(confirm: []),
+            Self.dialog(confirm: ["Schedule", "Schedule"]),
         ]
-        for (window, remind, cancel) in cases {
-            guard case .cancelled = RemindDialog.fill(window, with: Self.when) else {
+        for dialog in cases {
+            guard case .cancelled = RemindDialog.fill(dialog.sheet, with: Self.when) else {
                 Issue.record("not cancelled")
                 continue
             }
-            #expect(remind.pressed == 0)
-            #expect(cancel.pressed == 1)
+            #expect(dialog.schedule.pressed == 0)
+            #expect(dialog.cancel.pressed == 1)
         }
         // Seconds dropped is fine: Mail keeps minutes.
-        let (window, _, remind, _) = Self.window(keep: { Date(timeIntervalSince1970: ($0.timeIntervalSince1970 / 60).rounded(.down) * 60) })
-        #expect(RemindDialog.fill(window, with: Self.when.addingTimeInterval(20)) == .reminded)
-        #expect(remind.pressed == 1)
+        let dialog = Self.dialog(keep: { _, date in Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60) })
+        #expect(RemindDialog.fill(dialog.sheet, with: Self.when.addingTimeInterval(20)) == .reminded)
+        #expect(dialog.schedule.pressed == 1)
+    }
+
+    /// The dialog is found as a sheet on any of Mail's windows, not only the front one,
+    /// and only when it has Cancel, Schedule and a picker.
+    @Test func findsTheDialogAsASheetOnAnyWindow() {
+        let dialog = Self.dialog()
+        let viewer = FakeNode("AXWindow", nil, [FakeNode("AXSplitGroup"), dialog.sheet])
+        let other = FakeNode("AXWindow", nil, [FakeNode("AXButton", "Cancel")])
+        #expect((RemindDialog.find(in: [other, viewer]) as? FakeNode) === dialog.sheet)
+        #expect(RemindDialog.find(in: [other]) == nil)
+        #expect(RemindDialog.find(in: [FakeNode("AXWindow", nil, [Self.dialog(hasCancel: false).sheet])]) == nil)
+        #expect(RemindDialog.find(in: [FakeNode("AXWindow", nil, [Self.dialog(pickers: 0).sheet])]) == nil)
+        // A dialog shown as a window of its own.
+        let own = FakeNode("AXWindow", nil, Self.dialog().sheet.children)
+        #expect((RemindDialog.find(in: [own]) as? FakeNode) === own)
+        #expect(RemindDialog.cancel(dialog.sheet))
+        #expect(dialog.cancel.pressed == 1)
+    }
+
+    /// The prompt takes the keyboard without activating OpenShelf, with the cursor in
+    /// the field (David, 2026-11-20: the field had no cursor after `b`).
+    @Test func thePromptOpensWithTheCursorInTheField() {
+        let prompt = SnoozePrompt()
+        let panel = prompt.prepare { _ in }
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
+        #expect(panel.canBecomeKey)
+        #expect(panel.initialFirstResponder === prompt.promptField)
     }
 
     /// The shortcut is live only while Mail is in front.

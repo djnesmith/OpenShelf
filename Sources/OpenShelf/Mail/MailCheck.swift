@@ -32,9 +32,18 @@ enum MailCheck {
                 }
             }
         }
-        if let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) {
-            lines.append("Front window: \(describe(window))")
-            walk(window, depth: 0, into: &lines)
+        // Every window, front first, with its sheets (the Remind Me dialog is a sheet).
+        let windows = MailHelpers.windows(pid: mail.processIdentifier)
+        if let dialog = RemindDialog.find(in: windows) as? AXDialogNode {
+            lines.append("Remind Me dialog: \(describe(dialog.element))")
+            walk(dialog.element, depth: 0, into: &lines)
+        } else {
+            lines.append("Remind Me dialog: not found (no sheet or window with Cancel, Schedule and a date picker)")
+        }
+        for (index, window) in windows.enumerated() {
+            guard let node = window as? AXDialogNode else { continue }
+            lines.append("Window \(index + 1)\(index == 0 ? " (front)" : ""): \(describe(node.element))")
+            walk(node.element, depth: 0, into: &lines)
         }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -70,8 +79,14 @@ enum MailCheck {
         }
         if role == "AXDateTimeArea" || role == "AXDateField" {
             var value: CFTypeRef?
-            if AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success, let date = value as? Date {
-                parts.append("value=\(ISO8601DateFormatter().string(from: date))")
+            if AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success, let value {
+                if let date = value as? Date {
+                    parts.append("value=\(ISO8601DateFormatter().string(from: date))")
+                } else {
+                    parts.append("value type=\(CFCopyTypeIDDescription(CFGetTypeID(value)) as String)")
+                }
+            } else {
+                parts.append("no value")
             }
             parts.append("settable=\(isSettable(element))")
         }
@@ -79,7 +94,7 @@ enum MailCheck {
     }
 
     private static func walk(_ element: AXUIElement, depth: Int, into lines: inout [String]) {
-        guard depth < 8, lines.count < 400 else { return }
+        guard depth < 8, lines.count < 800 else { return }
         for child in AXMenuNode.childElements(element) {
             let role = AXMenuNode.string(child, kAXRoleAttribute) ?? ""
             // Message lists and bodies can be huge and hold mail; their insides are skipped.

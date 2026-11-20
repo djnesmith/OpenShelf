@@ -7,14 +7,18 @@ what is left for you to decide. Details for each item are in FORK-FEATURES.md (#
 
 The Mail helpers have not been tried on real Mail yet. Use test messages.
 
-1. **Check Mail, first.** In Mail, select a message, open Message › Remind Me › Remind Me
-   Later… and leave it open. Then OpenShelf's menu bar icon › **Check Mail (read only)**.
+1. **Check Mail, first.** In Mail, select a test message, open Message › Remind Me › Remind Me
+   Later… and leave the dialog open (date, time, Cancel, Schedule). Then OpenShelf's menu bar
+   icon › **Check Mail (read only)**, then Cancel in Mail's dialog.
    *Expect:* a toast "Checked Mail". Send `~/Library/Logs/OpenShelf/mail-check.txt` (it holds
-   no message text). It shows whether the snooze can set Mail's date picker. (#58)
-2. **Snooze.** Select a test message, press **⌃⌥S**, type `in 2 minutes`, **Return**.
-   *Expect:* the time it understood shows before Return; the message leaves the inbox and comes
-   back two minutes later. A "Not snoozed: …" toast means the date picker didn't take the time:
-   send that line. (#58)
+   no message text). It shows whether OpenShelf finds the dialog and can set both pickers. (#58)
+2. **Snooze** (fixed 2026-11-20: the dialog's button is Schedule, and there are two pickers).
+   Select a test message, press **b** (single keys on) or **⌃⌥S**: the cursor is already in
+   the field. Type `in 2 minutes`, **Return**.
+   *Expect:* Mail's dialog flashes and closes, "Snoozed" shows, and the message moves to
+   "Remind Me" as Mail's own Remind Me does, then comes back two minutes later. A "Not
+   snoozed: …" toast means a picker didn't take the time; Mail's dialog is cancelled, not left
+   open: send that line. (#58)
 3. **Send.** In a message you are writing, **⌘↩** always sends. Reply to a test message to
    yourself and press **⇧⌘↩**.
    *Expect:* the reply in Sent, the original in Archive. The first time, macOS asks to let
@@ -27,8 +31,8 @@ The Mail helpers have not been tried on real Mail yet. Use test messages.
 6. **Unsubscribe and block.** Select a newsletter, **⌃⌥U**, read the question, confirm.
    *Expect:* Mail unsubscribes and the sender is in Mail › Settings › Junk Mail › Blocked. If you
    click another message before confirming, it does nothing and says so. (#62)
-7. **Single keys (optional).** Menu bar › **Mail Single Keys** on. "Mail keys" shows in the menu
-   bar while Mail is in front. In the message list try **j k e ?**.
+7. **Single keys (optional).** Menu bar › **Mail Single Keys** on. Nothing new shows in the menu
+   bar (fixed 2026-11-20); the checkmark on Mail Single Keys is the only sign. In the message list try **j k e ?**.
    *Expect:* next/previous, archive, the key list. Then type in a reply, the To field, the search
    field and Spotlight over Mail: no letter may vanish. Turn it off if one does. (#61)
 8. **Last folder.** Move a file with the Actions wheel's **Move**, then Move or Copy another file
