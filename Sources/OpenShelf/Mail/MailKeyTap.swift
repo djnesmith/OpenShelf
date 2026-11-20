@@ -286,6 +286,8 @@ struct AXSelectableList: MailKeys.SelectableList {
 enum MailKeyActions {
     static func perform(_ action: MailKeys.Action) {
         switch action {
+        case .menu("Message", "Open Message"):
+            openAndBind()
         case .menu("Message", "Archive"), .menu("Edit", "Delete"):
             guard case .menu(let top, let title) = action else { return }
             if !conversationAction(archive: title == "Archive") { press(title, under: top) }
@@ -344,14 +346,14 @@ enum MailKeyActions {
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.5)
         guard MailKeyTap.isMessageWindow(app), let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return false }
-        let title = AXMenuNode.string(window, kAXTitleAttribute)
         var windowsValue: CFTypeRef?
         AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windowsValue)
         let viewer = ((windowsValue as? [AXUIElement]) ?? []).first {
             AXMenuNode.string($0, kAXIdentifierAttribute)?.hasPrefix("Mail.messageViewer.window") == true
         }
         let list = viewer.flatMap(AXSelectableList.inViewer)
-        let plan = MailKeys.conversationPlan(windowTitle: title, selectedRows: list?.selectedRows.count ?? 0, selected: scripting.selectedMessages())
+        let current = Set(scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
+        let plan = MailKeys.conversationPlan(bound: MailWindowBindings.ids(for: window), selectedRows: list?.selectedRows.count ?? 0, current: current)
         let verb = archive ? "Archived" : "Trashed"
         switch plan {
         case .viaList(let count):
@@ -367,9 +369,28 @@ enum MailKeyActions {
         case .thisMessage:
             press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit")
             ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(verb) 1 message",
-                                              subtitle: "Not found in the list, so only this one"), for: .seconds(4))
+                                              subtitle: "Conversation not confirmed, so only this one"), for: .seconds(4))
         }
         return true
+    }
+
+    /// `o`: opens the selected message, and remembers which Message-IDs were selected for
+    /// the window it opens, so `e` and `x` there can tell the list still holds that row.
+    static func openAndBind(scripting: MailScripting = AppleScriptMail()) {
+        let ids = Set(scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
+        press("Open Message", under: "Message")
+        guard !ids.isEmpty, let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        Task { @MainActor in
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(100))
+                if let window = AXMenuNode.element(app, kAXFocusedWindowAttribute), MailKeyTap.isMessageWindow(app) {
+                    MailWindowBindings.bind(window, ids: ids)
+                    return
+                }
+            }
+        }
     }
 
     /// `u`: a message open in its own window closes, as Esc does; in the viewer the keyboard
@@ -494,5 +515,29 @@ final class MailKeyHelp {
         panel.contentView = stack
         self.panel = panel
         return panel
+    }
+}
+
+/// The Message-IDs selected in the list when OpenShelf's `o` opened each message window
+/// (2026-11-20). A window opened any other way has none, and `e` and `x` there act on the
+/// open message alone.
+@MainActor
+enum MailWindowBindings {
+    private static var bound: [(window: AXUIElement, ids: Set<String>)] = []
+
+    static func bind(_ window: AXUIElement, ids: Set<String>) {
+        prune()
+        bound.removeAll { CFEqual($0.window, window) }
+        bound.append((window, ids))
+    }
+
+    static func ids(for window: AXUIElement) -> Set<String>? {
+        prune()
+        return bound.first { CFEqual($0.window, window) }?.ids
+    }
+
+    /// A closed window stops answering.
+    private static func prune() {
+        bound.removeAll { AXMenuNode.string($0.window, kAXRoleAttribute) == nil }
     }
 }

@@ -319,25 +319,25 @@ struct MailKeysTests {
         #expect(!may("AXTextField", .menu("Message", "Reply")))
     }
 
-    /// e and x in a message window act through the list only when its one selected row is
-    /// this message's conversation; anything unsure is this message alone. Nothing here
-    /// touches real mail.
-    @MainActor @Test func conversationPlanForEAndX() {
-        typealias S = MailSend.Selected
-        let thread = [S(id: "a@x", subject: "Lunch"), S(id: "b@x", subject: "Re: Lunch"), S(id: "c@x", subject: "RE: re: lunch")]
-        #expect(MailKeys.conversationPlan(windowTitle: "Re: Lunch", selectedRows: 1, selected: thread) == .viaList(messages: 3))
-        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 1, selected: [thread[0]]) == .viaList(messages: 1))
-        // A different conversation selected in the list (a subject twin is not enough: here it differs).
-        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 1, selected: [S(id: "d@x", subject: "Dinner")]) == .thisMessage)
-        // One of the selected messages is from another thread.
-        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 1, selected: thread + [S(id: "e@x", subject: "Dinner")]) == .thisMessage)
-        // Two rows, no row, nothing reported, no title.
-        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 2, selected: thread) == .thisMessage)
-        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 0, selected: thread) == .thisMessage)
-        #expect(MailKeys.conversationPlan(windowTitle: "Lunch", selectedRows: 1, selected: []) == .thisMessage)
-        #expect(MailKeys.conversationPlan(windowTitle: nil, selectedRows: 1, selected: thread) == .thisMessage)
-        #expect(MailKeys.conversationPlan(windowTitle: "Re:", selectedRows: 1, selected: thread) == .thisMessage)
-        // No subject on either side: nothing to confirm with.
-        #expect(MailKeys.conversationPlan(windowTitle: "Re:", selectedRows: 1, selected: [S(id: "f@x", subject: "")]) == .thisMessage)
+    /// e and x in a message window act through the list only when the window was opened by
+    /// `o` and the list's selection is still exactly the Message-IDs selected then. No
+    /// subject plays any part. Nothing here touches real mail.
+    @Test func conversationPlanByMessageID() {
+        let opened: Set<String> = ["a@x", "b@x", "c@x"]
+        // Bound and equal.
+        #expect(MailKeys.conversationPlan(bound: opened, selectedRows: 1, current: opened) == .viaList(messages: 3))
+        #expect(MailKeys.conversationPlan(bound: ["a@x"], selectedRows: 1, current: ["a@x"]) == .viaList(messages: 1))
+        // The regression: he clicked another row with the same subject (a daily alert): other ids.
+        #expect(MailKeys.conversationPlan(bound: ["alert-mon@x"], selectedRows: 1, current: ["alert-tue@x"]) == .thisMessage)
+        // Unbound (opened by double-click, from search, before launch).
+        #expect(MailKeys.conversationPlan(bound: nil, selectedRows: 1, current: opened) == .thisMessage)
+        // Nothing selected now, or nothing bound.
+        #expect(MailKeys.conversationPlan(bound: opened, selectedRows: 1, current: []) == .thisMessage)
+        #expect(MailKeys.conversationPlan(bound: [], selectedRows: 1, current: []) == .thisMessage)
+        // Overlapping but not equal: a message came or went.
+        #expect(MailKeys.conversationPlan(bound: opened, selectedRows: 1, current: ["a@x", "b@x"]) == .thisMessage)
+        #expect(MailKeys.conversationPlan(bound: opened, selectedRows: 1, current: opened.union(["d@x"])) == .thisMessage)
+        // Two rows selected.
+        #expect(MailKeys.conversationPlan(bound: opened, selectedRows: 2, current: opened) == .thisMessage)
     }
 }

@@ -181,21 +181,21 @@ enum MailKeys {
     /// How `e` or `x` in a message window acts (David, 2026-11-20: "whatever e and x do when
     /// a message is selected in the list").
     enum ConversationPlan: Equatable {
-        /// The viewer's one selected row is this message's conversation: close the window
-        /// and press Archive or Delete in the viewer, so Mail does what it does for that row.
+        /// The viewer's selection is still exactly what was selected when this window was
+        /// opened: close the window and press Archive or Delete in the viewer, so Mail does
+        /// what it does for that row.
         case viaList(messages: Int)
-        /// Anything unsure: Archive or Delete on the open message only.
+        /// Anything else: Archive or Delete on the open message only.
         case thisMessage
     }
 
-    /// The selected row counts as the open message's only when the list has exactly one row
-    /// selected and every message Mail reports for it has the window's subject (Re:, Fwd:
-    /// aside). The subject only confirms; it never picks a message.
-    @MainActor static func conversationPlan(windowTitle: String?, selectedRows: Int, selected: [MailSend.Selected]) -> ConversationPlan {
-        guard selectedRows == 1, !selected.isEmpty, let windowTitle else { return .thisMessage }
-        let subject = MailSend.baseSubject(windowTitle)
-        guard !subject.isEmpty, selected.allSatisfy({ MailSend.baseSubject($0.subject) == subject }) else { return .thisMessage }
-        return .viaList(messages: selected.count)
+    /// By Message-ID only, never by subject: `bound` is the selection's Message-IDs taken
+    /// when OpenShelf's `o` opened the window (nil when the window wasn't opened that way),
+    /// `current` the selection's Message-IDs now. Same-subject digests and alerts make any
+    /// subject check unsafe.
+    static func conversationPlan(bound: Set<String>?, selectedRows: Int, current: Set<String>) -> ConversationPlan {
+        guard let bound, !bound.isEmpty, selectedRows == 1, bound == current else { return .thisMessage }
+        return .viaList(messages: current.count)
     }
 
     /// A message list's selection, by row index. A protocol, so tests use a fake.

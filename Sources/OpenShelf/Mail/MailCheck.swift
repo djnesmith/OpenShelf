@@ -56,6 +56,12 @@ enum MailCheck {
         for (index, window) in windows.enumerated() {
             guard let node = window as? AXDialogNode else { continue }
             lines.append("Window \(index + 1)\(index == 0 ? " (front)" : ""): \(describe(node.element))")
+            // Which attributes a window offers (names only), to see whether a message window
+            // says which message it shows (2026-11-20).
+            var names: CFArray?
+            if AXUIElementCopyAttributeNames(node.element, &names) == .success, let names = names as? [String] {
+                lines.append("  attributes: \(names.sorted().joined(separator: ", "))")
+            }
             walk(node.element, depth: 0, into: &lines)
         }
         do {

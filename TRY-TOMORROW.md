@@ -38,9 +38,10 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    click another message before confirming, it does nothing and says so. (#62)
 7. **Single keys (optional).** Menu bar › **Mail Single Keys** on. Nothing new shows in the menu
    bar (fixed 2026-11-20); the checkmark on Mail Single Keys is the only sign. In the message list try **j k e ?**.
-   Open a message with `o`: r, a, f, s, b, v work in its window. On a **test thread**, `e`
-   (or `x`) there does what Archive (Delete) does with that row selected in the list, then the
-   window closes; `z` in the list undoes it. Not tried on real Mail yet.
+   Open a message with `o`: r, a, f, s, b, v work in its window. On a **test thread** opened
+   with `o`, `e` (or `x`) there does what Archive (Delete) does with that row selected in the
+   list, then the window closes; `z` in the list undoes it. A window opened by double-click,
+   or after you click another row, archives only that message. Not tried on real Mail yet.
    Open a message with `o`, then **Esc** (or `u`): the window closes. In the reading pane, `u`
    puts you back in the list; `g g` / `G` jump to the first / last message.
    Then `* a` and **Esc** (or `* n`): the selection clears (or only one message stays
