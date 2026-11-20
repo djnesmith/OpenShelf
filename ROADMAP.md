@@ -432,7 +432,7 @@ Left out for now:
 - David's vim or Doom config and plugins: the price of a built-in engine.
 - Keeping macros between windows.
 
-**C13. Live preview beside the text wheel** (David, 2026-11-19: "a preview of the text changing
+**C13. Live preview beside the text wheel** — built 2026-11-19 (FORK-FEATURES #65) (David, 2026-11-19: "a preview of the text changing
 in a edit window to the right of the wheel, when you hover over the button that would change the
 text it would automatically show the change, if you click the button it would make the change and
 post it back as normal")

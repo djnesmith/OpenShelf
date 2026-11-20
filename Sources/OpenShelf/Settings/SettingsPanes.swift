@@ -79,9 +79,25 @@ struct WheelsSettingsPane: View {
                     .foregroundStyle(.secondary)
             }
 
+            TextWheelPreviewSection()
             SnippetsFolderSection()
         }
         .settingsPane()
+    }
+}
+
+/// Settings → Wheels → the text wheel's live preview (ROADMAP C13).
+private struct TextWheelPreviewSection: View {
+    @AppStorage(TextPreviewPanel.enabledKey) private var showsPreview = true
+
+    var body: some View {
+        Section {
+            Toggle("Show a preview beside the text wheel", isOn: $showsPreview)
+        } footer: {
+            Text("Hovering a tool, or moving to it with the arrow keys, shows the text as it would be after it runs. Nothing changes until you choose it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

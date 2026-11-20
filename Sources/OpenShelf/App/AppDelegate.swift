@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         GlobalHotKey.shared.register(Preferences.shared.openWheelShortcut)
         GlobalHotKey.snippets.onPress = { [weak self] in self?.openSnippetsWheel() }
+        wheel.onHighlightChange = { [weak self] item, frame in self?.selectedText.previewHighlight(item, wheelFrame: frame) }
         GlobalHotKey.snippets.register(SnippetWheel.shortcut)
         dragMonitor.onTrigger = { [weak self] kind, location, urls in
             self?.showWheel(kind, at: location, for: urls)

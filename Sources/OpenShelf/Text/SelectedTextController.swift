@@ -124,6 +124,29 @@ final class SelectedTextController {
         }
     }
 
+    // MARK: - Live preview (ROADMAP C13)
+
+    private var previewTask: Task<Void, Never>?
+
+    /// The wheel's highlight moved: shows what the highlighted tool would make, beside the
+    /// wheel, computed off the main thread and dropped when the highlight moves on.
+    func previewHighlight(_ item: WheelItem?, wheelFrame: NSRect?) {
+        previewTask?.cancel()
+        guard TextPreviewPanel.isEnabled, let session, !session.text.isEmpty, let item, let wheelFrame,
+              case .text(let command) = item.command else {
+            TextPreviewPanel.shared.hide()
+            return
+        }
+        let text = session.text
+        let title = item.title
+        previewTask = Task {
+            let preview = await Task.detached(priority: .userInitiated) { TextPreview.make(for: command, text: text) }.value
+            guard !Task.isCancelled else { return }
+            let line = if case .result(let result) = preview { TextPreview.firstChangedLine(from: text, to: result) } else { 0 }
+            TextPreviewPanel.shared.show(preview, title: title, beside: wheelFrame, line: max(line - 2, 0))
+        }
+    }
+
     // MARK: - Snippets (ROADMAP C8)
 
     /// The snippet library behind the open Snippets wheel.

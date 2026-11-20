@@ -71,6 +71,8 @@ final class WheelController {
     /// keyboard wheel don't count. The last value is the shelf these files
     /// were dragged or selected from, if any.
     var onDrop: ((WheelItem, [URL], NSEvent.ModifierFlags, Shelf.ID?) -> Void)?
+    /// The highlighted wedge changed (nil: none, or the wheel closed), with the wheel's frame.
+    var onHighlightChange: ((WheelItem?, NSRect?) -> Void)?
     /// Supplies each wheel's wedges for the files of a keyboard session.
     var itemsProvider: ((WheelKind, [URL]) -> [WheelItem])?
 
@@ -152,7 +154,7 @@ final class WheelController {
         dismissTask?.cancel()
         let isSwitching = panel.isVisible && model.isPresented
         model.show(items)
-        model.highlightedSlot = nil
+        assignHighlight(nil)
         model.dragSummary = ""
         model.hint = nil
         model.wheelName = nil
@@ -184,7 +186,7 @@ final class WheelController {
             try? await Task.sleep(for: delay)
             guard let self, !Task.isCancelled else { return }
             model.isPresented = false
-            model.highlightedSlot = nil
+            assignHighlight(nil)
             endAbsorbingDrop()
             try? await Task.sleep(for: .milliseconds(160))
             guard !Task.isCancelled else { return }
@@ -443,7 +445,7 @@ final class WheelController {
             dismissTask?.cancel()
             cancelDwell()
             model.isPresented = false
-            model.highlightedSlot = nil
+            assignHighlight(nil)
             panel.orderOut(nil)
         }
     }
@@ -637,7 +639,7 @@ final class WheelController {
         isAbsorbingDrop = true
         cancelDwell()
         model.isPresented = false
-        model.highlightedSlot = nil
+        assignHighlight(nil)
         dropView.isAbsorbingDrop = true
         // Windows let drags pass through fully transparent pixels, so keep a
         // nearly invisible fill over the whole panel.
@@ -674,7 +676,13 @@ final class WheelController {
         if slot != nil {
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }
+        assignHighlight(slot)
+    }
+
+    /// The one place the highlight changes, so the text wheel's preview follows it.
+    private func assignHighlight(_ slot: Int?) {
         model.highlightedSlot = slot
+        onHighlightChange?(model.highlighted?.item, panel.isVisible ? panel.frame : nil)
     }
 
     /// Summarises the dragged files for the hub: the size of a single file (or of

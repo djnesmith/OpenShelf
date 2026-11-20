@@ -530,6 +530,12 @@ David, 2026-11-19: "editing the metadata tags of files like mp3s". Tools › Tag
 - Files: `Sources/OpenShelf/Tools/Media/AudioTags.swift`, `Tools/Editors/AudioTagsEditor.swift`, `Tools/FileTool.swift` (`audioTags`), `Tools/ToolLauncher.swift`, `Wheel/WheelOrdering.swift`
 - Check: `swift test --filter AudioTagsTests` (the round trip runs when ffmpeg is installed). In the app: drag an MP3, Tools › Tags, change the title, Save; the "… tagged" copy shows the new title in Finder's Get Info.
 
+### 65. Live preview beside the text wheel (ROADMAP C13)
+David, 2026-11-19: "a preview of the text changing ... to the right of the wheel, when you hover over the button that would change the text it would automatically show the change". Hovering a text tool, or moving to it with the arrow keys, shows a pane to the right of the wheel (the left, when there's no room) with the text as it would be after the tool, scrolled to just above the first changed line. Choosing the tool works exactly as before. Decided for now: pure text tools show their result ("Nothing to change." when they wouldn't), Generate tools show an example, Count, the hashes and JWT, Re-indent and To Markdown (which run another program), Markdown Link (which reads the clipboard), Convert, Undo and Edit show one line saying what they do, and sub-wheels, Back and snippets show nothing. The plain result is shown, not a diff. It is computed off the main thread and dropped when the highlight moves; it never touches the source app or the clipboard, never takes focus and lets clicks through. Settings › Wheels › "Show a preview beside the text wheel" (on; `TextWheelPreview`).
+- Commits: this one
+- Files: `Sources/OpenShelf/Text/TextPreview.swift`, `Text/TextPreviewPanel.swift`, `Text/SelectedTextController.swift` (`previewHighlight`), `Wheel/WheelController.swift` (`onHighlightChange`), `App/AppDelegate.swift`, `Settings/SettingsPanes.swift`
+- Check: `swift test --filter TextPreviewTests`. In the app: select a few lines, ⌃⌥Space, More ▸ Lines ▸, move over Sort A to Z: the sorted lines show beside the wheel; nothing changes until you choose it.
+
 ## Outside the repo
 
 - `~/bin/update-all.sh` checks for upstream commits with `check_upstream "$HOME/Dropbox/Dev/OpenShelf" upstream OpenShelf`. It only reports them and never merges.

@@ -35,6 +35,8 @@ Not Mail:
    the cursor is, and the reply's formatting around it is kept.
 11. **Audio tags.** Drag an MP3 (or M4A, FLAC), Tools › Tags, change the title and add a
    cover, Save: the "… tagged" copy shows them in Finder's Get Info and in Music. (#64)
+12. **Live preview.** Select a few lines, ⌃⌥Space, More ▸ Lines ▸, move over Sort A to Z: the
+   sorted lines show to the right of the wheel; nothing changes until you choose it. (#65)
 
 Open decisions (built with these defaults, easy to change): ⌃⌥S, ⌃⌥M, ⌃⌥K and ⌃⌥U while Mail
 is in front; ⌃⌥I for Snippets; single keys off by default; `u`, `n`/`p` and `* n` left out; `[` archives then
