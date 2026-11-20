@@ -274,33 +274,39 @@ struct MailFilingTests {
     }
 
     /// Mail's answer to the move: the folder that didn't resolve, nothing selected, or the
-    /// per-message counts read back from Mail. Anything else claims nothing.
+    /// per-message counts. Anything else claims nothing.
     @Test func moveAnswersAreRead() {
         #expect(MailFiling.moveResult("#NOFOLDER\t-1728\t1\t1\n") == .folderNotFound(error: -1728, level: 1, of: 1))
         #expect(MailFiling.moveResult("#NOFOLDER\t-1728\t2\t3") == .folderNotFound(error: -1728, level: 2, of: 3))
         #expect(MailFiling.moveResult("#NONE") == .nothingSelected)
-        #expect(MailFiling.moveResult("#RESULT\t0\t4\t0\t0\t0\tINBOX") == .counted(moved: 0, copied: 4, unchanged: 0, neither: 0, fellBack: 0, source: "INBOX"))
-        #expect(MailFiling.moveResult("#RESULT\t2\t0\t0\t0\t1\t") == .counted(moved: 2, copied: 0, unchanged: 0, neither: 0, fellBack: 1, source: ""))
-        #expect(MailFiling.moveResult("#RESULT\t1\t0\t0\t0\t0\tA\tB") == .counted(moved: 1, copied: 0, unchanged: 0, neither: 0, fellBack: 0, source: "A\tB"))
-        #expect(MailFiling.moveResult("#RESULT\t4\t0\t0\t0") == .unreadable)
-        #expect(MailFiling.moveResult("#RESULT\tx\t0\t0\t0\t0\t") == .unreadable)
+        #expect(MailFiling.moveResult("#RESULT\t0\t0\t4\t0\t0\t0\tINBOX") == .counted(moved: 0, left: 0, stayed: 4, unread: 0, fellBack: 0, failed: 0, source: "INBOX"))
+        #expect(MailFiling.moveResult("#RESULT\t1\t2\t0\t0\t1\t0\t") == .counted(moved: 1, left: 2, stayed: 0, unread: 0, fellBack: 1, failed: 0, source: ""))
+        #expect(MailFiling.moveResult("#RESULT\t1\t0\t0\t0\t0\t0\tA\tB") == .counted(moved: 1, left: 0, stayed: 0, unread: 0, fellBack: 0, failed: 0, source: "A\tB"))
+        #expect(MailFiling.moveResult("#RESULT\t0\t4\t0\t0\t0\tINBOX") == .unreadable)
+        #expect(MailFiling.moveResult("#RESULT\tx\t0\t0\t0\t0\t0\t") == .unreadable)
         #expect(MailFiling.moveResult("") == .unreadable)
         #expect(MailFiling.moveResult("#MOVED\t4\t0") == .unreadable)
     }
 
-    /// The toast says only what Mail showed afterwards (2026-11-20: "moved 4" when the 4
-    /// were copied to [Info] on Gmail and still in the Inbox). The log line has no names.
+    /// The toast says only what Mail showed (2026-11-20: "moved 4" when the 4 were still in
+    /// the Inbox). "Moved" only when every message left where it was; still there, "Sent",
+    /// since whether it reached the folder isn't searched for. The log line has no names.
     @MainActor @Test func moveToastsSayWhatMailShows() {
         let info = MailFiling.Mailbox(account: "Gmail", path: "[Info]")
-        let copied = MailFiling.MoveResult.counted(moved: 0, copied: 4, unchanged: 0, neither: 0, fellBack: 0, source: "INBOX")
-        #expect(copied.report(to: info) == MailFiling.MoveReport(outcome: .copied, title: "Copied to [Info]", subtitle: "4 messages; still in the Inbox"))
-        #expect(!copied.logLine.contains("INBOX"))
-        #expect(!copied.logLine.contains("Info"))
-        let moved = MailFiling.MoveResult.counted(moved: 4, copied: 0, unchanged: 0, neither: 0, fellBack: 0, source: "INBOX")
-        #expect(moved.report(to: info) == MailFiling.MoveReport(outcome: .moved, title: "Moved to [Info]", subtitle: "4 messages"))
-        #expect(MailFiling.MoveResult.counted(moved: 0, copied: 0, unchanged: 2, neither: 0, fellBack: 2, source: "INBOX").report(to: info).outcome == .notMoved)
-        #expect(MailFiling.MoveResult.counted(moved: 1, copied: 1, unchanged: 0, neither: 0, fellBack: 0, source: "INBOX").report(to: info).outcome == .partial)
-        #expect(MailFiling.MoveResult.counted(moved: 0, copied: 0, unchanged: 0, neither: 0, fellBack: 0, source: "").report(to: info).outcome != .moved)
+        func counted(_ moved: Int, _ left: Int, _ stayed: Int, _ unread: Int = 0, failed: Int = 0) -> MailFiling.MoveResult {
+            .counted(moved: moved, left: left, stayed: stayed, unread: unread, fellBack: 0, failed: failed, source: "INBOX")
+        }
+        #expect(counted(0, 0, 4).report(to: info) == MailFiling.MoveReport(outcome: .copied, title: "Sent to [Info]", subtitle: "4 messages; still in the Inbox"))
+        #expect(!counted(0, 0, 4).logLine.contains("INBOX"))
+        #expect(!counted(0, 0, 4).logLine.contains("Info"))
+        #expect(counted(4, 0, 0).report(to: info) == MailFiling.MoveReport(outcome: .moved, title: "Moved to [Info]", subtitle: "4 messages"))
+        #expect(counted(2, 2, 0).report(to: info).outcome == .moved)
+        #expect(counted(0, 1, 0).report(to: info).outcome == .moved)
+        #expect(counted(1, 0, 1).report(to: info) == MailFiling.MoveReport(outcome: .partial, title: "Partly moved to [Info]", subtitle: "1 moved, 1 still in the Inbox"))
+        #expect(counted(0, 0, 1, 1).report(to: info).outcome == .partial)
+        #expect(counted(0, 0, 2, failed: 2).report(to: info) == MailFiling.MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Mail refused the move"))
+        #expect(counted(0, 0, 2, failed: 1).report(to: info).outcome == .partial)
+        #expect(counted(0, 0, 0).report(to: info).outcome == .notMoved)
         let missing = MailFiling.MoveResult.folderNotFound(error: -1728, level: 1, of: 1)
         #expect(missing.report(to: info) == MailFiling.MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Can't find that folder in Mail"))
         #expect(missing.logLine.contains("level 1 of 1"))
@@ -311,9 +317,11 @@ struct MailFilingTests {
     }
 
     /// The script proves the folder exists, name by name, before touching the selection; it
-    /// sets each message's mailbox (Gmail's move command only copies), runs the move
-    /// command only when that raises an error, and never deletes anything.
-    @Test func theMoveChecksTheFolderFirstAndSetsTheMailbox() throws {
+    /// sets each message's mailbox, runs the move command only when that raises an error,
+    /// asks each message for its own mailbox afterwards, never searches a mailbox (a
+    /// "whose" search held Mail at 100% CPU, 2026-11-20), never waits on purpose, and never
+    /// deletes anything.
+    @Test func theMoveChecksTheFolderFirstAndStaysLight() throws {
         let script = MailScripts.moveAndCheck(account: "Gmail", chain: ["Clients", "Acme"])
         let check = try #require(script.range(of: "#NOFOLDER"))
         let selection = try #require(script.range(of: "selection as list"))
@@ -321,11 +329,36 @@ struct MailFilingTests {
         let set = try #require(script.range(of: "set mailbox of osMessage to osBox"))
         let move = try #require(script.range(of: "move osMessage to osBox"))
         #expect(set.lowerBound < move.lowerBound)
-        #expect(script.replacingOccurrences(of: " ", with: "").contains("onerror\nsetosFellBacktoosFellBack+1\ntry\ntellapplicationid\"com.apple.mail\"tomoveosMessagetoosBox"))
+        let flat = script.replacingOccurrences(of: " ", with: "")
+        #expect(flat.contains("onerror\nsetosFellBacktoosFellBack+1\ntry\ntellapplicationid\"com.apple.mail\"tomoveosMessagetoosBox"))
+        #expect(flat.contains("settoosNowtonameofmailboxofosMessage") || flat.contains("tosetosNowtonameofmailboxofosMessage"))
+        #expect(!script.lowercased().contains("whose"))
+        #expect(!script.lowercased().contains("delay"))
         #expect(!script.lowercased().contains("delete"))
+        #expect(script.contains("with timeout of 5 seconds"))
         #expect(script.contains("set osChain to {\"Clients\", \"Acme\"}"))
         #expect(script.contains("mailbox (item 1 of osChain) of account \"Gmail\""))
         #expect(MailScripts.moveAndCheck(account: "", chain: ["Old"]).contains("set osBox to mailbox (item 1 of osChain)\n"))
+    }
+
+    /// A move picked while another is still running is refused, not queued behind it.
+    @MainActor @Test func oneFilingAtATime() async {
+        final class SlowMail: MailFilingScripting {
+            func mailboxes() async -> [MailFiling.Mailbox] { [] }
+            func selectionAccounts() async -> [String] { [] }
+            func mailboxes(of account: String) async -> [MailFiling.Mailbox] { [] }
+            var lastProblem: (title: String, subtitle: String)? { nil }
+            func move(to mailbox: MailFiling.Mailbox) async -> MailFiling.MoveReport {
+                try? await Task.sleep(for: .milliseconds(300))
+                return MailFiling.MoveReport(outcome: .moved, title: "Moved", subtitle: "")
+            }
+        }
+        let mail = SlowMail(), box = MailFiling.Mailbox(account: "Gmail", path: "[Info]")
+        let first = Task { @MainActor in await MailFiling.file(box, with: mail) }
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await MailFiling.file(box, with: mail) == MailFiling.stillFiling)
+        #expect(await first.value.outcome == .moved)
+        #expect(await MailFiling.file(box, with: mail).outcome == .moved)
     }
 
     /// Mailbox names with brackets, slashes, quotes and other characters, top level and

@@ -102,53 +102,64 @@ enum MailFiling {
         /// The folder's name didn't resolve: the error, and the level (1 is the top) that failed.
         case folderNotFound(error: Int, level: Int, of: Int)
         case nothingSelected
-        /// Per message, read back from Mail after the move. `fellBack` counts messages whose
-        /// mailbox couldn't be set, so the move command ran instead; `source` is the first
-        /// message's folder name, for the toast only (never logged).
-        case counted(moved: Int, copied: Int, unchanged: Int, neither: Int, fellBack: Int, source: String)
+        /// Per message, from the message itself after the move (never a search of a mailbox):
+        /// `moved`, now in the destination; `left`, its old reference no longer resolves, so
+        /// it left the source; `stayed`, still in the source; `unread`, somewhere else.
+        /// `fellBack` counts messages whose mailbox couldn't be set (the move command ran),
+        /// `failed` those where both raised an error. `source` is the first message's folder
+        /// name, for the toast only (never logged).
+        case counted(moved: Int, left: Int, stayed: Int, unread: Int, fellBack: Int, failed: Int, source: String)
         case unreadable
 
         var logLine: String {
             switch self {
             case .folderNotFound(let error, let level, let depth): "the folder didn't resolve at level \(level) of \(depth) (error \(error)); nothing moved"
             case .nothingSelected: "nothing selected"
-            case .counted(let moved, let copied, let unchanged, let neither, let fellBack, _): "moved \(moved), copied \(copied), unchanged \(unchanged), in neither folder \(neither); move command used for \(fellBack)"
+            case .counted(let moved, let left, let stayed, let unread, let fellBack, let failed, _):
+                "in the folder \(moved), left the source \(left), still in the source \(stayed), elsewhere \(unread); move command used for \(fellBack), refused \(failed)"
             case .unreadable: "Mail's answer couldn't be read; nothing claimed"
             }
         }
 
-        /// The toast: only what Mail showed.
+        /// The toast: only what Mail showed. "Moved" only when every message left where it
+        /// was; still there, "Sent" (whether it also reached the folder isn't checked: a
+        /// search of the folder held Mail for seconds).
         @MainActor func report(to mailbox: Mailbox) -> MoveReport {
             switch self {
             case .folderNotFound: return MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Can't find that folder in Mail")
             case .nothingSelected: return MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Select a message in Mail first")
             case .unreadable: return MoveReport(outcome: .notMoved, title: "Not sure what moved", subtitle: "Check the folder in Mail")
-            case .counted(let moved, let copied, let unchanged, let neither, _, let source):
-                let total = moved + copied + unchanged + neither
-                if moved == total, total > 0 { return MailFiling.report(.moved, total: total, to: mailbox) }
-                if copied == total { return MailFiling.report(.copied, total: total, to: mailbox, source: source) }
-                if moved + copied == 0, neither == 0 { return MailFiling.report(.notMoved, total: total, to: mailbox, problem: "Mail left \(total == 1 ? "it" : "them") where \(total == 1 ? "it was" : "they were")") }
-                var parts = ["\(moved) moved"]
-                if copied > 0 { parts.append("\(copied) copied") }
-                if unchanged > 0 { parts.append("\(unchanged) left") }
-                if neither > 0 { parts.append("\(neither) not found in either folder") }
+            case .counted(let moved, let left, let stayed, let unread, _, let failed, let source):
+                let total = moved + left + stayed + unread
+                let count = total == 1 ? "1 message" : "\(total) messages"
+                if total == 0 { return MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Mail had no messages selected") }
+                if failed == total { return MoveReport(outcome: .notMoved, title: "Not moved", subtitle: "Mail refused the move") }
+                if moved + left == total { return MailFiling.report(.moved, total: total, to: mailbox) }
+                if stayed == total, failed == 0 {
+                    return MoveReport(outcome: .copied, title: "Sent to \(mailbox.shown)", subtitle: "\(count); still in \(folderName(source))")
+                }
+                var parts: [String] = []
+                if moved + left > 0 { parts.append("\(moved + left) moved") }
+                if stayed > 0 { parts.append("\(stayed) still in \(folderName(source))") }
+                if unread > 0 { parts.append("\(unread) somewhere else") }
+                if failed > 0 { parts.append("\(failed) refused") }
                 return MoveReport(outcome: .partial, title: "Partly moved to \(mailbox.shown)", subtitle: parts.joined(separator: ", "))
             }
         }
     }
 
     static func moveResult(_ text: String) -> MoveResult {
-        let parts = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\t").map(String.init)
+        let parts = text.trimmingCharacters(in: .newlines).split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
         switch parts.first {
         case "#NOFOLDER"? where parts.count == 4:
             return .folderNotFound(error: Int(parts[1]) ?? 0, level: Int(parts[2]) ?? 0, of: Int(parts[3]) ?? 0)
         case "#NOFOLDER"?: return .folderNotFound(error: 0, level: 0, of: 0)
         case "#NONE"?: return .nothingSelected
-        case "#RESULT"? where parts.count >= 6:
-            let numbers = parts[1...5].compactMap { Int($0) }
-            guard numbers.count == 5 else { return .unreadable }
-            let source = parts.dropFirst(6).joined(separator: "\t")
-            return .counted(moved: numbers[0], copied: numbers[1], unchanged: numbers[2], neither: numbers[3], fellBack: numbers[4], source: source)
+        case "#RESULT"? where parts.count >= 8:
+            let numbers = parts[1...6].compactMap { Int($0) }
+            guard numbers.count == 6 else { return .unreadable }
+            let source = parts.dropFirst(7).joined(separator: "\t")
+            return .counted(moved: numbers[0], left: numbers[1], stayed: numbers[2], unread: numbers[3], fellBack: numbers[4], failed: numbers[5], source: source)
         default: return .unreadable
         }
     }
@@ -306,6 +317,19 @@ enum MailFiling {
     /// Opens the picker over Mail's mailboxes at once (from this session's list, or a short
     /// "Listing mailboxes…") and fills it when Mail answers, off the main thread. The choice
     /// moves Mail's selected messages; the move checks the selection when it runs.
+    /// True while a move runs.
+    static var filing = false
+    static let stillFiling = MoveReport(outcome: .notMoved, title: "Still filing", subtitle: "Mail hasn't finished the last move")
+
+    /// One filing at a time: a second one would wait behind a slow Mail on the scripts'
+    /// queue and pile up (2026-11-20: Mail beach-balled).
+    static func file(_ mailbox: Mailbox, with scripting: MailFilingScripting) async -> MoveReport {
+        guard !filing else { return stillFiling }
+        filing = true
+        defer { filing = false }
+        return await scripting.move(to: mailbox)
+    }
+
     static func showPicker(scripting: MailFilingScripting = AppleScriptMailFiling()) {
         opening += 1
         let mine = opening
@@ -314,7 +338,7 @@ enum MailFiling {
         let choose: (Mailbox) -> Void = { chosen in
             MailMenu.running?.activate()
             Task { @MainActor in
-                let report = await scripting.move(to: chosen)
+                let report = await file(chosen, with: scripting)
                 if report.outcome == .moved { saveRecent(remember(chosen, in: loadRecent())) }
                 ToastController.shared.show(Toast(systemImage: "tray.and.arrow.down", title: report.title, subtitle: report.subtitle),
                                             for: report.outcome == .moved ? MailHelpers.successToast : .seconds(6))
@@ -529,12 +553,14 @@ struct AppleScriptMailFiling: MailFilingScripting {
     func move(to mailbox: MailFiling.Mailbox) async -> MailFiling.MoveReport {
         let chain = mailbox.chain
         guard !chain.isEmpty else { return MailFiling.report(.notMoved, total: 0, to: mailbox, problem: "No folder chosen") }
+        let started = Date()
         let outcome = await MailScript.run("move and check", MailScripts.moveAndCheck(account: mailbox.account, chain: chain))
+        let elapsed = Int(Date().timeIntervalSince(started) * 1000)
         if let problem = MailScript.problem(outcome) {
             return MailFiling.report(.notMoved, total: 0, to: mailbox, problem: "\(problem.title): \(problem.subtitle)")
         }
         let result = MailFiling.moveResult(outcome.text ?? "")
-        SnoozeLog.append(["move: \(mailbox.account.isEmpty ? "to On My Mac" : "to an account mailbox"), \(chain.count) level\(chain.count == 1 ? "" : "s") deep: \(result.logLine)"], to: MailScript.logURL)
+        SnoozeLog.append(["move: \(mailbox.account.isEmpty ? "to On My Mac" : "to an account mailbox"), \(chain.count) level\(chain.count == 1 ? "" : "s") deep: \(result.logLine); \(elapsed) ms"], to: MailScript.logURL)
         return result.report(to: mailbox)
     }
 }

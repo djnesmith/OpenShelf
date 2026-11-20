@@ -106,17 +106,17 @@ enum MailScripts {
 
 
     /// Moves the selected messages to the mailbox reached by `chain` in `account` (empty for On
-    /// My Mac), and reads back from Mail where each one is (2026-11-20: a move "succeeded" and
-    /// nothing moved; a mailbox addressed by a rebuilt path didn't resolve). The mailbox is
-    /// resolved name by name and must exist before anything moves. Each message's id and
-    /// source mailbox are taken first; after its move it is counted in the destination and
-    /// in the source. Answers "#NOFOLDER n", "#NONE", or
-    /// "#RESULT moved copied unchanged neither".
+    /// My Mac), and asks each message afterwards which mailbox it is in (2026-11-20: a move
+    /// "succeeded" and nothing moved; a mailbox addressed by a rebuilt path didn't resolve).
+    /// The mailbox is resolved name by name and must exist before anything moves. Answers
+    /// "#NOFOLDER error level depth", "#NONE", or
+    /// "#RESULT moved left stayed unread fellBack failed source". Each Apple event waits at
+    /// most 5 s.
     static func moveAndCheck(account: String, chain: [String]) -> String {
         let names = "{" + chain.map(quoted).joined(separator: ", ") + "}"
         let first = account.isEmpty ? "mailbox (item 1 of osChain)" : "mailbox (item 1 of osChain) of account \(quoted(account))"
         return """
-        with timeout of 60 seconds
+        with timeout of 5 seconds
             set osChain to \(names)
             -- Each level is checked to exist (asking its name) before the next, so a name
             -- that doesn't resolve says which level failed.
@@ -133,62 +133,49 @@ enum MailScripts {
             end try
             tell application id "com.apple.mail" to set osPicked to selection as list
             if (count of osPicked) is 0 then return "#NONE"
-            set osIds to {}
-            set osSources to {}
-            repeat with osIndex from 1 to (count of osPicked)
-                set osMessage to item osIndex of osPicked
-                tell application id "com.apple.mail"
-                    set end of osIds to message id of osMessage
-                    set end of osSources to mailbox of osMessage
-                end tell
-            end repeat
-            -- Setting the message's mailbox first: on a Gmail account the move command only
-            -- adds the label and leaves the message where it was (2026-11-20). The move
-            -- command runs only when setting the property raises an error. Either way the
-            -- counts below, not the absence of an error, say what happened.
+            -- Setting the message's mailbox first; the move command only when that raises an
+            -- error. On Gmail both only add the label (2026-11-20). The check asks each message
+            -- for its own mailbox, never searches a mailbox: a search of the Inbox and the
+            -- folder by message id held Mail at 100% CPU for about 14 s (2026-11-20).
             set osFellBack to 0
+            set osMoved to 0
+            set osLeft to 0
+            set osStayed to 0
+            set osUnread to 0
+            set osFailed to 0
+            set osSourceName to ""
             repeat with osIndex from 1 to (count of osPicked)
                 set osMessage to item osIndex of osPicked
+                set osFrom to ""
+                try
+                    tell application id "com.apple.mail" to set osFrom to name of mailbox of osMessage
+                end try
+                if osIndex is 1 then set osSourceName to osFrom
                 try
                     tell application id "com.apple.mail" to set mailbox of osMessage to osBox
                 on error
                     set osFellBack to osFellBack + 1
                     try
                         tell application id "com.apple.mail" to move osMessage to osBox
+                    on error
+                        set osFailed to osFailed + 1
                     end try
                 end try
-            end repeat
-            set osSourceName to ""
-            try
-                tell application id "com.apple.mail" to set osSourceName to name of (item 1 of osSources)
-            end try
-            delay 1
-            set osMoved to 0
-            set osCopied to 0
-            set osUnchanged to 0
-            set osNeither to 0
-            repeat with osIndex from 1 to (count of osIds)
-                set osId to item osIndex of osIds
-                set osSource to item osIndex of osSources
-                set osInBox to 0
-                set osInSource to 0
                 try
-                    tell application id "com.apple.mail" to set osInBox to count of (messages of osBox whose message id is osId)
+                    tell application id "com.apple.mail" to set osNow to name of mailbox of osMessage
+                    if osNow is osBoxName and osNow is not osFrom then
+                        set osMoved to osMoved + 1
+                    else if osNow is osFrom then
+                        set osStayed to osStayed + 1
+                    else
+                        set osUnread to osUnread + 1
+                    end if
+                on error
+                    -- The old reference no longer resolves: the message left where it was.
+                    set osLeft to osLeft + 1
                 end try
-                try
-                    tell application id "com.apple.mail" to set osInSource to count of (messages of osSource whose message id is osId)
-                end try
-                if osInBox > 0 and osInSource is 0 then
-                    set osMoved to osMoved + 1
-                else if osInBox > 0 then
-                    set osCopied to osCopied + 1
-                else if osInSource > 0 then
-                    set osUnchanged to osUnchanged + 1
-                else
-                    set osNeither to osNeither + 1
-                end if
             end repeat
-            return "#RESULT" & tab & (osMoved as text) & tab & (osCopied as text) & tab & (osUnchanged as text) & tab & (osNeither as text) & tab & (osFellBack as text) & tab & osSourceName
+            return "#RESULT" & tab & (osMoved as text) & tab & (osLeft as text) & tab & (osStayed as text) & tab & (osUnread as text) & tab & (osFellBack as text) & tab & (osFailed as text) & tab & osSourceName
         end timeout
         """
     }
