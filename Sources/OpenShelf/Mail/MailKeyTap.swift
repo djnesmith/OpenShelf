@@ -55,7 +55,7 @@ final class MailKeyTap {
     /// Whether the tap takes this key from Mail. False (the key goes to Mail) whenever in doubt.
     /// `ownPanelHasKeyboard` and `focusAllows` are parameters for tests.
     func takes(type: CGEventType, event: CGEvent, ownPanelHasKeyboard: Bool = NSApp.keyWindow != nil,
-               focusAllows: @MainActor (CGEvent) -> Bool = MailKeyTap.focusAllows) -> Bool {
+               focusAllows: @MainActor (CGEvent, MailKeys.Outcome) -> Bool = MailKeyTap.focusAllows) -> Bool {
         // macOS turns a slow tap off; it is turned back on, and the key passes.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -72,7 +72,7 @@ final class MailKeyTap {
         if Date().timeIntervalSince(pendingSince) > MailKeys.prefixTimeout { pending = nil }
         let outcome = MailKeys.outcome(for: key, pending: pending)
         pending = nil
-        guard outcome != .pass, focusAllows(event) else { return false }
+        guard outcome != .pass, focusAllows(event, outcome) else { return false }
         switch outcome {
         case .pass:
             return false
@@ -96,7 +96,7 @@ final class MailKeyTap {
     }
 
     /// Mail's focus, read with a short timeout; anything unreadable lets the key through.
-    static func focusAllows(_ event: CGEvent) -> Bool {
+    static func focusAllows(_ event: CGEvent, _ outcome: MailKeys.Outcome) -> Bool {
         let flags = event.flags
         var modifiers: MailKeys.Modifiers = []
         if flags.contains(.maskShift) { modifiers.insert(.shift) }
@@ -120,14 +120,34 @@ final class MailKeyTap {
         let role = AXMenuNode.string(focused, kAXRoleAttribute)
         // Only a web area is ambiguous (a message read, or one being written), so only then
         // is Mail's menu asked whether Send is enabled; an unanswered question counts as yes.
-        let sendEnabled = role == "AXWebArea" ? (MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? true) : false
+        let inViewer = !MailKeys.listRoles.contains(role ?? "") && role != "AXWebArea" && isInMessageViewer(focused)
+        let sendEnabled = role == "AXWebArea" || inViewer ? (MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? true) : false
+        let action: MailKeys.Action? = if case .act(let action) = outcome { action } else { nil }
         return MailKeys.mayTake(
             focusedRole: role,
             isEditable: (editable as? Bool) ?? false,
             sendEnabled: sendEnabled,
             modifiers: modifiers,
-            mailHasFocus: MailMenu.hasKeyboardFocus()
+            mailHasFocus: MailMenu.hasKeyboardFocus(),
+            // A prefix (g, *) has no action yet, so it is taken only in the list.
+            inMessageViewer: inViewer,
+            action: action
         )
+    }
+
+    /// Whether `element` is inside Mail's viewer window (identifier
+    /// "Mail.messageViewer.window…", from David's Check Mail on 2026-11-20), not a window
+    /// of its own such as a message being written.
+    static func isInMessageViewer(_ element: AXUIElement) -> Bool {
+        var current: AXUIElement? = element
+        for _ in 0..<30 {
+            guard let node = current else { return false }
+            if AXMenuNode.string(node, kAXRoleAttribute) == kAXWindowRole {
+                return AXMenuNode.string(node, kAXIdentifierAttribute)?.hasPrefix("Mail.messageViewer.window") == true
+            }
+            current = AXMenuNode.element(node, kAXParentAttribute)
+        }
+        return false
     }
 }
 

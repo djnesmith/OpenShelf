@@ -70,12 +70,31 @@ enum MailKeys {
     /// Whether a key may be taken from Mail at all. Fails open: anything unknown, any
     /// modifier but ⇧, or focus anywhere but the message list or a message being read
     /// (never a text field or a message being written) lets the key through.
-    static func mayTake(focusedRole: String?, isEditable: Bool, sendEnabled: Bool, modifiers: Modifiers, mailHasFocus: Bool = true) -> Bool {
+    /// `inMessageViewer`: the focus is somewhere else in Mail's viewer window, such as one
+    /// message of a conversation in the reading pane (David, 2026-11-20: r, a, f did
+    /// nothing there). Only keys that act on one message are taken then.
+    static func mayTake(focusedRole: String?, isEditable: Bool, sendEnabled: Bool, modifiers: Modifiers, mailHasFocus: Bool = true,
+                        inMessageViewer: Bool = false, action: Action? = nil) -> Bool {
         // A panel over Mail (Spotlight, Alfred) has the keys: never take them.
         guard mailHasFocus else { return false }
         guard modifiers.isEmpty || modifiers == .shift else { return false }
         guard !sendEnabled, !isEditable, let role = focusedRole else { return false }
-        return listRoles.contains(role) || role == "AXWebArea"
+        if listRoles.contains(role) || role == "AXWebArea" { return true }
+        guard inMessageViewer, !textRoles.contains(role), let action else { return false }
+        return actsOnOneMessage(action)
+    }
+
+    /// Roles that take typing, wherever they are.
+    static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+
+    /// Keys that act on the selected message through Mail's own menu, as Mail's menu does
+    /// for a message focused in a conversation.
+    static func actsOnOneMessage(_ action: Action) -> Bool {
+        switch action {
+        case .menu(let top, let title): top == "Message" && title != "Open Message" || (top == "Edit" && title == "Delete")
+        case .snooze, .file, .archiveThenPrevious, .showKeys: true
+        case .favorite, .nextMessage, .previousMessage, .clearSelection: false
+        }
     }
 
     static let listRoles: Set<String> = ["AXTable", "AXOutline", "AXRow", "AXCell"]

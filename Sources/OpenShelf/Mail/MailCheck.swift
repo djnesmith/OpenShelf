@@ -21,6 +21,19 @@ enum MailCheck {
         lines.append("Mail in front: \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier == MailMenu.bundleID ? "yes" : "no")")
         if let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute) {
             lines.append("Focused element: \(describe(focused))")
+            // Its ancestors up to the window (roles, subroles, identifiers; no text), to see
+            // where focus sits, e.g. on one message of a conversation (2026-11-20).
+            var parent = AXMenuNode.element(focused, kAXParentAttribute)
+            var depth = 1
+            while let node = parent, depth <= 20 {
+                var editable: CFTypeRef?
+                AXUIElementCopyAttributeValue(node, "AXEditable" as CFString, &editable)
+                lines.append("  parent \(depth): \(describe(node))\((editable as? Bool) == true ? " editable" : "")")
+                if AXMenuNode.string(node, kAXRoleAttribute) == kAXWindowRole { break }
+                parent = AXMenuNode.element(node, kAXParentAttribute)
+                depth += 1
+            }
+            lines.append("Focus in the message viewer: \(MailKeyTap.isInMessageViewer(focused) ? "yes" : "no")")
         }
         if let bar = MailMenu.menuBar() {
             for path in [MailMenu.send, MailMenu.archive, MailMenu.remindMeLater] {

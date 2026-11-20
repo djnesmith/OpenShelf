@@ -51,6 +51,26 @@ struct MailKeysTests {
         #expect(!may(nil))
         #expect(!may("AXTable", [.other]))
         #expect(!may("AXTable", [.shift, .other]))
+        // One message of a conversation focused in the viewer (2026-11-20): keys that act on
+        // one message are taken; moving, mailboxes and anything editable or in a field are not.
+        func inViewer(_ role: String?, _ action: MailKeys.Action?, editable: Bool = false, send: Bool = false) -> Bool {
+            MailKeys.mayTake(focusedRole: role, isEditable: editable, sendEnabled: send, modifiers: [], inMessageViewer: true, action: action)
+        }
+        for action in [MailKeys.Action.menu("Message", "Reply"), .menu("Message", "Reply All"), .menu("Message", "Forward"),
+                       .menu("Message", "Archive"), .menu("Edit", "Delete"), .menu("Message", "Toggle Flag"), .snooze, .file,
+                       .menu("Message", "Move to Junk"), .menu("Message", "Mark as Read"), .archiveThenPrevious] {
+            #expect(inViewer("AXGroup", action), "\(action)")
+            #expect(inViewer("AXScrollArea", action), "\(action)")
+        }
+        #expect(!inViewer("AXGroup", .nextMessage))
+        #expect(!inViewer("AXGroup", .favorite("Inbox")))
+        #expect(!inViewer("AXGroup", .menu("Message", "Open Message")))
+        #expect(!inViewer("AXGroup", nil))
+        #expect(!inViewer("AXGroup", .menu("Message", "Reply"), editable: true))
+        #expect(!inViewer("AXGroup", .menu("Message", "Reply"), send: true))
+        #expect(!inViewer("AXTextField", .menu("Message", "Reply")))
+        #expect(!inViewer("AXSearchField", .menu("Message", "Reply")))
+        #expect(!MailKeys.mayTake(focusedRole: "AXGroup", isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: false, action: .menu("Message", "Reply")))
         // A panel over Mail (Spotlight, Alfred) has the keys.
         #expect(!MailKeys.mayTake(focusedRole: "AXTable", isEditable: false, sendEnabled: false, modifiers: [], mailHasFocus: false))
     }
@@ -89,9 +109,9 @@ struct MailKeysTests {
         let event = CGEvent(keyboardEventSource: nil, virtualKey: 5, keyDown: true)!
         var g: [UniChar] = Array("g".utf16)
         event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &g)
-        let taken = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: false, focusAllows: { _ in true })
+        let taken = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: false, focusAllows: { _, _ in true })
         #expect(taken)
-        let passed = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: true, focusAllows: { _ in true })
+        let passed = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: true, focusAllows: { _, _ in true })
         #expect(!passed)
     }
 
