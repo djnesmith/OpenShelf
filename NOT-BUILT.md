@@ -205,6 +205,71 @@ Edit window only puts text back into an app or on the clipboard; "nothing is wri
 | Command palette | Type to run any of Mail's menu actions (ROADMAP I5 list). | M | Decide: wanted at all |
 | Single keys left out (partly built) | `u`, `n`/`p`, `* n`; Mail has no direct command for `n`/`p` or `* n`. | S | David's decision (TRY-TOMORROW) |
 
+## Vim: related features
+
+Checked against the engine at 6833d73 by running each key sequence (2026-11-20). "Built" means
+it matches vim --clean where vim has it. Ordered by what David's Doom setup has: Doom's
+`:editor evil` module (`~/.config/emacs/sources/doom+/modules/editor/evil/packages.el` and
+`config.el:640-682`) plus his own `~/.doom.d/config.el`. He has no lispy, parinfer,
+evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, with `s-R` raise sexp
+(`config.el:455`).
+
+### In his Doom setup
+
+| Feature | State | Note | Size |
+|---|---|---|---|
+| Surround: `ys` `yss` `cs` `ds`, visual `S`, tags (`cst<b>`, `ysiw<em>`), `.` | Built | evil-surround's spacing: an opening bracket adds spaces | — |
+| Surround a function call, `ysiwf` | Not built | evil-surround/embrace `f` asks for a name: `foo(x)` | S |
+| `i(` `i[` `i{` `ib` `iB` `i<` `it` and `a…`, counts | Built | Cross lines; seek forward on the line as vim 9 does | — |
+| `i"` `i'` `` i` `` and `a…` | Built | One line only, as vim; escaped quotes skipped | — |
+| `iq` / `aq`, any quote (Doom) | Not built | Nearest of `"` `'` `` ` `` | S |
+| `ia` / `aa`, argument (evil-args) | Not built | `(foo a, b)` and Clojure forms split on spaces | M |
+| `ii` / `ai`, indent level (evil-indent-plus; also `ij` `ik`) | Not built | Lines at the cursor's indent or deeper | S |
+| `ig` / `ag`, whole buffer (Doom) | Not built | | S |
+| `if` / `af`, function (Doom defun) | Not built | For Clojure, the top-level form | M |
+| `ic` / `ac`, comment (evil-nerd-commenter) | Not built | | S |
+| `iu` url, `ix` XML attribute (exato) | Not built | | S each |
+| `iB` / `aB` any block (anyblock) | Partly | `B` is `{ }` as in vim, not "nearest block" as in Doom | S |
+| Comment: `gcc`, `gc{motion}`, visual `gc` (evil-nerd-commenter) | Not built | Needs a comment string per file type (`;;` Clojure). `gcc` now does nothing and gives no hint | S-M |
+| evil-snipe: `s`/`S` two-character find, `;` `,` | Not built | The engine's `s` is vim's substitute, as plain vim | M |
+| evil-exchange `gx` / `gX` | Not built | Swap two text spans | S-M |
+| evil-lion `gl` / `gL` align | Not built | The Text wheel's Align Table covers some of it | M |
+| evil-numbers `⌃A` `⌃X` | Built | `g⌃A` (visual, increasing) not built: S | — |
+| evil-visualstar: `*` `#` on a visual selection | Partly | `v*` does not search for the selection | S |
+| evil-escape `jk` | Built | | — |
+| `⌥J` / `⌥K` move lines (his `config.el`) | Built | | — |
+| evil-multiedit: visual `R`, `M-d` / `M-D` (his `config.el:738-759`) | Not built | Edit every match at once | L |
+| Slurp, barf, raise (`s-R` sp-raise-sexp) | Not built | Smartparens commands, no vim keys; would need key choices | M |
+
+### Vim itself
+
+| Feature | State | Note | Size |
+|---|---|---|---|
+| `iw` `aw` `iW` `aW` `ip` `ap` | Built | | — |
+| `is` / `as` sentence | Not built | | S |
+| `gu` `gU` `g~` (and `guu` `gUU` `g~~`) | Built | | — |
+| `=` re-indent (`==`, `=ip`) | Not built | `=` is unknown, so `=ip` falls to `i` (insert): a wrong-mode trap | S-M |
+| `%` matching bracket | Built | | — |
+| `*` `#` `n` `N` `/` `?` | Built | No match highlighting; `:noh` not built | S |
+| `gn` / `cgn` | Not built | `dgn` says "not a command", but `cgn` deletes one character instead: a bug | S |
+| `f` `t` `F` `T` with `;` `,` | Built | | — |
+| Marks `m{a-z}`, `'` and `` ` `` | Not built | Left out on 11-18 (short texts). `ma` falls to `a` (append): a wrong-mode trap | S |
+| Registers `"a`–`"z`, `"A` append, `"+` `"*` `"_` `"0` | Built | | — |
+| `:s` | Built | Gaps in "Edit window, different from vim" below | — |
+| `:g` `:norm` `:sort` `:m` `:t` `:d` with ranges | Not built | Left out on 11-18; the Text wheel's Lines tools cover sorting | M-L |
+| Counts on motions, operators, objects, `.`, `p`, `⌃A` | Built | | — |
+| `.` repeat | Built | Not after visual-mode changes | — |
+| `zz` `zt` `zb`, `H` `M` `L`, `⌃D` `⌃U` `⌃E` `⌃Y` | Not built | Scrolling; the window is short today but files (C14) make it matter | S |
+| `⌃O` / `⌃I` jump list, `g;` change list, `gi` | Not built | | S-M |
+| `gv`, `o` in visual, `⌃V` block, `R` | Built | | — |
+| `gJ`, `gp`, `ga`, `[(` `])` | Not built | | S each |
+| Undo `u`, redo `⌃R` | Built | A line of undo, not a tree; no `g-` `g+` | M for a tree |
+| Macros `q` `@` `@@` | Built | Not kept between windows; `@:` not built | — |
+
+Found while checking, worth fixing whatever David picks: `cgn` deletes a character instead of
+failing; `=ip` and `ma` drop into insert mode because the first key is unknown; `gcc` does
+nothing and says nothing.
+
 ## Edit window, different from vim
 
 From TRY-TOMORROW "Not built, or different from vim". All S.
