@@ -36,6 +36,14 @@ enum MailCheck {
             lines.append("Focus in the message viewer: \(MailKeyTap.isInMessageViewer(focused) ? "yes" : "no")")
         }
         if let bar = MailMenu.menuBar() {
+            // Where Mail keeps these (any menu), for `o` and Esc (2026-11-20).
+            for title in ["Open Message", "Close"] {
+                let menu = bar.first { MailMenu.findAnywhere(title, in: $0.children) != nil }
+                let item = MailMenu.findAnywhere(title, in: bar)
+                lines.append("\(title): \(item == nil ? "not found" : "under \(menu?.title ?? "?"), \(item!.isEnabled ? "enabled" : "disabled")")")
+            }
+        }
+        if let bar = MailMenu.menuBar() {
             for path in [MailMenu.send, MailMenu.archive, MailMenu.remindMeLater] {
                 let name = path.joined(separator: " › ")
                 if let item = MailMenu.find(path, in: bar) as? AXMenuNode {
@@ -62,6 +70,7 @@ enum MailCheck {
             if AXUIElementCopyAttributeNames(node.element, &names) == .success, let names = names as? [String] {
                 lines.append("  attributes: \(names.sorted().joined(separator: ", "))")
             }
+            lines.append("  " + Self.windowSummary(node.element, app: app))
             walk(node.element, depth: 0, into: &lines)
         }
         do {
@@ -110,6 +119,22 @@ enum MailCheck {
             parts.append("settable=\(isSettable(element))")
         }
         return parts.joined(separator: " ")
+    }
+
+    /// How the key rules class a window, and what its AXDocument is (its type and URL
+    /// scheme only; never the value, which could carry an address).
+    static func windowSummary(_ window: AXUIElement, app: AXUIElement) -> String {
+        let facts = MailKeyTap.facts(window, app: app)
+        var document = "AXDocument: none"
+        var value: CFTypeRef?
+        if AXUIElementCopyAttributeValue(window, kAXDocumentAttribute as CFString, &value) == .success, let value {
+            let type = CFCopyTypeIDDescription(CFGetTypeID(value)) as String
+            let text = (value as? String) ?? (value as? URL)?.absoluteString ?? ""
+            let scheme = URL(string: text)?.scheme ?? "none"
+            document = "AXDocument: \(type), scheme \(scheme), \(text.isEmpty ? "empty" : "\(text.count) characters")"
+        }
+        let close = AXMenuNode.element(window, kAXCloseButtonAttribute) == nil ? "no close button" : "close button"
+        return "kind: \(facts.isViewer ? "main viewer" : (facts.hasComposeControls || facts.textFieldCount > 0 ? "message being written" : "message window or other")); compose markers \(facts.hasComposeControls), text fields \(facts.textFieldCount), sheet or popover \(facts.hasSheetOrPopover), \(close); \(document)"
     }
 
     private static func walk(_ element: AXUIElement, depth: Int, into lines: inout [String]) {

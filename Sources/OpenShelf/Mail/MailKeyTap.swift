@@ -127,11 +127,16 @@ final class MailKeyTap {
         // is Mail's menu asked whether Send is enabled; an unanswered question counts as yes.
         let inViewer = !MailKeys.listRoles.contains(role ?? "") && role != "AXWebArea" && isInMessageViewer(focused)
         let inWindow = !isInMessageViewer(focused) && isMessageWindow(app)
-        let sendEnabled = role == "AXWebArea" || inViewer || inWindow ? (MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? true) : false
+        // Mail has no Send item outside a message being written (Check Mail, 2026-11-20: "not
+        // found" in the viewer and in a message window), so a missing one is off; only menus
+        // that can't be read at all count as on.
+        let sendEnabled = role == "AXWebArea" || inViewer || inWindow ? MailKeys.sendIsOn(menuRead: MailMenu.menuBar() != nil,
+            send: MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled) : false
         let action: MailKeys.Action? = if case .act(let action) = outcome { action } else { nil }
-        return MailKeys.mayTake(
+        let isEditable = (editable as? Bool) ?? false
+        let taken = MailKeys.mayTake(
             focusedRole: role,
-            isEditable: (editable as? Bool) ?? false,
+            isEditable: isEditable,
             sendEnabled: sendEnabled,
             modifiers: modifiers,
             mailHasFocus: MailMenu.hasKeyboardFocus(),
@@ -140,6 +145,14 @@ final class MailKeyTap {
             inMessageWindow: inWindow,
             action: action
         )
+        // Outside the list, in the viewer or a message window and nothing editable: why.
+        if (inViewer || inWindow || role == "AXWebArea"), !isEditable, !sendEnabled, let name = character(of: event) {
+            let place = inWindow ? "message window" : (inViewer ? "viewer, not the list" : "web area")
+            KeysLog.note("key \(name) in \(place) (\(role ?? "?")): \(taken ? "taken" : "passed, not a key for one message here")")
+        } else if inViewer || inWindow, let name = character(of: event) {
+            KeysLog.note("key \(name): passed, \(isEditable ? "editable focus" : "Send is on")")
+        }
+        return taken
     }
 
     /// Whether `element` is inside Mail's viewer window (identifier
@@ -150,7 +163,7 @@ final class MailKeyTap {
         for _ in 0..<30 {
             guard let node = current else { return false }
             if AXMenuNode.string(node, kAXRoleAttribute) == kAXWindowRole {
-                return AXMenuNode.string(node, kAXIdentifierAttribute)?.hasPrefix("Mail.messageViewer.window") == true
+                return MailKeys.isMainViewer(AXDialogNode(element: node))
             }
             current = AXMenuNode.element(node, kAXParentAttribute)
         }
@@ -176,13 +189,16 @@ extension MailKeyTap {
               let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute) else { return nil }
         var editable: CFTypeRef?
         AXUIElementCopyAttributeValue(focused, "AXEditable" as CFString, &editable)
-        let sendEnabled = MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? false
+        let sendEnabled = MailKeys.sendIsOn(menuRead: MailMenu.menuBar() != nil, send: MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled)
         let facts = Self.facts(window, app: app)
         let allowed = MailKeys.mayCloseWithEscape(
             facts, focusedRole: AXMenuNode.string(focused, kAXRoleAttribute), isEditable: (editable as? Bool) ?? false,
             sendEnabled: sendEnabled, modifiers: event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn]).isEmpty ? [] : .other,
             mailHasFocus: MailMenu.hasKeyboardFocus()
         )
+        if !facts.isViewer, !facts.hasComposeControls {
+            KeysLog.note("Esc in a non-viewer window: \(allowed ? "closing" : "passed") (sheet/popover \(facts.hasSheetOrPopover), text fields \(facts.textFieldCount), Send on \(sendEnabled), standard \(facts.isStandardWindow))")
+        }
         return allowed ? window : nil
     }
 
@@ -202,7 +218,7 @@ extension MailKeyTap {
         walk(window, depth: 0)
         return MailKeys.WindowFacts(
             isStandardWindow: AXMenuNode.string(window, kAXSubroleAttribute) == kAXStandardWindowSubrole,
-            isViewer: AXMenuNode.string(window, kAXIdentifierAttribute)?.hasPrefix("Mail.messageViewer.window") == true,
+            isViewer: MailKeys.isMainViewer(AXDialogNode(element: window)),
             hasSheetOrPopover: hasSheetOrPopover(app),
             hasComposeControls: composeControls,
             textFieldCount: textFields
@@ -322,9 +338,29 @@ enum MailKeyActions {
 
     /// Presses the enabled item titled `title` anywhere under the menu bar's `top` menu
     /// (and under its `within` submenu when given). Nothing happens if there's none.
-    static func press(_ title: String, under top: String, within submenu: String? = nil) {
-        guard let bar = MailMenu.menuBar(), let item = item(title, under: top, within: submenu, in: bar), item.isEnabled else { return }
-        _ = item.press()
+    /// Presses Mail's menu item; when it isn't there or is off, a short toast and a keys.log
+    /// line say so, so a single key never fails silently (2026-11-20: `o` did nothing).
+    @discardableResult
+    static func press(_ title: String, under top: String, within submenu: String? = nil) -> Bool {
+        guard let bar = MailMenu.menuBar() else { return notPressed(title, "Mail's menus can't be read") }
+        guard let item = item(title, under: top, within: submenu, in: bar) else { return notPressed(title, "no “\(title)” in Mail's \(top) menu") }
+        guard item.isEnabled else { return notPressed(title, "“\(title)” is off here") }
+        return item.press() || notPressed(title, "“\(title)” didn't respond")
+    }
+
+    /// Presses Mail's item titled `title` in whichever top menu has it.
+    @discardableResult
+    static func pressAnywhere(_ title: String) -> Bool {
+        guard let bar = MailMenu.menuBar() else { return notPressed(title, "Mail's menus can't be read") }
+        guard let item = MailMenu.findAnywhere(title, in: bar) else { return notPressed(title, "no “\(title)” in Mail's menus") }
+        guard item.isEnabled else { return notPressed(title, "“\(title)” is off here") }
+        return item.press() || notPressed(title, "“\(title)” didn't respond")
+    }
+
+    private static func notPressed(_ title: String, _ reason: String) -> Bool {
+        KeysLog.note("menu \(title): not pressed, \(reason)")
+        ToastController.shared.show(Toast(systemImage: "keyboard", title: "Mail key did nothing", subtitle: reason), for: .seconds(3))
+        return false
     }
 
     /// The item titled `title` anywhere under the menu bar's `top` menu, and under its
@@ -378,7 +414,8 @@ enum MailKeyActions {
     /// the window it opens, so `e` and `x` there can tell the list still holds that row.
     static func openAndBind(scripting: MailScripting = AppleScriptMail()) {
         let ids = Set(scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
-        press("Open Message", under: "Message")
+        // Mail's "Open Message" (MainMenu.loctable 1772) is looked for in every menu.
+        guard pressAnywhere("Open Message") else { return }
         guard !ids.isEmpty, let mail = MailMenu.running else { return }
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.5)
@@ -402,7 +439,7 @@ enum MailKeyActions {
         guard let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return }
         let facts = MailKeyTap.facts(window, app: app)
         let focusInList = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) }.map(MailKeys.listRoles.contains) ?? false
-        let sendEnabled = MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled ?? true
+        let sendEnabled = MailKeys.sendIsOn(menuRead: MailMenu.menuBar() != nil, send: MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled)
         switch MailKeys.backToList(facts, focusInList: focusInList, sendEnabled: sendEnabled) {
         case .close: close(window)
         case .focusList:
@@ -539,5 +576,20 @@ enum MailWindowBindings {
     /// A closed window stops answering.
     private static func prune() {
         bound.removeAll { AXMenuNode.string($0.window, kAXRoleAttribute) == nil }
+    }
+}
+
+/// Why a Mail single key was taken or passed outside the message list (2026-11-20: Esc and
+/// o failed in a message window), in ~/Library/Logs/OpenShelf/keys.log. Only command keys'
+/// names, and only in the viewer or a message window, never in a message being written,
+/// so nothing typed is ever logged.
+@MainActor
+enum KeysLog {
+    static var fileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OpenShelf/keys.log")
+    }
+
+    static func note(_ line: String) {
+        SnoozeLog.append([line], to: fileURL)
     }
 }

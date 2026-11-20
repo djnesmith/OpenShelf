@@ -97,6 +97,13 @@ enum MailKeys {
         return actsOnOneMessage(action)
     }
 
+    /// Whether Mail's Send counts as on: its own state; missing (no message being written)
+    /// is off; menus that can't be read are on, so keys fail open.
+    static func sendIsOn(menuRead: Bool, send: Bool?) -> Bool {
+        guard menuRead else { return true }
+        return send ?? false
+    }
+
     /// Roles that take typing, wherever they are.
     static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
 
@@ -140,6 +147,15 @@ enum MailKeys {
         guard !window.hasSheetOrPopover, !window.hasComposeControls, window.textFieldCount == 0 else { return false }
         guard !isEditable, !sendEnabled, !textRoles.contains(focusedRole ?? "") else { return false }
         return true
+    }
+
+    /// Whether `window` is Mail's main viewer. A message open in its own window has the same
+    /// identifier prefix ("Mail.messageViewer.window.39" beside the viewer's ".1", David's
+    /// Check Mail, 2026-11-20); only the viewer has the "Main Window" split group.
+    @MainActor
+    static func isMainViewer(_ window: DialogNode) -> Bool {
+        guard window.identifier?.hasPrefix("Mail.messageViewer.window") == true else { return false }
+        return window.children.contains { $0.role == "AXSplitGroup" && $0.identifier == "Main Window" }
     }
 
     /// The message list in Mail's viewer window: the first table or outline inside the split

@@ -340,4 +340,32 @@ struct MailKeysTests {
         // Two rows selected.
         #expect(MailKeys.conversationPlan(bound: opened, selectedRows: 2, current: opened) == .thisMessage)
     }
+
+    /// From David's Check Mail at 19:11:29Z: a message open on its own has the viewer's id
+    /// prefix ("…window.39") but no "Main Window" split group; it must not count as the
+    /// viewer, or Esc, u and its keys do nothing there.
+    @MainActor @Test func aMessageWindowIsNotTheViewer() {
+        let messageWindow = Node("AXWindow", id: "Mail.messageViewer.window.39", [
+            Node("AXGroup"),
+            Node("AXScrollArea", id: "_MAIL_MESSAGE_CONTENT", [Node("AXGroup", id: "message_view")]),
+            Node("AXToolbar", [Node("AXGroup", [Node("AXButton"), Node("AXButton")])]),
+            Node("AXButton"),
+        ])
+        let viewer = Node("AXWindow", id: "Mail.messageViewer.window.1", [
+            Node("AXSplitGroup", id: "Main Window", [Node("AXSplitGroup", id: "Main Window Preview Pane Vertical")]),
+            Node("AXToolbar"),
+        ])
+        #expect(!MailKeys.isMainViewer(messageWindow))
+        #expect(MailKeys.isMainViewer(viewer))
+        #expect(!MailKeys.isMainViewer(Node("AXWindow", id: "_NS:41", [Node("AXSplitGroup", id: "Main Window")])))
+    }
+
+    /// Mail has no Send item outside a message being written: missing is off; unreadable
+    /// menus count as on, so keys fail open.
+    @Test func aMissingSendIsOff() {
+        #expect(!MailKeys.sendIsOn(menuRead: true, send: nil))
+        #expect(!MailKeys.sendIsOn(menuRead: true, send: false))
+        #expect(MailKeys.sendIsOn(menuRead: true, send: true))
+        #expect(MailKeys.sendIsOn(menuRead: false, send: nil))
+    }
 }
