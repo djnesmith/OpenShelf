@@ -557,7 +557,7 @@ Plain vim:
 | C42 | An undo tree: `g-` / `g+` (today undo and redo are a line) | M | — |
 | C43 | `@:` repeats the last ex command | S | — |
 
-**C44. The Edit window survives a relaunch** (M) — not built (2026-11-20: an install relaunched OpenShelf and closed David's Edit window). Keep the window's text, cursor and where it came from on disk while it is open, and reopen it after a relaunch or crash. Needs first: a decision on where the result goes when the source app's selection is gone by then (the clipboard, as Edit does today when the selection changed).
+**C44. The Edit window survives a relaunch** (M) — **won't build** (David, 2026-11-20: "i think this is too much of an edge case to worry about"; the install script waits until OpenShelf is idle instead). Was: 2026-11-20, an install relaunched OpenShelf and closed David's Edit window. Keep the window's text, cursor and where it came from on disk while it is open, and reopen it after a relaunch or crash. Needs first: a decision on where the result goes when the source app's selection is gone by then (the clipboard, as Edit does today when the selection changed).
 
 ### D. Links and the web
 

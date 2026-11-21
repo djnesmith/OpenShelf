@@ -1,7 +1,7 @@
 # Not built yet
 
 What is left of ROADMAP.md, MAIL-PLAN.md and TRY-TOMORROW.md, checked against the code at
-1902ad8 (2026-11-19). Sizes come from ROADMAP.md: S small, M medium, L large.
+a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing and snooze work). Sizes come from ROADMAP.md: S small, M medium, L large.
 "Needs first" names what must happen before work starts. "—" means nothing.
 
 ## Count
@@ -19,11 +19,12 @@ What is left of ROADMAP.md, MAIL-PLAN.md and TRY-TOMORROW.md, checked against th
 | Stage 9: files, PDFs and detection | 0 | 0 | 6 |
 | Stage 10: capture, services and power tools | 0 | 1 | 6 |
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
-| Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 1 | 1 |
+| Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43; C24 and C30 partly) and the Edit window surviving a relaunch (C44) | — | 2 | 27 |
+| Vim features (C16–C43; C24 and C30 partly) | — | 2 | 26 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 19 | 9 | 67 |
+| **Total** | 18 | 7 | 67 |
+| Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
 ## Stage 1: select, press, fix it
@@ -134,7 +135,7 @@ Not built:
 ## Outside the stages
 
 Built: C12 items 1-6 (#53), C13 (#65), F5 (#64), H10 (#57), I4 (#58, #60, #61, #62),
-I5 (#59).
+I5 (#59). Since 2026-11-19, proven on David's Mail: `v` / ⌃⌥M move through Mail's own Move to menu (a true move on Gmail), ⌃N/⌃P in the folder picker and as j/k, `g a` All Mail, `g A` Archive, `g T` Today, `g l` Send Later, `u` and `z` undo, Esc back to the list (after it: select none), ⇧U read ↔ unread, `e` on a double-clicked thread acting on the whole conversation. Built, not yet tried: snooze numbers (5, 2h, 3d, 2w, 2mo, 1y, any spelling), "end of month", "next month", "… from now".
 
 Partly built:
 
@@ -210,11 +211,11 @@ a read-only check of each app's menus and Accessibility first. Size M-L, a guess
 | Item | What it is | Size | Needs first |
 |---|---|---|---|
 | Command palette | Type to run any of Mail's menu actions (ROADMAP I5 list). | M | Decide: wanted at all |
-| Single keys left out (partly built) | `u`, `n`/`p`, `* n`; Mail has no direct command for `n`/`p` or `* n`. | S | David's decision (TRY-TOMORROW) |
+| `n` / `p`, next and previous in a conversation | Moving between the messages of one conversation in the reading pane. j/k (and ⌃N/⌃P) from a conversation's message move the message list instead; Mail has no direct command. (`* n` is built; `u` is undo since 2026-11-20 and Esc goes back to the list.) | S | David's decision |
 
 ## Vim: related features
 
-Every not-built and partly-built row below is on the roadmap as C16–C43 (ROADMAP.md); the Edit window surviving a relaunch is C44.
+Every not-built and partly-built row below is on the roadmap as C16–C43 (ROADMAP.md); the Edit window surviving a relaunch (C44) is won't build (David, 2026-11-20: "i think this is too much of an edge case to worry about").
 
 Checked against the engine at 6833d73 by running each key sequence (2026-11-20). "Built" means
 it matches vim --clean where vim has it. Ordered by what David's Doom setup has: Doom's
