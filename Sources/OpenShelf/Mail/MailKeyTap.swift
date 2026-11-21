@@ -66,7 +66,8 @@ final class MailKeyTap {
     /// `ownPanelHasKeyboard` and `focusAllows` are parameters for tests.
     func takes(type: CGEventType, event: CGEvent, ownPanelHasKeyboard: Bool = NSApp.keyWindow != nil,
                focusAllows: @MainActor (CGEvent, MailKeys.Outcome) -> Bool = MailKeyTap.focusAllows,
-               escapePlanner: @MainActor (CGEvent) -> MailKeys.EscapePlan = MailKeyTap.escapePlan) -> Bool {
+               escapePlanner: @MainActor (CGEvent) -> MailKeys.EscapePlan = MailKeyTap.escapePlan,
+               afterNewMessage: @escaping @MainActor () -> Void = { MailKeyActions.focusTo(setFocus: false) }) -> Bool {
         // macOS turns a slow tap off; it is turned back on, and the key passes.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -120,11 +121,27 @@ final class MailKeyTap {
             pending = prefix
             pendingSince = Date()
             return true
+        case .act(.menu("File", "New Message")):
+            // David, 2026-11-21: after an AX press of File › New Message the cursor started in
+            // the body and focus read as none ("c says Cursor not in To field"); "command n
+            // works correctly". So `c` itself goes on to Mail as ⌘N, Mail's own path. The key
+            // is changed in place, not posted; nothing else is sent.
+            Self.becomeCommandN(event)
+            DispatchQueue.main.async { MainActor.assumeIsolated { afterNewMessage() } }
+            return false
         case .act(let action):
             // After the tap returns, so the key is gone before Mail's menu is used.
             DispatchQueue.main.async { MainActor.assumeIsolated { MailKeyActions.perform(action) } }
             return true
         }
+    }
+
+    /// Turns the key down into ⌘N: the "n" key (ANSI keycode 45) with Command alone.
+    static func becomeCommandN(_ event: CGEvent) {
+        event.setIntegerValueField(.keyboardEventKeycode, value: 45)
+        event.flags = event.flags.subtracting([.maskShift, .maskControl, .maskAlternate, .maskAlphaShift, .maskSecondaryFn]).union(.maskCommand)
+        var n: UniChar = 0x6E
+        event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &n)
     }
 
     private static func character(of event: CGEvent) -> Character? {
@@ -364,8 +381,6 @@ enum MailKeyActions {
             if !conversationAction(archive: title == "Archive") { performVerified(title, under: top) }
         case .menu("Edit", "Undo"):
             undo()
-        case .menu("File", "New Message"):
-            if press("New Message", under: "File") { focusTo() }
         case .toggleRead:
             let bar = MailMenu.menuBar() ?? []
             guard let title = MailKeys.toggleReadTitle(shows: { item($0, under: "Message", in: bar) != nil }) else {
@@ -779,10 +794,11 @@ enum MailKeyActions {
         return CGRect(origin: position, size: size)
     }
 
-    /// After `c`: once the new message's window is in front (up to 2 s), its To field gets
-    /// the keyboard unless it has it already, and it is read back. keys.log says where focus
-    /// was (role only) and what happened.
-    static func focusTo() {
+    /// After `c`: once the new message's window is in front (up to 2 s), keys.log says
+    /// whether its To field has the keyboard. With `setFocus` it is also given the keyboard
+    /// and read back (the first try, 2026-11-21: focus read as none and the set didn't hold;
+    /// now `c` is ⌘N and this only looks).
+    static func focusTo(setFocus: Bool) {
         guard let mail = MailMenu.running else { return }
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.5)
@@ -802,7 +818,18 @@ enum MailKeyActions {
                                       parent: { AXMenuNode.element($0, kAXParentAttribute) }, same: { CFEqual($0, $1) })
                 }
                 let was = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) } ?? "none"
-                if inTo() { KeysLog.note("c: To had the keyboard already"); return }
+                if inTo() { KeysLog.note("c: To has the keyboard"); return }
+                guard setFocus else {
+                    // Mail may give the field the keyboard just after the window shows.
+                    for _ in 0..<5 {
+                        try? await Task.sleep(for: .milliseconds(200))
+                        if inTo() { KeysLog.note("c: To has the keyboard"); return }
+                    }
+                    KeysLog.note("c: To doesn't have the keyboard (focus \(was))")
+                    ToastController.shared.show(Toast(systemImage: "envelope", title: "New message: cursor not in To",
+                                                      subtitle: "Click the To field"), for: .seconds(4))
+                    return
+                }
                 AXUIElementSetAttributeValue(to.element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
                 try? await Task.sleep(for: .milliseconds(150))
                 let ok = inTo()

@@ -836,4 +836,33 @@ struct MailKeysTests {
         // With no toolbar retry, an unchanged Delete gives up after its one press.
         #expect(MailKeys.nextActionStep(tried: [.listThenMenu], last: .unchanged, toolbarAvailable: MailKeys.mayRetryOnToolbar("Delete")) == .gaveUp)
     }
+
+    /// `c` goes on to Mail as ⌘N, Mail's own New Message (David: "command n works
+    /// correctly"); nothing is pressed through Accessibility. Where `c` isn't a key, it is
+    /// left exactly as typed.
+    @MainActor @Test func cBecomesCommandN() {
+        func cKey() -> CGEvent {
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: 8, keyDown: true)!
+            var c: [UniChar] = Array("c".utf16)
+            event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &c)
+            return event
+        }
+        let event = cKey()
+        let allow: @MainActor (CGEvent, MailKeys.Outcome) -> Bool = { _, _ in true }
+        let deny: @MainActor (CGEvent, MailKeys.Outcome) -> Bool = { _, _ in false }
+        let taken = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: false, focusAllows: allow, afterNewMessage: {})
+        #expect(!taken)
+        #expect(event.getIntegerValueField(.keyboardEventKeycode) == 45)
+        #expect(event.flags.intersection([.maskCommand, .maskShift, .maskControl, .maskAlternate]) == .maskCommand)
+        var length = 0
+        var chars = [UniChar](repeating: 0, count: 4)
+        event.keyboardGetUnicodeString(maxStringLength: 4, actualStringLength: &length, unicodeString: &chars)
+        #expect(String(utf16CodeUnits: chars, count: length) == "n")
+
+        let untouched = cKey()
+        let passed = MailKeyTap().takes(type: .keyDown, event: untouched, ownPanelHasKeyboard: false, focusAllows: deny, afterNewMessage: {})
+        #expect(!passed)
+        #expect(untouched.getIntegerValueField(.keyboardEventKeycode) == 8)
+        #expect(!untouched.flags.contains(.maskCommand))
+    }
 }
