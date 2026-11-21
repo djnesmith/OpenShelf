@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 20 | 0 | 8 |
+| Vim features (C16–C43) | 21 | 0 | 7 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 38 | 5 | 49 |
+| **Total** | 39 | 5 | 48 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -274,7 +274,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `gv`, `o` in visual, `⌃V` block, `R` | Built | | — |
 | `gJ`, `gp`, `ga`, `[(` `])` | Built | `gp` is Doom's: select the last paste again; visual `gp` pastes without keeping what it replaced | — |
 | Undo `u`, redo `⌃R` | Built | A line of undo, not a tree; no `g-` `g+` | M for a tree |
-| Macros `q` `@` `@@` | Built | Not kept between windows; `@:` not built | — |
+| Macros `q` `@` `@@` | Built | Not kept between windows; `@:` built (C43) | — |
 
 Found while checking, worth fixing whatever David picks: `cgn` deletes a character instead of
 failing; `=ip` and `ma` drop into insert mode because the first key is unknown; `gcc` does

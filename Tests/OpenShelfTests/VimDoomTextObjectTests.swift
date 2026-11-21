@@ -757,4 +757,17 @@ struct VimDoomTextObjectTests {
     func moreG(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// @: runs the last : command again; @@ repeats it (C43).
+    @Test(arguments: [
+        ("|a a\na a\na a", ":s/a/b/<CR>j@:", "b a\n|b a\na a"),
+        ("|a a\na a\na a", ":s/a/b/<CR>j2@:", "b a\n|b b\na a"),
+        ("|a\nb\nc\nd", ":2<CR>j@:", "a\n|b\nc\nd"),
+        ("|a a\na a", "@:", "|a a\na a"),
+        ("|a a\na a\na a", ":s/a/b/g<CR>j@:j@@", "b b\nb b\n|b b"),
+        ("|a a\na a", ":s/a/b/<CR>/a<CR>j@:", "b a\n|b a"),
+    ])
+    func repeatEx(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

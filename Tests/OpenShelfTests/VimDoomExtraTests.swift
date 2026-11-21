@@ -216,4 +216,9 @@ struct VimDoomExtraTests {
     @Test func gaShowsTheCharacterCode() {
         #expect(VimEngineTests.run("|a", "ga").message == "Char: a (97, #o141, #x61)")
     }
+
+    @Test func repeatExWithNoCommandSaysSo() {
+        let engine = VimEngineTests.run("|a", "@:")
+        #expect(engine.message == "E30: No previous command line")
+    }
 }

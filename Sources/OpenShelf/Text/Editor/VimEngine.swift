@@ -429,9 +429,13 @@ struct VimEngine {
         return nil
     }
 
+    /// The last : command, for @:.
+    private var lastExCommand: String?
+
     private mutating func runCommandLine(_ line: String) -> VimEffect? {
         guard let prefix = line.first else { return nil }
         let body = String(line.dropFirst())
+        if prefix == ":", !body.trimmingCharacters(in: .whitespaces).isEmpty { lastExCommand = line }
         if prefix == "/" || prefix == "?" {
             let pattern = body.isEmpty ? lastSearch?.pattern ?? "" : body
             guard !pattern.isEmpty else {
@@ -1645,7 +1649,7 @@ struct VimEngine {
             return .done(Command(count: nil, action: .simple("q")))
         case "q", "@":
             guard index < keys.count else { return .incomplete }
-            guard case .char(let name) = keys[index], name == "@" && c == "@" || name.isASCII && name.isLetter || (c == "@" && (name == "+" || name == "*")) else { return .invalid }
+            guard case .char(let name) = keys[index], name == "@" && c == "@" || name.isASCII && name.isLetter || (c == "@" && (name == "+" || name == "*" || name == ":")) else { return .invalid }
             return .done(Command(count: count, action: .simple("\(c)\(name)")))
         case "x", "X", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".", "&", "R":
             return .done(Command(count: count, action: .simple(String(c))))
@@ -2247,6 +2251,17 @@ struct VimEngine {
                 guard playDepth == 0 else { return nil }
                 recording = register
                 recordedKeys = []
+            } else if name == "@:" || (name == "@@" && lastMacro == ":") {
+                // @: runs the last : command again, count times (ROADMAP C43); @@ then repeats it.
+                guard let line = lastExCommand else {
+                    message = "E30: No previous command line"
+                    failed = true
+                    return nil
+                }
+                lastMacro = ":"
+                var effect: VimEffect?
+                for _ in 0..<min(n, 10_000) where !failed { effect = runCommandLine(line) ?? effect }
+                return effect
             } else if name.hasPrefix("@"), name.count == 2, let register = name.last {
                 play(register == "@" ? lastMacro : register, count: n)
             } else if name.hasPrefix("mark"), name.count == 5, let mark = name.last {
