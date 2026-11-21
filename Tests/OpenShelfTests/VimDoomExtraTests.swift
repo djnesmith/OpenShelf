@@ -271,4 +271,36 @@ struct VimDoomExtraTests {
         _ = engine.handle(VimEngineTests.keys("/Foo<CR>"))
         #expect(engine.searchHighlights == [4..<7])
     }
+
+    /// Scrolling (ROADMAP C39) on lines 10-29 shown of 100: H M L, ⌃D ⌃U ⌃E ⌃Y, z commands.
+    @Test func scrollingKeys() {
+        let text = (0..<100).map { "  line \($0)" }.joined(separator: "\n")
+        func run(_ keys: String, from line: Int = 15, column: Int = 4) -> VimEngine {
+            var engine = VimEngine(text)
+            engine.visibleLines = 10...29
+            _ = engine.handle(VimEngineTests.keys("\(line + 1)G0\(column)l"))
+            engine.scrollRequest = nil
+            _ = engine.handle(VimEngineTests.keys(keys))
+            return engine
+        }
+        func line(_ engine: VimEngine) -> Int { engine.string.prefix(engine.cursor).filter { $0 == "\n" }.count }
+        func column(_ engine: VimEngine) -> Int { engine.cursor - (engine.string.prefix(engine.cursor).lastIndex(of: "\n").map { engine.string.distance(from: engine.string.startIndex, to: $0) + 1 } ?? 0) }
+        #expect(line(run("H")) == 10 && column(run("H")) == 2)
+        #expect(line(run("3H")) == 12)
+        #expect(line(run("L")) == 29 && line(run("2L")) == 28)
+        #expect(line(run("M")) == 19)
+        #expect(run("dL").string.components(separatedBy: "\n").count == 85)
+        let down = run("<C-d>")
+        #expect(line(down) == 25 && column(down) == 4 && down.scrollRequest == .by(10))
+        #expect(line(run("<C-u>")) == 5 && run("<C-u>").scrollRequest == .by(-10))
+        #expect(line(run("3<C-d>")) == 18)
+        #expect(run("<C-e>").scrollRequest == .by(1) && line(run("<C-e>")) == 15)
+        #expect(line(run("<C-e>", from: 10)) == 11)
+        #expect(line(run("<C-y>", from: 29)) == 28)
+        #expect(run("zz").scrollRequest == .line(15, .middle) && column(run("zz")) == 4)
+        #expect(run("zt").scrollRequest == .line(15, .top) && run("zb").scrollRequest == .line(15, .bottom))
+        #expect(column(run("z<CR>")) == 2 && run("z<CR>").scrollRequest == .line(15, .top))
+        #expect(run("40zt").scrollRequest == .line(39, .top) && line(run("40zt")) == 39)
+        #expect(run("<C-d>", from: 99).failureHint != nil)
+    }
 }

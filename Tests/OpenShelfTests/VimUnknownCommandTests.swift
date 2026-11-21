@@ -9,7 +9,7 @@ struct VimUnknownCommandTests {
     @Test(arguments: [
         ("g'a", "g'a: not built"), ("g`a", "g`a: not built"), ("''", "'': not built"), ("`.", "`.: not built"),
         ("g?iw", "g?iw: not built"),
-        ("zz", "zz: not built"), ("zt", "zt: not built"), ("[x", "[x: not built"),
+        ("zh", "zh: not built"), ("zo", "zo: not built"), ("[x", "[x: not built"),
         ("gx", nil), ("!ip", "!ip: not built"),
     ] as [(String, String?)])
     func unbuiltCommandsDoNothingAndSayWhy(keys: String, hint: String?) {

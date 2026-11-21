@@ -47,6 +47,38 @@ struct VimEditorWindowTests {
         #expect(view.engine.message == "=: no formatter for this text")
     }
 
+    /// zt, zz and ⌃D move what the window shows; H and L use what it shows (ROADMAP C39).
+    @Test @MainActor func scrollingMovesTheView() {
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+        view.isVerticallyResizable = true
+        view.textContainer?.widthTracksTextView = true
+        scroll.documentView = view
+        view.load((0..<200).map { "line \($0)" }.joined(separator: "\n"))
+        func press(_ keys: String) { for k in VimEngineTests.keys(keys) { _ = view.engine; view.keyDown(with: Self.event(for: k)) } }
+        press("50G")
+        press("zt")
+        let top = view.visibleLineRange()!
+        #expect(top.lowerBound == 49)
+        press("L")
+        #expect(view.engine.string.prefix(view.engine.cursor).filter { $0 == "\n" }.count == top.upperBound)
+        press("zz")
+        let middle = view.visibleLineRange()!
+        #expect(abs((middle.lowerBound + middle.upperBound) / 2 - top.upperBound) <= 1)
+        press("H<C-d>")
+        #expect(view.visibleLineRange()!.lowerBound > middle.lowerBound)
+    }
+
+    static func event(for key: VimKey) -> NSEvent {
+        switch key {
+        case .char(let c): return Self.key(String(c))
+        case .ctrl(let c): return Self.key(String(c), modifiers: .control)
+        case .enter: return Self.key("\r", keyCode: 36)
+        case .escape: return Self.key("\u{1b}", keyCode: 53)
+        default: return Self.key("")
+        }
+    }
+
     /// Search matches get a background while / is typed and after the search, until :noh.
     @Test func searchMatchesAreHighlighted() {
         let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))

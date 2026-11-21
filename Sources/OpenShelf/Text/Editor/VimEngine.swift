@@ -436,6 +436,68 @@ struct VimEngine {
     /// The last : command, for @:.
     private var lastExCommand: String?
 
+    /// The lines the window shows, which it sets before each key (ROADMAP C39); nil means all.
+    var visibleLines: ClosedRange<Int>?
+
+    /// How the window should scroll after a key: put a line at the top, middle or bottom, or
+    /// move the view by some lines.
+    enum ScrollRequest: Equatable {
+        case line(Int, ScrollPlace)
+        case by(Int)
+    }
+    enum ScrollPlace: Equatable { case top, middle, bottom }
+    var scrollRequest: ScrollRequest?
+
+    /// The shown lines that hold text.
+    private var shownLines: ClosedRange<Int> {
+        let last = lineStarts.count - 1
+        guard let visible = visibleLines else { return 0...last }
+        let low = min(max(visible.lowerBound, 0), last)
+        return low...max(low, min(visible.upperBound, last))
+    }
+
+    /// ⌃D ⌃U ⌃E ⌃Y and the z commands (ROADMAP C39), as evil's: ⌃D and ⌃U move the view and
+    /// the cursor half a page (a count sets how many lines), keeping the column; ⌃E and ⌃Y move
+    /// the view a line, the cursor only when it would leave the view.
+    private mutating func scroll(_ name: String, count: Int?) {
+        let shown = shownLines, last = lineStarts.count - 1
+        let here = lineIndex(cursor)
+        let column = wantedColumn ?? (cursor - lineStart(cursor))
+        func go(_ line: Int) {
+            let start = lineStarts[line]
+            cursor = column == .max ? max(lineEnd(start) - 1, start) : min(start + column, max(lineEnd(start) - 1, start))
+            wantedColumn = column
+        }
+        switch name {
+        case "scrolld", "scrollu":
+            let half = count ?? max((shown.upperBound - shown.lowerBound + 1) / 2, 1)
+            let down = name == "scrolld"
+            guard down ? here < last : here > 0 else {
+                failed = true
+                return
+            }
+            go(min(max(here + (down ? half : -half), 0), last))
+            scrollRequest = .by(down ? half : -half)
+        case "scrolle", "scrolly":
+            let n = count ?? 1
+            let down = name == "scrolle"
+            scrollRequest = .by(down ? n : -n)
+            let top = min(shown.lowerBound + (down ? n : -n), last), bottom = max(shown.upperBound + (down ? n : -n), 0)
+            if down, here < top { go(max(top, 0)) } else if !down, here > bottom { go(min(bottom, last)) }
+        default:
+            let line = count.map { min(max($0, 1), last + 1) - 1 } ?? here
+            let place: ScrollPlace = ["zt", "z\r"].contains(name) ? .top : ["zb", "z-"].contains(name) ? .bottom : .middle
+            scrollRequest = .line(line, place)
+            if ["z.", "z-", "z\r"].contains(name) {
+                cursor = firstNonBlank(lineStarts[line])
+                wantedColumn = nil
+            } else if line != here {
+                go(line)
+            }
+        }
+        clampCursor()
+    }
+
     /// Search matches stay shown after a search until :noh or Esc in normal mode, as Doom's
     /// evil-search does (ROADMAP C35; Esc is Doom's +evil-disable-ex-highlights-h).
     private(set) var highlightsSearch = false
@@ -1333,6 +1395,8 @@ struct VimEngine {
         case mark(Character, exact: Bool)
         /// [( [{ ]) ]}: the unmatched bracket before or after the cursor (ROADMAP C41).
         case unmatched(Character)
+        /// H M L: the top, middle or bottom line the window shows (ROADMAP C39).
+        case screenLine(Character)
         /// iw, a", i(, ap…: a range around the cursor, after an operator or in visual mode.
         case textObject(inner: Bool, Character)
     }
@@ -1441,6 +1505,8 @@ struct VimEngine {
             return .some("not built")
         }
         if !inVisual, typed == "'" || typed == "`" { return .some(nil) }
+        // zz zt zb z. z- are built (ROADMAP C39); the other z commands are not.
+        if !inVisual, ["zz", "zt", "zb", "z.", "z-"].contains(where: { typed.hasPrefix($0) }) { return nil }
         // [( [{ ]) ]} are built (ROADMAP C41); the rest of [ and ] are not.
         if ["[(", "[{", "])", "]}"].contains(where: { typed.hasPrefix($0) }) { return nil }
         for (prefix, reason) in Self.unbuiltWithArgument where !inVisual && typed.hasPrefix(prefix) {
@@ -1496,6 +1562,8 @@ struct VimEngine {
         if case .ctrl(let c) = key {
             switch c {
             case "r": return .done(Command(count: count, action: .simple("redo")))
+            // Scrolling (ROADMAP C39): ⌃D ⌃U half a page (Doom has evil-want-C-u-scroll), ⌃E ⌃Y a line.
+            case "d", "u", "e", "y": return .done(Command(count: count, action: .simple("scroll" + String(c))))
             case "[", "c": return .done(Command(count: nil, action: .simple("escape")))
             case "v": return .done(Command(count: nil, action: .simple("block")))
             case "a" where !inVisual: return .done(Command(count: count, action: .simple("increment")))
@@ -1718,6 +1786,19 @@ struct VimEngine {
             guard case .char(let name)? = next() else { return next() == nil ? .incomplete : .invalid }
             guard name.isASCII, name.isLetter else { return .invalid }
             return .done(Command(count: nil, action: .simple("mark\(name)")))
+        case "z":
+            // zz zt zb put the cursor's line (or the count's) in the middle, top or bottom;
+            // z. z<CR> z- do the same and go to the first non-blank (ROADMAP C39).
+            guard let second = next() else { return .incomplete }
+            switch second {
+            case .char("z"): return .done(Command(count: count, action: .simple("zz")))
+            case .char("t"): return .done(Command(count: count, action: .simple("zt")))
+            case .char("b"): return .done(Command(count: count, action: .simple("zb")))
+            case .char("."): return .done(Command(count: count, action: .simple("z.")))
+            case .char("-"): return .done(Command(count: count, action: .simple("z-")))
+            case .enter: return .done(Command(count: count, action: .simple("z\r")))
+            default: return .invalid
+            }
         case "Z":
             guard case .char(let second)? = next() else { return next() == nil ? .incomplete : .invalid }
             return ["Z", "Q"].contains(second) ? .done(Command(count: nil, action: .simple("Z\(second)"))) : .invalid
@@ -1842,6 +1923,7 @@ struct VimEngine {
         case "^": return .done(.firstNonBlank)
         case "$": return .done(.lineEnd)
         case "G": return .done(.goToLine(nil))
+        case "H", "M", "L": return .done(.screenLine(c))
         case "%": return .done(.matchingBracket)
         case "}": return .done(.paragraphForward)
         case "{": return .done(.paragraphBackward)
@@ -2111,7 +2193,7 @@ struct VimEngine {
         case .simple(let name):
             // Escape, v and V keep the column j and k aim for (after $, the line's end), as in vim.
             // Block commands keep it too: after $, A appends at each line's end.
-            if !["escape", "v", "V"].contains(name), !name.hasPrefix("block") { wantedColumn = nil }
+            if !["escape", "v", "V", "scrolld", "scrollu", "scrolle", "scrolly"].contains(name), !name.hasPrefix("block") { wantedColumn = nil }
             return runSimple(name, count: command.count)
         }
     }
@@ -2178,6 +2260,9 @@ struct VimEngine {
                 cursor = min(lineStart(cursor) + anchorColumn, lineEnd(cursor))
             case "moveDown", "moveUp":
                 moveLines(down: name == "moveDown", count: n)
+                return nil
+            case "scrolld", "scrollu", "scrolle", "scrolly":
+                scroll(name, count: count)
                 return nil
             case "slurpForward", "slurpBackward", "barfForward", "barfBackward", "raise":
                 mode = .normal
@@ -2263,6 +2348,7 @@ struct VimEngine {
         case ".": repeatLastChange(count: count)
         case "increment", "decrement": addToNumber(name == "increment" ? n : -n)
         case "slurpForward", "slurpBackward", "barfForward", "barfBackward": slurpOrBarf(name, count: n)
+        case "scrolld", "scrollu", "scrolle", "scrolly", "zz", "zt", "zb", "z.", "z-", "z\r": scroll(name, count: count)
         case "raise": raise(count: n)
         case "moveDown", "moveUp": moveLines(down: name == "moveDown", count: n)
         case "block":
@@ -2472,6 +2558,15 @@ struct VimEngine {
             return Target(position: position, kind: .exclusive)
         case .textObject:
             return nil
+        case .screenLine(let which):
+            let shown = shownLines
+            let line: Int
+            switch which {
+            case "H": line = min(shown.lowerBound + count - 1, shown.upperBound)
+            case "L": line = max(shown.upperBound - (count - 1), shown.lowerBound)
+            default: line = (shown.lowerBound + shown.upperBound) / 2
+            }
+            return Target(position: firstNonBlank(lineStarts[line]), kind: .linewise)
         case .unmatched(let bracket):
             let backward = bracket == "(" || bracket == "{"
             let partner: Character = ["(": ")", "{": "}", ")": "(", "}": "{"][bracket]!

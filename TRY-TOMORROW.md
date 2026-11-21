@@ -99,7 +99,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `/foo` Return, `cgn` `bar` Esc, then `.` `.` changes each foo in turn;
     `ma` on a line, move away, `d'a` deletes the lines between;
     `gp` after a paste selects it again;
-    `/foo` highlights every foo as you type; Esc clears them. (#53)
+    `/foo` highlights every foo as you type; Esc clears them; on a long text `zt` puts the
+    line at the top, `⌃D` goes half a window down. (#53)
 
 ## Needs your decision
 

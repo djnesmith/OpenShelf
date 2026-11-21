@@ -526,8 +526,10 @@ final class VimTextView: NSTextView {
             engine.syncInsert(text: string, cursor: characterIndex(utf16: selectedRange().location))
         }
         guard let key else { return }
+        engine.visibleLines = visibleLineRange()
         let effect = engine.handle(key)
         render()
+        applyScroll()
         runReindent()
         if let effect { onEffect(effect) }
     }
@@ -606,6 +608,65 @@ final class VimTextView: NSTextView {
         if let mark, !mark.isEmpty {
             layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.findHighlightColor.withAlphaComponent(0.5), forCharacterRange: nsRange(mark))
         }
+    }
+
+    /// The lines the view shows, for H M L and ⌃D (ROADMAP C39); nil when not in a scroll view.
+    func visibleLineRange() -> ClosedRange<Int>? {
+        guard let layoutManager, let container = textContainer, enclosingScrollView != nil else { return nil }
+        let visible = visibleRect
+        guard visible.height > 0, !engine.text.isEmpty else { return nil }
+        let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
+        let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        func line(_ utf16: Int) -> Int { engine.text.prefix(characterIndex(utf16: utf16)).reduce(0) { $1 == "\n" ? $0 + 1 : $0 } }
+        // A line only partly shown at the top or bottom doesn't count.
+        var first = line(characters.location), last = line(max(characters.location + characters.length - 1, characters.location))
+        if first < last, let top = lineRect(first), top.minY < visible.minY - 1 { first += 1 }
+        if last > first, let bottom = lineRect(last), bottom.maxY > visible.maxY + 1 { last -= 1 }
+        return first...last
+    }
+
+    /// Where line `line` (a real line, not a wrapped row) is drawn.
+    private func lineRect(_ line: Int) -> NSRect? {
+        guard let layoutManager, let container = textContainer else { return nil }
+        let starts = [0] + engine.text.indices.filter { engine.text[$0] == "\n" }.map { $0 + 1 }
+        guard line < starts.count else { return nil }
+        let start = utf16Offset(of: starts[line])
+        let end = line + 1 < starts.count ? utf16Offset(of: starts[line + 1] - 1) : (string as NSString).length
+        let glyphs = layoutManager.glyphRange(forCharacterRange: NSRange(location: start, length: max(end - start, 0)), actualCharacterRange: nil)
+        var rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: container)
+        if glyphs.length == 0 { rect = layoutManager.extraLineFragmentRect.isEmpty ? layoutManager.lineFragmentRect(forGlyphAt: max(glyphs.location - 1, 0), effectiveRange: nil) : layoutManager.extraLineFragmentRect }
+        rect.origin.y += textContainerOrigin.y
+        return rect
+    }
+
+    /// Scrolls as zz zt zb ⌃D ⌃U ⌃E ⌃Y asked, then keeps the cursor in view.
+    private func applyScroll() {
+        guard let request = engine.scrollRequest else { return }
+        engine.scrollRequest = nil
+        guard let clip = enclosingScrollView?.contentView else { return }
+        // Layout is lazy; the view's height must be known before scrolling to a far line.
+        if let layoutManager, let textContainer {
+            layoutManager.ensureLayout(for: textContainer)
+            sizeToFit()
+        }
+        let visible = visibleRect
+        var y = visible.minY
+        switch request {
+        case .line(let line, let place):
+            guard let rect = lineRect(line) else { return }
+            switch place {
+            case .top: y = rect.minY
+            case .middle: y = rect.midY - visible.height / 2
+            case .bottom: y = rect.maxY - visible.height
+            }
+        case .by(let lines):
+            let height = layoutManager?.defaultLineHeight(for: font ?? .systemFont(ofSize: 13)) ?? 16
+            y += CGFloat(lines) * height
+        }
+        y = min(max(y, 0), max(frame.height - visible.height, 0))
+        clip.scroll(to: NSPoint(x: visible.minX, y: y))
+        enclosingScrollView?.reflectScrolledClipView(clip)
+        scrollRangeToVisible(NSRange(location: utf16Offset(of: engine.cursor), length: 0))
     }
 
     /// vim's cursor as an offset in the view's text.
