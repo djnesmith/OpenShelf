@@ -99,7 +99,11 @@ struct VimEngine {
     private var redoStack: [(text: String, cursor: Int)] = []
     /// The column j and k aim for; Int.max after $.
     private var wantedColumn: Int?
-    private var lastFind: (command: Character, target: Character)?
+    /// The last snipe (s, f, t, z, x and their backward forms), for ; , and the repeat keys.
+    private var lastSnipe: (keys: [Character], forward: Bool, inclusive: Bool, count: Int, key: Character)?
+    /// Right after a snipe, its own key repeats it and its backward key goes back, for one key
+    /// (evil-snipe-repeat-keys, set-transient-map).
+    private var snipeRepeatKeys: (forward: Character, backward: Character)?
     private var lastSearch: (pattern: String, forward: Bool, wholeWord: Bool)?
     /// What `R` replaced, newest last (nil: a character added past the line's end), for
     /// Backspace; the keys typed, for the count and `.`.
@@ -211,6 +215,18 @@ struct VimEngine {
         case .commandLine: return handleCommandLine(key)
         case .replace: handleReplace(key); return nil
         case .normal, .visual, .visualLine, .visualBlock:
+            // Right after a snipe its own key repeats it, its backward key goes back (evil-snipe).
+            let repeatKeys = snipeRepeatKeys
+            snipeRepeatKeys = nil
+            if pending.isEmpty, let repeatKeys, case .char(let c) = key, c == repeatKeys.forward || c == repeatKeys.backward {
+                pending = [.char(c == repeatKeys.forward ? ";" : ",")]
+                if case .done(let command) = parse(pending) {
+                    if playDepth == 0, !isRepeating { typed = [key] }
+                    pending = []
+                    return run(command)
+                }
+                pending = []
+            }
             if pending.isEmpty, let arrow = arrowMotion(key) {
                 _ = runMotion(arrow, count: 1)
                 return nil
@@ -990,7 +1006,10 @@ struct VimEngine {
         case lineStart, firstNonBlank, lineEnd
         /// G (nil: the last line) and gg (nil: the first).
         case goToLine(Int?)
-        case find(Character, Character)
+        /// evil-snipe (David's Doom, ROADMAP C26): s / S (2 characters), f / F / t / T (1), and
+        /// after an operator z / Z / x / X. `key` is the command's forward key, for repeating.
+        case snipe([Character], forward: Bool, inclusive: Bool, key: Character)
+        /// ; and , (and the snipe's own key again): the last snipe, over the whole text.
         case repeatFind(reverse: Bool)
         case matchingBracket
         case paragraphForward, paragraphBackward
@@ -1317,7 +1336,6 @@ struct VimEngine {
             case "S":
                 return parseReplacement(keys, &index).map { Command(count: count, action: .addSurround(nil, $0)) }
             case "x": return .done(Command(count: count, action: .operate(.delete, nil)))
-            case "s": return .done(Command(count: count, action: .operate(.change, nil)))
             case "~": return .done(Command(count: count, action: .operate(.toggleCase, nil)))
             case "u": return .done(Command(count: count, action: .operate(.lower, nil)))
             case "U": return .done(Command(count: count, action: .operate(.upper, nil)))
@@ -1338,7 +1356,7 @@ struct VimEngine {
             guard index < keys.count else { return .incomplete }
             guard case .char(let name) = keys[index], name == "@" && c == "@" || name.isASCII && name.isLetter || (c == "@" && (name == "+" || name == "*")) else { return .invalid }
             return .done(Command(count: count, action: .simple("\(c)\(name)")))
-        case "x", "X", "s", "S", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".", "&", "R":
+        case "x", "X", "D", "C", "Y", "J", "o", "O", "a", "A", "i", "I", "p", "P", "u", "~", "v", "V", ":", "/", "?", ".", "&", "R":
             return .done(Command(count: count, action: .simple(String(c))))
         case "r":
             guard case .char(let target)? = next() else { return next() == nil ? .incomplete : .invalid }
@@ -1420,6 +1438,29 @@ struct VimEngine {
         case done(Motion)
     }
 
+    /// The characters a snipe searches for: `count` of them, or fewer ended by Return (none:
+    /// repeat the last snipe). Backspace takes one back, and with none left, or Esc, gives up.
+    private func readSnipe(_ keys: [VimKey], _ index: inout Int, count: Int, forward: Bool, inclusive: Bool, key: Character) -> MotionParse {
+        var typed: [Character] = []
+        while typed.count < count {
+            guard index < keys.count else { return .incomplete }
+            let next = keys[index]
+            index += 1
+            switch next {
+            case .char(let c): typed.append(c)
+            case .enter:
+                if typed.isEmpty { return .done(.repeatFind(reverse: !forward)) }
+                return .done(.snipe(typed, forward: forward, inclusive: inclusive, key: key))
+            case .backspace:
+                guard typed.count > 1 else { return .invalid }
+                typed.removeLast()
+            default:
+                return .invalid
+            }
+        }
+        return .done(.snipe(typed, forward: forward, inclusive: inclusive, key: key))
+    }
+
     private func parseMotion(_ keys: [VimKey], _ index: inout Int, textObjects: Bool = false) -> MotionParse {
         guard index < keys.count else { return .incomplete }
         guard case .char(let c) = keys[index] else {
@@ -1459,10 +1500,17 @@ struct VimEngine {
             index += 1
             return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
-            guard index < keys.count else { return .incomplete }
-            guard case .char(let target) = keys[index] else { return .invalid }
-            index += 1
-            return .done(.find(c, target))
+            return readSnipe(keys, &index, count: 1, forward: c.isLowercase, inclusive: c == "f" || c == "F", key: Character(c.lowercased()))
+        case "s" where !(textObjects && !inVisual), "S" where !textObjects:
+            // s / S: Doom's evil-snipe, in place of vim's substitute (S stays surround in visual mode).
+            return readSnipe(keys, &index, count: 2, forward: c == "s", inclusive: true, key: "s")
+        case "z", "Z", "x", "X":
+            // After an operator, evil-snipe's z / Z (inclusive) and x / X (exclusive).
+            guard textObjects, !inVisual else {
+                index -= 1
+                return .invalid
+            }
+            return readSnipe(keys, &index, count: 2, forward: c.isLowercase, inclusive: c == "z" || c == "Z", key: Character(c.lowercased()))
         case "g":
             guard index < keys.count else { return .incomplete }
             guard case .char("g") = keys[index] else { return .invalid }
@@ -1535,7 +1583,8 @@ struct VimEngine {
         case .down?, .lineEnd?: "no line below"
         case .up?: "no line above"
         case .wordBackward?: "at the start"
-        case .find(_, let target)?: "no “\(target)” on the line"
+        case .snipe(let keys, _, _, _)?: "no “\(String(keys))” on the line"
+        case .repeatFind?: "no more matches"
         case .textObject(_, let kind)? where "\"'`".contains(kind): "no \(kind)…\(kind) on this line"
         case .textObject(_, "B")?: "not inside a block"
         case .textObject(_, let kind)? where "([{<)]}>b".contains(kind): "not inside \(Self.bracketPair(kind))"
@@ -1652,7 +1701,13 @@ struct VimEngine {
                 failed = true
                 return nil
             }
-            _ = runMotion(motion, count: command.count ?? 1)
+            if runMotion(motion, count: command.count ?? 1), let last = lastSnipe {
+                switch motion {
+                case .snipe, .repeatFind:
+                    snipeRepeatKeys = (last.key, Character(last.key.uppercased()))
+                default: break
+                }
+            }
             return nil
         case .operate(let op, let motion):
             if let motion {
@@ -1932,13 +1987,13 @@ struct VimEngine {
         case .goToLine(let number):
             let line = min(max(number ?? lineStarts.count, 1), lineStarts.count) - 1
             return Target(position: firstNonBlank(lineStarts[line]), kind: .linewise)
-        case .find(let command, let target):
-            lastFind = (command, target)
-            return find(command, target, count: count, repeating: false).map { Target(position: $0, kind: command == "f" || command == "t" ? .inclusive : .exclusive) }
+        case .snipe(let keys, let forward, let inclusive, let key):
+            lastSnipe = (keys, forward, inclusive, count, key)
+            return snipe(keys, forward: forward, inclusive: inclusive, count: count, wholeText: false, forOperator: forOperator)
         case .repeatFind(let reverse):
-            guard let last = lastFind else { return nil }
-            let command: Character = reverse ? (last.command.isUppercase ? Character(last.command.lowercased()) : Character(last.command.uppercased())) : last.command
-            return find(command, last.target, count: count, repeating: true).map { Target(position: $0, kind: command == "f" || command == "t" ? .inclusive : .exclusive) }
+            guard let last = lastSnipe else { return nil }
+            // A repeat searches the whole text (Doom's evil-snipe-repeat-scope is 'visible).
+            return snipe(last.keys, forward: last.forward != reverse, inclusive: last.inclusive, count: count * last.count, wholeText: true, forOperator: forOperator)
         case .matchingBracket:
             return matchingBracket().map { Target(position: $0, kind: .inclusive) }
         case .paragraphForward, .paragraphBackward:
@@ -2036,25 +2091,59 @@ struct VimEngine {
         return position
     }
 
-    private func find(_ command: Character, _ target: Character, count: Int, repeating: Bool) -> Int? {
-        let start = lineStart(cursor)
-        let end = lineEnd(cursor)
-        var position = cursor
-        let forward = command == "f" || command == "t"
-        let till = command == "t" || command == "T"
-        for iteration in 0..<count {
-            // ; after t starts one further on, or it would find the same place.
-            let skip = till && (repeating || iteration > 0) ? 1 : 0
-            if forward {
-                guard let found = (min(position + 1 + skip, end)..<end).first(where: { text[$0] == target }) else { return nil }
-                position = found
-            } else {
-                guard let found = (start..<max(position - skip, start)).last(where: { text[$0] == target }) else { return nil }
-                position = found
+    /// evil-snipe's seek with Doom's settings: matches on the line (the whole text for a
+    /// repeat), lowercase keys matching either case (smart case) and accents folded
+    /// (char-fold), the count-th match, never one at the cursor; t and x search from one
+    /// further on. Where the cursor lands follows evil-snipe: on the match (f, s), before it
+    /// (t), past it for an operator, on its last character in visual mode. The motion is
+    /// exclusive, as evil-snipe's motions are.
+    private func snipe(_ keys: [Character], forward: Bool, inclusive: Bool, count: Int, wholeText: Bool, forOperator: Bool) -> Target? {
+        let length = keys.count
+        let ignoreCase = !keys.contains(where: \.isUppercase)
+        func fold(_ c: Character) -> String {
+            String(c).folding(options: ignoreCase ? [.diacriticInsensitive, .caseInsensitive] : [.diacriticInsensitive], locale: nil)
+        }
+        let wanted = keys.map(fold)
+        func matches(_ at: Int) -> Bool {
+            guard at >= 0, at + length <= text.count else { return false }
+            return (0..<length).allSatisfy { fold(text[at + $0]) == wanted[$0] }
+        }
+        var found: Int?
+        var remaining = max(count, 1)
+        if forward {
+            let limit = wholeText ? text.count : lineEnd(cursor)
+            var at = cursor + 1 + (inclusive ? 0 : 1)
+            while at + length <= limit {
+                if matches(at) {
+                    remaining -= 1
+                    if remaining == 0 { found = at; break }
+                }
+                at += 1
+            }
+        } else {
+            let end = inclusive ? cursor : cursor - 1
+            let low = wholeText ? 0 : lineStart(cursor)
+            var at = end - length
+            while at >= low {
+                if matches(at) {
+                    remaining -= 1
+                    if remaining == 0 { found = at; break }
+                }
+                at -= 1
             }
         }
-        if till { position += forward ? -1 : 1 }
-        return position
+        guard let match = found else { return nil }
+        let position: Int
+        if !forward {
+            position = inclusive ? match : match + length
+        } else if forOperator {
+            position = inclusive ? match + length : match
+        } else if inVisual {
+            position = inclusive ? match + length - 1 : match - length + (length > 1 ? 1 : 0)
+        } else {
+            position = inclusive ? match : match - length + (length > 1 ? 1 : 0)
+        }
+        return Target(position: position, kind: .exclusive)
     }
 
     private func matchingBracket() -> Int? {

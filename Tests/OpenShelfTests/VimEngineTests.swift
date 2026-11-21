@@ -93,12 +93,14 @@ struct VimEngineTests {
         ("|a,b,c", "f,", "a|,b,c"),
         ("|a,b,c", "2f,", "a,b|,c"),
         ("|a,b,c", "f,;", "a,b|,c"),
-        ("|a,b,c", "t,", "|a,b,c"),
+        ("|a,b,c", "t,", "a,|b,c"),
         ("|aa,b,c", "t,", "a|a,b,c"),
         ("|aa,b,c", "t,;", "aa,|b,c"),
         ("a,b,|c", "F,", "a,b|,c"),
-        ("a,b,|c", "T,", "a,b,|c"),
-        ("|a,b,c", "2f,,", "a|,b,c"),
+        // f t F T ; , are evil-snipe's in David's Doom (ROADMAP C26): t skips a match right
+        // next to the cursor, and ; , repeat with the count the find had.
+        ("a,b,|c", "T,", "a,|b,c"),
+        ("|a,b,c", "2f,,", "a,b|,c"),
         ("|a,b,c", "fz", "|a,b,c"),
         // Brackets and paragraphs.
         ("|f(a(b)c)", "%", "f(a(b)c|)"),
@@ -131,7 +133,7 @@ struct VimEngineTests {
         ("ab|c", "x", "a|b"),
         ("|abc", "2x", "|c"),
         ("ab|c", "X", "a|c"),
-        ("|a,b,c", "dt,", "|,b,c"),
+        ("|a,b,c", "dt,", "|,c"),
         ("|a,b,c", "df,", "|b,c"),
         ("|f(a(b)c) d", "d%", "| d"),
         ("one\n|two\nthree", "dd", "one\n|three"),
@@ -167,10 +169,10 @@ struct VimEngineTests {
         ("|foo bar baz", "c2wX<Esc>", "|X baz"),
         ("|foo bar", "c$X<Esc>", "|X"),
         ("fo|o bar", "CX<Esc>", "fo|X"),
-        ("|abc", "sX<Esc>", "|Xbc"),
+        ("|abc", "clX<Esc>", "|Xbc"),
         // cc, S, o and O keep the indentation, as with vim's autoindent and in evil.
         ("  fo|o\nbar", "ccX<Esc>", "  |X\nbar"),
-        ("  fo|o\nbar", "SX<Esc>", "  |X\nbar"),
+        ("  fo|o\nbar", "ccX<Esc>", "  |X\nbar"),
         // Yank and put.
         ("|foo bar", "ywP", "foo| foo bar"),
         ("|foo bar", "ywp", "ffoo| oo bar"),

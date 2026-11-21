@@ -533,7 +533,7 @@ In his Doom setup:
 | C23 | `iu` URL and `ix` XML attribute (exato) — **built** | S each | — |
 | C24 | `iB` / `aB` as the nearest block of any kind, as Doom's anyblock — **built** (David, 2026-11-21: "do it my doom emacs way"); `i{` stays `{ }` | S | — |
 | C25 | Comment toggling: `gcc`, `gc{motion}`, visual `gc` (evil-nerd-commenter) — **built**; the comment string is guessed from the text (David, 2026-11-21) | S-M | — |
-| C26 | evil-snipe: `s` / `S` two-character find, repeated with `;` `,` | M | David's choice: today `s` is vim's substitute |
+| C26 | evil-snipe: `s` / `S` two-character find, repeated with `;` `,` — **built**, Doom's way (David, 2026-11-21), with `f` `t` `F` `T` as evil-snipe-override-mode makes them | M | — |
 | C27 | evil-exchange: `gx{motion}` twice swaps the two spans; `gX` cancels — **built** | S-M | — |
 | C28 | evil-lion: `gl{motion}{char}` / `gL` align on a character — **built** | M | — |
 | C29 | `g⌃A` / `g⌃X` in visual mode: numbers that count up line by line (evil-numbers) — **built**, with visual `⌃A` / `⌃X` | S | — |

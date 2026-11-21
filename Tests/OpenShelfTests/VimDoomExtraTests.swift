@@ -89,4 +89,19 @@ struct VimDoomExtraTests {
     @Test func exchangeIsOneUndoStep() {
         #expect(VimEngineTests.run("|one two", "gxiwwgxiwu").string == "one two")
     }
+
+    /// Right after a snipe its own key repeats it and its backward key goes back, as evil-snipe's
+    /// transient keys do in Doom (emacs --batch can't show those keys, so these are by hand).
+    @Test(arguments: [
+        ("|ab ab ab", "sabs", "ab ab |ab"), ("|ab ab ab", "sabsS", "ab |ab ab"), ("|a b c b d b", "fbf", "a b c |b d b"),
+        ("|a b c b d b", "fbff", "a b c b d |b"), // After F, f repeats it (back) and F reverses it, as evil-snipe's transient map binds f / F.
+        ("a b c b d |b", "Fbf", "a |b c b d b"), ("a b c b d |b", "FbF", "a b c b d |b"), ("|a b c b d b", "tbt", "a b c| b d b"),
+        // Any other key ends it: s after l starts a new snipe, waiting for its characters.
+        ("|ab ab ab", "sabls", "ab a|b ab"),
+        // s then Return repeats the last snipe.
+        ("|ab ab ab", "sabls<CR>", "ab ab |ab"),
+    ])
+    func snipeRepeatKeys(start: String, keys: String, expected: String) {
+        #expect(VimEngineTests.marked(VimEngineTests.run(start, keys)) == expected)
+    }
 }

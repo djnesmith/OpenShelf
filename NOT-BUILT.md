@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 13 | 0 | 15 |
+| Vim features (C16–C43) | 14 | 0 | 14 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 31 | 5 | 56 |
+| **Total** | 32 | 5 | 55 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -241,7 +241,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `iu` url, `ix` XML attribute (exato) | Built | A URL needs a scheme, as in Emacs | — |
 | `iB` / `aB` any block (anyblock) | Built | Doom's meaning (David, 2026-11-21): the nearest of `( ) { } [ ] < >`; `i{` is `{ }` | — |
 | Comment: `gcc`, `gc{motion}`, visual `gc` (evil-nerd-commenter) | Built | Comment string guessed from the text (`;;` Lisp, `--` SQL, `//`, else `#`) | — |
-| evil-snipe: `s`/`S` two-character find, `;` `,` | Not built | The engine's `s` is vim's substitute, as plain vim | M |
+| evil-snipe: `s`/`S` two-character find, `;` `,` | Built | Doom's way (David, 2026-11-21): `s` `S` and `f` `t` `F` `T` are evil-snipe's; vim's `s` `S` are `cl` `cc` | — |
 | evil-exchange `gx` / `gX` | Built | Not on visual blocks; a change between drops the mark | — |
 | evil-lion `gl` / `gL` align | Built | On a character, or a pattern after `/`; Return (the mode's own rules) not built | — |
 | evil-numbers `⌃A` `⌃X` | Built | Visual `⌃A` and `g⌃A` (increasing) too | — |
@@ -262,7 +262,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `%` matching bracket | Built | | — |
 | `*` `#` `n` `N` `/` `?` | Built | No match highlighting; `:noh` not built | S |
 | `gn` / `cgn` | Not built | `dgn` says "not a command", but `cgn` deletes one character instead: a bug | S |
-| `f` `t` `F` `T` with `;` `,` | Built | | — |
+| `f` `t` `F` `T` with `;` `,` | Built | evil-snipe's since C26 | — |
 | Marks `m{a-z}`, `'` and `` ` `` | Not built | Left out on 11-18 (short texts). `ma` falls to `a` (append): a wrong-mode trap | S |
 | Registers `"a`–`"z`, `"A` append, `"+` `"*` `"_` `"0` | Built | | — |
 | `:s` | Built | Gaps in "Edit window, different from vim" below | — |

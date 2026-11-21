@@ -508,4 +508,62 @@ struct VimDoomTextObjectTests {
     func exchange(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// s S, z Z x X after an operator, and f t F T as evil-snipe with Doom's settings (C26). One emacs per case.
+    @Test(arguments: [
+        ("|one two three tw4", "stw", "one |two three tw4"),
+        ("|one two three tw4", "stw;", "one two three |tw4"),
+        ("one two three t|w4", "Stw", "one |two three tw4"),
+        ("|a.b a.b", "s.b", "a|.b a.b"),
+        ("|aXb axb", "sxb", "a|Xb axb"),
+        ("|aXb axb", "sXb", "a|Xb axb"),
+        ("|ab\ncd", "scd", "|ab\ncd"),
+        ("|one two three", "dztw", "|o three"),
+        ("|one two three", "dZtw", "|one two three"),
+        ("|one two three", "vstwd", "|o three"),
+        ("one tw|o three", "Stw", "one |two three"),
+        ("|a b c b d b", "fb", "a |b c b d b"),
+        ("|a b c b d b", "tb", "a| b c b d b"),
+        ("a b c b d |b", "Fb", "a b c |b d b"),
+        ("|aB ab", "fb", "a|B ab"),
+        ("|a b c b d b", "2fb", "a b c |b d b"),
+        ("|a b c b d b", "dfb", "| c b d b"),
+        ("|a b c b d b", "dfbf", "| c b d b"),
+        ("|a b c b d b", "d2fb", "| d b"),
+        ("|one two", "s", "|one two"),
+        ("|one two", "sZZ", "|one two"),
+        ("|café cafe", "sfe", "ca|fé cafe"),
+        ("|abab", "sab", "ab|ab"),
+        ("|a,b,c", "dt,", "|,c"),
+        ("a,b,|c", "T,", "a,|b,c"),
+        ("|a,b,c", "2f,,", "a,b|,c"),
+        ("|a,b,c,d", "f,;", "a,b|,c,d"),
+        ("|a,b,c,d", "2f,;", "a,b|,c,d"),
+        ("|a b c b", "dtb", "|b c b"),
+        ("|abc", "sbc", "a|bc"),
+        ("|abc abc", "dzbc", "| abc"),
+        ("|abc abc", "dxbc", "|bc"),
+        ("abc |abc", "dZab", "|abc"),
+        ("abc |abc", "dXab", "ab|abc"),
+        ("|one two\nthree two", "stw;", "one two\nthree |two"),
+        ("|aa", "fa", "a|a"),
+        ("|xa", "ta", "|xa"),
+        ("|xab", "tb", "x|ab"),
+        ("|one two", "s<CR>", "|one two"),
+        ("|xAb ab", "sab", "x|Ab ab"),
+        ("|xab Ab", "sAb", "xab |Ab"),
+        ("|aB ab", "fB", "a|B ab"),
+        ("|a b", "vfbd", "|"),
+        ("|a bc", "vsbcd", "|"),
+        ("|abc", "sb<CR>", "a|bc"),
+        ("|a,b,c", "t,", "a,|b,c"),
+        ("|aa,b,c", "t,", "a|a,b,c"),
+        ("|aa,b,c", "t,;", "aa,|b,c"),
+        ("a,b,|c", "F,", "a,b|,c"),
+        ("|a,b,c", "fz", "|a,b,c"),
+        ("|a,b,c", "f,;", "a,b|,c"),
+    ])
+    func snipe(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }
