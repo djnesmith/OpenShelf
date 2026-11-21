@@ -45,6 +45,20 @@ struct VimEditorWindowTests {
         #expect(effects == [.finish])
     }
 
+    /// The range gx marked has a background until the second gx swaps it (evil-exchange).
+    @Test func theExchangeMarkIsHighlighted() {
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        view.load("one two")
+        func marked(_ at: Int) -> Bool {
+            view.layoutManager?.temporaryAttribute(.backgroundColor, atCharacterIndex: at, effectiveRange: nil) != nil
+        }
+        for c in "gxiw" { view.keyDown(with: Self.key(String(c))) }
+        #expect(marked(0) && marked(2) && !marked(4))
+        for c in "wgxiw" { view.keyDown(with: Self.key(String(c))) }
+        #expect(view.string == "two one")
+        #expect(!marked(0) && !marked(4))
+    }
+
     /// Windows line breaks are lines to vim, and go back on at the end.
     @Test func crlfTextIsEditedByLineAndKeepsItsBreaks() {
         let window = VimEditorWindow()

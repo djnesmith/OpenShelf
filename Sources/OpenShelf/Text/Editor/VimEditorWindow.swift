@@ -523,6 +523,7 @@ final class VimTextView: NSTextView {
         defer { isRendering = false }
         let text = engine.string
         if string != text { string = text }
+        showMarks()
         // A visual block shows as one selection per line (empty pieces left out).
         if let block = engine.blockSelection {
             let ranges = block.filter { !$0.isEmpty }.map { range -> NSValue in
@@ -547,6 +548,17 @@ final class VimTextView: NSTextView {
         scrollRangeToVisible(range)
         needsDisplay = true
         onChange()
+    }
+
+    /// The range gx marked (evil-exchange) gets a background until the second gx.
+    private func showMarks() {
+        guard let layoutManager else { return }
+        let whole = NSRange(location: 0, length: (string as NSString).length)
+        layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: whole)
+        guard let mark = engine.exchangeHighlight, !mark.isEmpty else { return }
+        let start = utf16Offset(of: mark.lowerBound)
+        let range = NSRange(location: start, length: utf16Offset(of: mark.upperBound) - start)
+        layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.findHighlightColor.withAlphaComponent(0.5), forCharacterRange: range)
     }
 
     /// vim's cursor as an offset in the view's text.

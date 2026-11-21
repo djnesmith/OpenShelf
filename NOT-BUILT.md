@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 12 | 0 | 16 |
+| Vim features (C16–C43) | 13 | 0 | 15 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 30 | 5 | 57 |
+| **Total** | 31 | 5 | 56 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -242,7 +242,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `iB` / `aB` any block (anyblock) | Built | Doom's meaning (David, 2026-11-21): the nearest of `( ) { } [ ] < >`; `i{` is `{ }` | — |
 | Comment: `gcc`, `gc{motion}`, visual `gc` (evil-nerd-commenter) | Built | Comment string guessed from the text (`;;` Lisp, `--` SQL, `//`, else `#`) | — |
 | evil-snipe: `s`/`S` two-character find, `;` `,` | Not built | The engine's `s` is vim's substitute, as plain vim | M |
-| evil-exchange `gx` / `gX` | Not built | Swap two text spans | S-M |
+| evil-exchange `gx` / `gX` | Built | Not on visual blocks; a change between drops the mark | — |
 | evil-lion `gl` / `gL` align | Built | On a character, or a pattern after `/`; Return (the mode's own rules) not built | — |
 | evil-numbers `⌃A` `⌃X` | Built | Visual `⌃A` and `g⌃A` (increasing) too | — |
 | evil-visualstar: `*` `#` on a visual selection | Built | From the cursor, as Doom: `viw#` finds the word itself first | — |

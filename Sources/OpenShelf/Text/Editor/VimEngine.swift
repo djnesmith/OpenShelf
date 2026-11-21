@@ -536,6 +536,47 @@ struct VimEngine {
         wantedColumn = nil
     }
 
+    // MARK: - Exchanging
+
+    /// The range the first gx marked, while the text is as it was then (evil-exchange keeps
+    /// markers; here any change in between drops the mark).
+    private var exchangeMark: (range: Range<Int>, linewise: Bool, text: [Character])?
+
+    /// What the window highlights: the range gx marked, waiting for the second gx.
+    var exchangeHighlight: Range<Int>? {
+        guard let mark = exchangeMark, mark.text == text else { return nil }
+        return mark.range
+    }
+
+    /// gx (evil-exchange): the first marks `range`; the second swaps the two texts in one undo
+    /// step. The cursor goes to the start of the second range, moved by what changed before
+    /// it, as in Doom; over lines to the first non-blank. Ranges that overlap are not swapped
+    /// and the mark is dropped.
+    private mutating func exchange(_ range: Range<Int>, linewise: Bool) {
+        guard let mark = exchangeMark, mark.text == text else {
+            exchangeMark = (range, linewise, text)
+            return
+        }
+        exchangeMark = nil
+        let (first, second) = mark.range.lowerBound <= range.lowerBound ? (mark.range, range) : (range, mark.range)
+        guard !mark.range.overlaps(range) || mark.range.isEmpty || range.isEmpty, mark.range != range else {
+            if mark.range != range { cursor = first.lowerBound }
+            failed = true
+            return
+        }
+        let firstText = Array(text[first]), secondText = Array(text[second])
+        // The cursor goes to the start of the range this gx took, moved by the swap before it.
+        let position = range.lowerBound
+        checkpoint(at: first.lowerBound)
+        text.replaceSubrange(second, with: firstText)
+        text.replaceSubrange(first, with: secondText)
+        let shift = secondText.count - firstText.count
+        // Side by side, evil-exchange swaps its texts the other way round and point ends at the start.
+        cursor = first.upperBound == second.lowerBound ? first.lowerBound : position >= first.upperBound ? position + shift : position
+        if linewise || mark.linewise { cursor = firstNonBlank(lineStart(cursor)) }
+        clampCursor()
+    }
+
     // MARK: - Aligning
 
     /// The lines a motion or text object covers from the cursor, for gl.
@@ -692,6 +733,11 @@ struct VimEngine {
         case .indent, .outdent, .surround, .format, .comment:
             mode = .normal
             applyLines(op, block.first, block.last)
+        case .exchange:
+            // evil-exchange swaps blocks with blocks only; not built here.
+            mode = .normal
+            cursor = corner
+            failed = true
         }
     }
 
@@ -963,6 +1009,8 @@ struct VimEngine {
         case format = "q"
         /// gc: comments or uncomments lines, as evil-nerd-commenter (ROADMAP C25).
         case comment = "C"
+        /// gx: marks a range, and the next gx swaps the two (evil-exchange, ROADMAP C27).
+        case exchange = "X"
     }
 
     struct Command {
@@ -1029,12 +1077,12 @@ struct VimEngine {
     /// vim commands this engine doesn't have, read to their end so the keys after them
     /// never run as commands of their own (2026-11-20: `=ip` and `ma` fell into insert
     /// mode). nil: not one of them; .some(nil): wait for more keys; .some(reason): done.
-    static let unbuiltOperators = ["=", "!", "g?", "gw", "gx", "g@", "zf"]
+    static let unbuiltOperators = ["=", "!", "g?", "gw", "g@", "zf"]
     static let unbuiltWithArgument: [String: String] = [
         "m": "marks are not built", "'": "marks are not built", "`": "marks are not built",
         "z": "not built", "[": "not built", "]": "not built", "g'": "marks are not built", "g`": "marks are not built",
     ]
-    static let unbuiltAlone = ["gn", "gN", "gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g-", "g+", "gX", "gd", "gD", "g*", "g#", "g&"]
+    static let unbuiltAlone = ["gn", "gN", "gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g-", "g+", "gd", "gD", "g*", "g#", "g&"]
 
     private func unbuiltCommand(_ keys: [VimKey], from start: Int) -> String?? {
         var typed = ""
@@ -1215,6 +1263,12 @@ struct VimEngine {
             } else if case .char("c") = second {
                 index += 1
                 op = .comment
+            } else if case .char("x") = second {
+                index += 1
+                op = .exchange
+            } else if case .char("X") = second, !inVisual {
+                index += 1
+                return .done(Command(count: nil, action: .simple("exchangeCancel")))
             }
         }
         if let op {
@@ -1226,7 +1280,7 @@ struct VimEngine {
             guard let doubled = next() else { return .incomplete }
             // dd, cc, yy, >>, <<, g~~, guu, gUU, gqq, and gugu-style repeats. gUgg is gU to the first line.
             var repeated = false
-            if case .char(let d) = doubled, d == op.rawValue || (op == .comment && d == "c") {
+            if case .char(let d) = doubled, d == op.rawValue || (op == .comment && d == "c") || (op == .exchange && d == "x") {
                 repeated = true
             } else if case .char("g") = doubled, [.toggleCase, .lower, .upper, .format].contains(op) {
                 guard index + 1 < keys.count else { return .incomplete }
@@ -1514,7 +1568,7 @@ struct VimEngine {
         switch command.action {
         case .motion: false
         case .deleteSurround, .changeSurround, .addSurround, .align: true
-        case .operate(let op, _): op != .yank
+        case .operate(let op, _): op != .yank && op != .exchange
         case .simple(let name):
             ["x", "X", "s", "S", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement"].contains(name)
                 || (name.hasPrefix("line") && name != "liney") || (name.hasPrefix("r") && name.count == 2)
@@ -1774,6 +1828,7 @@ struct VimEngine {
         case "q":
             // vim: "The 'q' command is disabled while executing a register".
             if playDepth == 0 { stopRecording() }
+        case "exchangeCancel": exchangeMark = nil
         case "ZZ": return .finish
         case "ZQ": return .cancel
         default:
@@ -2207,6 +2262,11 @@ struct VimEngine {
         if op == .surround { return wrapLines(first, last, in: surroundPair, indenting: false) }
         if op == .format { return format(first, last) }
         if op == .comment { return toggleComment(first, last) }
+        if op == .exchange {
+            let starts = lineStarts
+            // The lines' text without the last line break, so the last line swaps cleanly.
+            return exchange(starts[first]..<lineEnd(starts[last]), linewise: true)
+        }
         let starts = lineStarts
         let start = starts[first]
         let bodyEnd = lineEnd(starts[last])
@@ -2238,7 +2298,7 @@ struct VimEngine {
             cursor = start + indent.count
             beginInsert()
             return
-        case .surround, .format, .comment:
+        case .surround, .format, .comment, .exchange:
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: start)
@@ -2255,6 +2315,7 @@ struct VimEngine {
     /// An operator on the characters in `range`.
     private mutating func apply(_ op: Operator, to range: Range<Int>) {
         if op == .surround { return wrap(range, in: surroundPair, trimming: true) }
+        if op == .exchange { return exchange(range, linewise: false) }
         if op == .format || op == .comment {
             let first = lineIndex(range.lowerBound), last = lineIndex(max(range.upperBound - 1, range.lowerBound))
             return op == .format ? format(first, last) : toggleComment(first, last)
@@ -2274,7 +2335,7 @@ struct VimEngine {
                 beginInsert()
                 return
             }
-        case .surround, .format, .comment:
+        case .surround, .format, .comment, .exchange:
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: range.lowerBound)

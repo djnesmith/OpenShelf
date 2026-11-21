@@ -486,4 +486,26 @@ struct VimDoomTextObjectTests {
     func align(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// gx and gX, evil-exchange (C27).
+    @Test(arguments: [
+        ("|one two three", "gxiwwgxiw", "two |one three"),
+        ("|one two three", "gxiwwwgxiw", "three two |one"),
+        ("|one two three", "gxiwgX", "|one two three"),
+        ("|one two three", "gxiwwgXgxiw", "one |two three"),
+        ("|one two three", "viwgxwviwgx", "two |one three"),
+        ("|a b", "gxiwgxiw", "|a b"),
+        ("|one two three", "gxawwgxaw", "|two one three"),
+        ("|ab cd", "gx2lwgx2l", "cd |ab"),
+        ("|one two three four", "gxe2wgxe", "three two |one four"),
+        ("|abc", "gxlgxl", "|abc"),
+        ("|one two three", "gxiw3wgxiw", "three two |one"),
+        ("|one\ntwo\nthree\nfour", "gxxjjgxx", "three\ntwo\n|one\nfour"),
+        ("  |one\ntwo\nthree x\nfour", "gxxjjgxx", "three x\ntwo\n  |one\nfour"),
+        ("|a b c", "gxiwwviwgx", "b |a c"),
+        ("|one two\nthree four", "gxjjgxx", "|one two\nthree four"),
+    ])
+    func exchange(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

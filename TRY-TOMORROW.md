@@ -90,7 +90,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `ciB` inside `{:a [1 2]}` on the 2 changes `1 2` (the nearest block, as in Doom);
     `gcc` comments a Clojure line with `;; `, `gcip` a paragraph, again to uncomment;
     `VG` then `g⌃A` on lines of `0` numbers them 1, 2, 3; `viw*` finds the next copy of a selection;
-    `glip=` lines up the `=` signs of a paragraph. (#53)
+    `glip=` lines up the `=` signs of a paragraph;
+    `gxiw` on one word, then `gxiw` on another, swaps them. (#53)
 
 ## Needs your decision
 

@@ -69,4 +69,24 @@ struct VimDoomExtraTests {
         #expect(engine.string == "a b")
         #expect(engine.mode == .normal)
     }
+
+    @Test func exchangeMarkIsShownUntilSwappedOrCancelled() {
+        var engine = VimEngineTests.run("|one two", "gxiw")
+        #expect(engine.exchangeHighlight == 0..<3)
+        _ = engine.handle(VimEngineTests.keys("gX"))
+        #expect(engine.exchangeHighlight == nil)
+        _ = engine.handle(VimEngineTests.keys("gxiwwgxiw"))
+        #expect(engine.exchangeHighlight == nil)
+        #expect(engine.string == "two one")
+    }
+
+    @Test func aChangeBetweenDropsTheExchangeMark() {
+        let engine = VimEngineTests.run("|one two", "gxiwwxbgxiw")
+        #expect(engine.string == "one wo")
+        #expect(engine.exchangeHighlight == 0..<3)
+    }
+
+    @Test func exchangeIsOneUndoStep() {
+        #expect(VimEngineTests.run("|one two", "gxiwwgxiwu").string == "one two")
+    }
 }
