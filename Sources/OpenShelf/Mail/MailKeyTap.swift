@@ -65,7 +65,8 @@ final class MailKeyTap {
     /// Whether the tap takes this key from Mail. False (the key goes to Mail) whenever in doubt.
     /// `ownPanelHasKeyboard` and `focusAllows` are parameters for tests.
     func takes(type: CGEventType, event: CGEvent, ownPanelHasKeyboard: Bool = NSApp.keyWindow != nil,
-               focusAllows: @MainActor (CGEvent, MailKeys.Outcome) -> Bool = MailKeyTap.focusAllows) -> Bool {
+               focusAllows: @MainActor (CGEvent, MailKeys.Outcome) -> Bool = MailKeyTap.focusAllows,
+               escapePlanner: @MainActor (CGEvent) -> MailKeys.EscapePlan = MailKeyTap.escapePlan) -> Bool {
         // macOS turns a slow tap off; it is turned back on, and the key passes.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -82,9 +83,9 @@ final class MailKeyTap {
             checked = plain
             pending = nil
         }
-        // One action per key down: a held Esc or u repeats, and after a close the next window
-        // in front would get it (2026-11-20). Repeats right after a close are dropped.
-        if key == MailKeys.escape || key == "u", event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+        // One action per key down: a held Esc repeats, and after a close the next window in
+        // front would get it (2026-11-20). Repeats right after a close are dropped.
+        if key == MailKeys.escape, event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
             return Date().timeIntervalSince(MailKeyActions.lastCloseAt) < 2
         }
         // One of OpenShelf's own panels (the snooze prompt, the folder picker) has the
@@ -98,6 +99,15 @@ final class MailKeyTap {
         if key == MailKeys.escape, pending == nil, !ownPanelHasKeyboard, let window = closesMessageWindow(event) {
             // After the tap returns, so the key is gone before the window is closed.
             DispatchQueue.main.async { MainActor.assumeIsolated { MailKeyActions.close(window) } }
+            return true
+        }
+        if key == MailKeys.escape, pending == nil {
+            let plan = escapePlanner(event)
+            switch plan {
+            case .pass: return false
+            case .clearSelection: DispatchQueue.main.async { MainActor.assumeIsolated { MailKeyActions.clearSelection() } }
+            case .focusList: DispatchQueue.main.async { MainActor.assumeIsolated { MailKeyActions.backToList() } }
+            }
             return true
         }
         let outcome = MailKeys.outcome(for: key, pending: pending)
@@ -125,6 +135,35 @@ final class MailKeyTap {
         return String(utf16CodeUnits: chars, count: 1).first
     }
 
+    /// Esc's plan from Mail's focus, read with a short timeout; anything unreadable passes.
+    static func escapePlan(_ event: CGEvent) -> MailKeys.EscapePlan {
+        guard let mail = MailMenu.running else { return .pass }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.1)
+        guard let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute) else { return .pass }
+        let window = AXMenuNode.element(app, kAXFocusedWindowAttribute)
+        let inViewer = window.map { MailKeys.isMainViewer(AXDialogNode(element: $0)) } ?? false
+        let messageList = inViewer ? window.flatMap(AXSelectableList.inViewer) : nil
+        let inList = MailKeys.isInside(focused, messageList?.list, parent: { AXMenuNode.element($0, kAXParentAttribute) }, same: { CFEqual($0, $1) })
+        var editable: CFTypeRef?
+        AXUIElementCopyAttributeValue(focused, "AXEditable" as CFString, &editable)
+        // A Mail menu showing: its bar item is selected.
+        let menuOpen = AXMenuNode.element(app, kAXMenuBarAttribute).map { bar in
+            AXMenuNode.childElements(bar).contains { item in
+                var selected: CFTypeRef?
+                return AXUIElementCopyAttributeValue(item, kAXSelectedAttribute as CFString, &selected) == .success && (selected as? Bool) == true
+            }
+        } ?? true
+        let plan = MailKeys.escapePlan(
+            focusedRole: AXMenuNode.string(focused, kAXRoleAttribute), isEditable: (editable as? Bool) ?? false,
+            inMessageList: inList, inViewer: inViewer, selectedCount: inList ? (messageList?.selectedRows.count ?? 0) : 0,
+            hasSheetOrPopover: hasSheetOrPopover(app), menuOpen: menuOpen,
+            modifiers: event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn]).isEmpty ? [] : .other,
+            mailHasFocus: MailMenu.hasKeyboardFocus())
+        if inViewer { KeysLog.note("Esc in the viewer (\(AXMenuNode.string(focused, kAXRoleAttribute) ?? "?"), in the list \(inList)): \(plan)") }
+        return plan
+    }
+
     /// Mail's focus, read with a short timeout; anything unreadable lets the key through.
     static func focusAllows(_ event: CGEvent, _ outcome: MailKeys.Outcome) -> Bool {
         let flags = event.flags
@@ -135,16 +174,6 @@ final class MailKeyTap {
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.1)
         guard let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute) else { return false }
-        if character(of: event) == MailKeys.escape {
-            let list = AXSelectableList(focused: focused)
-            return MailKeys.mayTakeEscape(
-                focusedRole: AXMenuNode.string(focused, kAXRoleAttribute),
-                selectedCount: list?.selectedRows.count ?? 0,
-                hasSheetOrPopover: hasSheetOrPopover(app),
-                modifiers: modifiers,
-                mailHasFocus: MailMenu.hasKeyboardFocus()
-            )
-        }
         var editable: CFTypeRef?
         AXUIElementCopyAttributeValue(focused, "AXEditable" as CFString, &editable)
         let role = AXMenuNode.string(focused, kAXRoleAttribute)
@@ -355,8 +384,6 @@ enum MailKeyActions {
             MailKeyHelp.shared.show()
         case .clearSelection:
             clearSelection()
-        case .backToList:
-            backToList()
         case .firstMessage:
             selectEnd(last: false)
         case .lastMessage:
@@ -709,11 +736,11 @@ enum MailKeyActions {
         }
         let sendEnabled = MailKeys.sendIsOn(menuRead: MailMenu.menuBar() != nil, send: MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled)
         let plan = MailKeys.backToList(facts, focusInList: focusInList(), sendEnabled: sendEnabled)
-        KeysLog.note("u: \(plan)")
+        KeysLog.note("Esc, back to the list: \(plan)")
         switch plan {
         case .close: close(window)
         case .focusList:
-            guard let messageList else { KeysLog.note("u: no message list in the viewer"); return }
+            guard let messageList else { KeysLog.note("Esc, back to the list: no message list in the viewer"); return }
             // The list's own focus first; Mail may ignore it when the window itself has focus
             // (2026-11-20, after a g key through the sidebar), so then the app's focus.
             AXUIElementSetAttributeValue(messageList, kAXFocusedAttribute as CFString, kCFBooleanTrue)
@@ -722,7 +749,7 @@ enum MailKeyActions {
                 AXUIElementSetAttributeValue(app, kAXFocusedUIElementAttribute as CFString, messageList)
                 taken = focusInList()
             }
-            KeysLog.note("u: list has the keyboard: \(taken ? "yes" : "no")")
+            KeysLog.note("Esc, back to the list: list has the keyboard: \(taken ? "yes" : "no")")
         case .nothing: break
         }
     }

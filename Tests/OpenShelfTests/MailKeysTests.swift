@@ -217,34 +217,46 @@ struct MailKeysTests {
 
     /// Esc and `* n` mean select none.
     @Test func escapeAndStarNSelectNone() {
-        #expect(MailKeys.outcome(for: MailKeys.escape, pending: nil) == .act(.clearSelection))
         #expect(MailKeys.outcome(for: "n", pending: "*") == .act(.clearSelection))
         #expect(MailKeys.outcome(for: MailKeys.escape, pending: "*") == .pass)
-        #expect(MailKeys.help.contains { $0.0.contains("Esc") && $0.0.contains("* n") })
+        #expect(MailKeys.help.contains { $0.0 == "* n" })
+        #expect(MailKeys.help.contains { $0.0 == "Esc" && $0.1.contains("back to the list") && $0.1.contains("select none") })
     }
 
-    /// Esc is taken only for several selected messages in the list with nothing open over
-    /// it; everywhere else Mail gets it (it closes things there).
-    static let escapeCases: [(String?, Int, Bool, MailKeys.Modifiers, Bool, Bool)] = [
-        ("AXTable", 2, false, [], true, true),
-        ("AXRow", 40, false, [], true, true),
-        ("AXOutline", 3, false, [], true, true),
-        ("AXTable", 1, false, [], true, false),
-        ("AXTable", 0, false, [], true, false),
-        ("AXTable", 5, true, [], true, false),
-        ("AXTable", 5, false, .shift, true, false),
-        ("AXTable", 5, false, .other, true, false),
-        ("AXTable", 5, false, [], false, false),
-        ("AXTextField", 5, false, [], true, false),
-        ("AXWebArea", 5, false, [], true, false),
-        (nil, 5, false, [], true, false),
-    ]
-
-    @Test func escapeFailsOpen() {
-        for (role, count, sheet, modifiers, focus, expected) in Self.escapeCases {
-            #expect(MailKeys.mayTakeEscape(focusedRole: role, selectedCount: count, hasSheetOrPopover: sheet, modifiers: modifiers, mailHasFocus: focus) == expected,
-                    "\(role ?? "nil") \(count) \(sheet)")
+    /// Esc in the viewer (David, 2026-11-20 evening), the first that applies: anything
+    /// editable, a text or search field, a sheet, popover or open menu, a modifier, or Mail
+    /// not focused: Mail gets it. Outside the message list in the viewer: back to the list.
+    /// In the list: select none with several selected, else Mail.
+    @Test func escapePlanInOrder() {
+        func plan(_ role: String? = "AXOutline", editable: Bool = false, inList: Bool = false, inViewer: Bool = true, selected: Int = 0,
+                  sheet: Bool = false, menu: Bool = false, modifiers: MailKeys.Modifiers = [], focus: Bool = true) -> MailKeys.EscapePlan {
+            MailKeys.escapePlan(focusedRole: role, isEditable: editable, inMessageList: inList, inViewer: inViewer, selectedCount: selected,
+                                hasSheetOrPopover: sheet, menuOpen: menu, modifiers: modifiers, mailHasFocus: focus)
         }
+        // The sidebar with a folder selected, the window after a g key, the reading pane.
+        #expect(plan("AXOutline") == .focusList)
+        #expect(plan("AXWindow") == .focusList)
+        #expect(plan("AXWebArea") == .focusList)
+        // All selected but focus in the sidebar: back to the list first; a second Esc clears.
+        #expect(plan("AXOutline", selected: 0) == .focusList)
+        #expect(plan("AXTable", inList: true, selected: 40) == .clearSelection)
+        #expect(plan("AXRow", inList: true, selected: 2) == .clearSelection)
+        #expect(plan("AXTable", inList: true, selected: 1) == .pass)
+        #expect(plan("AXTable", inList: true, selected: 0) == .pass)
+        // Mail keeps Esc for what it cancels.
+        #expect(plan("AXTextField") == .pass)               // renaming a mailbox
+        #expect(plan("AXSearchField") == .pass)
+        #expect(plan("AXTextArea") == .pass)
+        #expect(plan("AXGroup", editable: true) == .pass)
+        #expect(plan(sheet: true) == .pass)
+        #expect(plan(menu: true) == .pass)
+        #expect(plan("AXTable", inList: true, selected: 5, menu: true) == .pass)
+        #expect(plan(modifiers: .shift) == .pass)
+        #expect(plan(modifiers: .other) == .pass)
+        #expect(plan(focus: false) == .pass)
+        #expect(plan(nil) == .pass)
+        // Outside the viewer (a window of its own is closed before this is asked).
+        #expect(plan("AXWebArea", inViewer: false) == .pass)
     }
 
     @MainActor final class FakeList: MailKeys.SelectableList {
@@ -389,9 +401,6 @@ struct MailKeysTests {
         #expect(!MailKeys.isInside(cell, nil, parent: { $0.parent }, same: { $0 === $1 }))
         let viewer = MailKeys.WindowFacts(isStandardWindow: true, isViewer: true, hasSheetOrPopover: false, hasComposeControls: false, textFieldCount: 0)
         #expect(MailKeys.backToList(viewer, focusInList: inside(folderRow), sendEnabled: false) == .focusList)
-        // Renaming a mailbox in the sidebar is a text field: u goes to Mail untouched.
-        #expect(!MailKeys.mayTake(focusedRole: "AXTextField", isEditable: true, sendEnabled: false, modifiers: [], action: .backToList))
-        #expect(!MailKeys.mayTake(focusedRole: "AXTextField", isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: true, action: .backToList))
     }
 
     @Test func backToListInEachState() {
@@ -409,16 +418,17 @@ struct MailKeysTests {
         #expect(MailKeys.backToList(nil, focusInList: false, sendEnabled: false) == .nothing)
     }
 
-    /// u, g g and G are in the table and the list; g g and G only act from the list.
+    /// u is undo (David, 2026-11-20 evening: "shouldn't u be undo?"), like z; g g and G are in
+    /// the table and the list; g g and G only act from the list.
     @Test func uAndFirstAndLast() {
-        #expect(MailKeys.outcome(for: "u", pending: nil) == .act(.backToList))
+        #expect(MailKeys.outcome(for: "u", pending: nil) == .act(.menu("Edit", "Undo")))
+        #expect(MailKeys.outcome(for: "z", pending: nil) == .act(.menu("Edit", "Undo")))
         #expect(MailKeys.outcome(for: "g", pending: "g") == .act(.firstMessage))
         #expect(MailKeys.outcome(for: "G", pending: nil) == .act(.lastMessage))
         #expect(MailKeys.outcome(for: "g", pending: nil) == .prefix("g"))
-        #expect(MailKeys.actsOnOneMessage(.backToList))
         #expect(!MailKeys.actsOnOneMessage(.firstMessage))
         #expect(!MailKeys.actsOnOneMessage(.lastMessage))
-        #expect(MailKeys.help.contains { $0.0 == "u" })
+        #expect(MailKeys.help.contains { $0.0 == "u  or  z" && $0.1 == "undo" })
         #expect(MailKeys.help.contains { $0.0.contains("g g") && $0.0.contains("G") })
     }
 
@@ -430,7 +440,7 @@ struct MailKeysTests {
         }
         for action in [MailKeys.Action.menu("Message", "Reply"), .menu("Message", "Reply All"), .menu("Message", "Forward"),
                        .menu("Message", "Archive"), .menu("Edit", "Delete"), .menu("Message", "Toggle Flag"), .snooze, .file,
-                       .menu("Message", "Mute"), .menu("Message", "Move to Junk"), .menu("Message", "Unread"), .backToList, .showKeys] {
+                       .menu("Message", "Mute"), .menu("Message", "Move to Junk"), .menu("Message", "Unread"), .showKeys] {
             #expect(may("AXWebArea", action), "\(action)")
             #expect(may("AXGroup", action), "\(action)")
         }
@@ -686,7 +696,7 @@ struct MailKeysTests {
             #expect(MailKeys.outcome(for: key, pending: "g") == .act(.favorite(mailbox)), "g \(key)")
         }
         #expect(MailKeys.outcome(for: "j", pending: nil) == .act(.nextMessage))
-        #expect(MailKeys.outcome(for: "u", pending: nil) == .act(.backToList))
+        #expect(MailKeys.outcome(for: "u", pending: nil) == .act(.menu("Edit", "Undo")))
         #expect(MailKeys.outcome(for: "l", pending: nil) == .act(.file))
         #expect(MailKeys.outcome(for: "r", pending: nil) == .act(.menu("Message", "Reply")))
         #expect(MailKeys.unifiedIndex(for: "Junk", in: ["All Junk"]) == 0)

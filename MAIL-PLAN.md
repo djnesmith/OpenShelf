@@ -117,6 +117,8 @@ window included, and moves to `{cursor}`; nothing Mail-only was needed.
 2. **Single keys on by default?** Recommend off, with a switch in Settings, because of the
    Input Monitoring prompt.
 3. **`u` (back to the list).** Recommend: focus the message list, or close a message window.
+   **Decided 2026-11-20 evening** (David: "shouldn't u be undo?"): `u` is undo, like `z`, and
+   Esc goes back to the list. Esc, the first that applies: a message open in its own window closes; in the viewer with focus outside the message list (the sidebar, the reading pane, the window after a g key) the list gets the keyboard; in the list with several selected, select none; anything else (a text or search field, anything editable, a sheet, popover or open menu) goes to Mail, which cancels it.
 4. **`n` / `p` (next/previous in a conversation).** Recommend: leave out at first; Mail has
    no direct command.
 5. **`[` (archive, then previous).** Recommend: archive, then ↑. Mail moves to the next

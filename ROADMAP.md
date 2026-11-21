@@ -871,7 +871,8 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     |---|---|---|
     | `j` / `k` | Next (older) / previous (newer) message | ↓ / ↑ in the message list |
     | `o` or Return | Open the message | Message › Open (⌘O) |
-    | `u` | Back to the list | No direct equivalent; close a message window (⌘W) or focus the list |
+    | `u` | Undo (David, 2026-11-20 evening: "shouldn't u be undo?"; was back to the list) | ⌘Z |
+    | Esc | The first that applies: a message open in its own window closes; in the viewer with focus outside the message list (the sidebar, the reading pane, the window after a g key) the list gets the keyboard; in the list with several selected, select none; anything else (a text or search field, anything editable, a sheet, popover or open menu) goes to Mail, which cancels it | Mail's own Esc otherwise |
     | `n` / `p` | Next / previous message in a conversation | No direct key; arrows within an expanded conversation |
     | `/` | Search | Edit › Find › Mailbox Search (⌥⌘F) |
     | `g i` | All Inboxes ("Inbox" with one account) | Mailbox › Go to Favorite Mailbox, else the sidebar row |
@@ -898,7 +899,7 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     | `m` | Mute the conversation | Message › Mute |
     | `!` | Junk | Mark as Junk (⇧⌘J) |
     | `Shift-i` / `Shift-u` | Mark read / unread | ⇧⌘U toggles |
-    | `z` | Undo | ⌘Z |
+    | `z` | Undo (also `u`) | ⌘Z |
     | `[` / `]` | Archive, then the previous / next message | Archive moves to the next message by itself; no "previous" form |
     | `c` | New message | ⌘N |
     | ⌘↩ | Send | Today an App Shortcut on "Send"; Mail's own key is ⇧⌘D (above) |

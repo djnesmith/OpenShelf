@@ -14,9 +14,6 @@ enum MailKeys {
         case archiveThenPrevious
         /// Esc and `* n`: select none. Only the list's selection changes, never a message.
         case clearSelection
-        /// `u`: back to the list (David, 2026-11-20: "i like a back to the list hotkey"): a
-        /// message open on its own closes; in the viewer, the keyboard goes to the list.
-        case backToList
         /// `g g` and `G`: the first or last message in the list.
         case firstMessage, lastMessage
     }
@@ -48,9 +45,9 @@ enum MailKeys {
         "z": .menu("Edit", "Undo"),
         "c": .menu("File", "New Message"),
         "?": .showKeys,
-        "u": .backToList,
+        // David, 2026-11-20 evening: "shouldn't u be undo?" (vim); back to the list is Esc now.
+        "u": .menu("Edit", "Undo"),
         "G": .lastMessage,
-        escape: .clearSelection,
     ]
 
     static let escape: Character = "\u{1b}"
@@ -178,18 +175,28 @@ enum MailKeys {
     static func actsOnOneMessage(_ action: Action) -> Bool {
         switch action {
         case .menu(let top, let title): top == "Message" && title != "Open Message" || (top == "Edit" && title == "Delete")
-        case .snooze, .file, .archiveThenPrevious, .showKeys, .backToList: true
+        case .snooze, .file, .archiveThenPrevious, .showKeys: true
         case .favorite, .nextMessage, .previousMessage, .clearSelection, .firstMessage, .lastMessage: false
         }
     }
 
     static let listRoles: Set<String> = ["AXTable", "AXOutline", "AXRow", "AXCell"]
 
-    /// Esc is taken only to clear a selection of several messages in the list, with no
-    /// sheet or popover open. Otherwise it goes to Mail, which uses it to close things.
-    static func mayTakeEscape(focusedRole: String?, selectedCount: Int, hasSheetOrPopover: Bool, modifiers: Modifiers, mailHasFocus: Bool) -> Bool {
-        guard mailHasFocus, modifiers.isEmpty, !hasSheetOrPopover, let role = focusedRole else { return false }
-        return listRoles.contains(role) && selectedCount > 1
+    /// What Esc does in Mail's viewer (David, 2026-11-20 evening: Esc takes over u's "back
+    /// to the list"). A message open in its own window is closed before this is asked.
+    enum EscapePlan: Equatable { case pass, focusList, clearSelection }
+
+    /// In this order, the first that applies: anything editable, a text or search field, a
+    /// sheet, popover or open menu, or a modifier: Mail gets Esc (it cancels them). Focus
+    /// in the viewer outside its message list (the sidebar, the reading pane, the window
+    /// after a g key): the list gets the keyboard. In the message list with several
+    /// selected: select none. Anything else: Mail.
+    static func escapePlan(focusedRole: String?, isEditable: Bool, inMessageList: Bool, inViewer: Bool, selectedCount: Int,
+                           hasSheetOrPopover: Bool, menuOpen: Bool, modifiers: Modifiers, mailHasFocus: Bool) -> EscapePlan {
+        guard mailHasFocus, modifiers.isEmpty, !hasSheetOrPopover, !menuOpen, let role = focusedRole else { return .pass }
+        guard !isEditable, !textRoles.contains(role) else { return .pass }
+        if inMessageList { return selectedCount > 1 ? .clearSelection : .pass }
+        return inViewer ? .focusList : .pass
     }
 
     /// What the Esc-closes-a-message rule reads about Mail's front window.
@@ -541,7 +548,8 @@ enum MailKeys {
         ("e  or  ]", "archive"), ("[", "archive, then the message above"), ("x", "move to Trash"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),
-        ("⇧I / ⇧U", "mark read / unread"), ("z", "undo"), ("c", "new message"),
-        ("* a", "select all"), ("Esc  or  * n", "select none (when several are selected)"), ("Esc", "close a message open in its own window"), ("u", "back to the list"), ("g g  /  G", "first / last message"), ("?", "this list"),
+        ("⇧I / ⇧U", "mark read / unread"), ("u  or  z", "undo"), ("c", "new message"),
+        ("* a", "select all"), ("* n", "select none"),
+        ("Esc", "close a message window; else back to the list; in the list, select none (several selected)"), ("g g  /  G", "first / last message"), ("?", "this list"),
     ]
 }
