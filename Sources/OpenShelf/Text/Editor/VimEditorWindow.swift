@@ -596,7 +596,8 @@ final class VimTextView: NSTextView {
         layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: whole)
         let matches = engine.searchHighlights
         let mark = engine.exchangeHighlight
-        guard !matches.isEmpty || mark != nil else { return }
+        let regions = engine.multiedit
+        guard !matches.isEmpty || mark != nil || !regions.isEmpty else { return }
         // UTF-16 offsets for every character once, rather than counting from the start per match.
         var offsets = [0]
         offsets.reserveCapacity(engine.text.count + 1)
@@ -607,6 +608,10 @@ final class VimTextView: NSTextView {
         }
         if let mark, !mark.isEmpty {
             layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.findHighlightColor.withAlphaComponent(0.5), forCharacterRange: nsRange(mark))
+        }
+        // evil-multiedit's regions (ROADMAP C31).
+        for region in regions where !region.isEmpty {
+            layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.systemPurple.withAlphaComponent(0.3), forCharacterRange: nsRange(region))
         }
     }
 
@@ -676,6 +681,17 @@ final class VimTextView: NSTextView {
     /// (the line numbers' width and the cursor's line).
     override func didChangeText() {
         super.didChangeText()
+        // Typing in a multiedit region goes into every region as it is typed (ROADMAP C31).
+        if !isRendering, engine.mode == .insert, !engine.multiedit.isEmpty {
+            engine.syncInsert(text: string, cursor: characterIndex(utf16: selectedRange().location))
+            if engine.string != string {
+                isRendering = true
+                string = engine.string
+                setSelectedRange(NSRange(location: utf16Offset(of: engine.cursor), length: 0))
+                isRendering = false
+            }
+            showMarks()
+        }
         if !isRendering { onChange() }
     }
 
@@ -796,8 +812,13 @@ final class VimTextView: NSTextView {
             switch event.keyCode {
             case 38, 125: return .alt("j")
             case 40, 126: return .alt("k")
+            // ⌥D: evil-multiedit's M-d in David's Doom.
+            case 2: return .alt("d")
             default: break
             }
+        }
+        if event.modifierFlags.intersection([.command, .control, .option, .shift]) == [.option, .shift], event.keyCode == 2 {
+            return .alt("D")
         }
         switch event.keyCode {
         case 53: return .escape

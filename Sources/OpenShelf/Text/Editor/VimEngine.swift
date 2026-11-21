@@ -217,6 +217,16 @@ struct VimEngine {
 
     /// Handles one key. Returns `.finish` or `.cancel` when the window should close.
     mutating func handle(_ key: VimKey) -> VimEffect? {
+        guard !multiedit.isEmpty else { return handleRegular(key) }
+        if mode == .normal, pending.isEmpty, let effect = multieditKey(key) { return effect.0 }
+        // Any other key runs as usual; what it changed in a region is made in all of them. In
+        // insert mode the typing is mirrored when it ends (or as typed, through syncInsert).
+        let effect = handleRegular(key)
+        if mode != .insert, !multiedit.isEmpty { mirrorMultiedit() }
+        return effect
+    }
+
+    private mutating func handleRegular(_ key: VimKey) -> VimEffect? {
         message = nil
         // Once per key typed, not for each key a macro or "." plays, which keeps those fast.
         if playDepth == 0, !isRepeating { moveMarks() }
@@ -227,6 +237,10 @@ struct VimEngine {
         case .commandLine: return handleCommandLine(key)
         case .replace: handleReplace(key); return nil
         case .normal, .visual, .visualLine, .visualBlock:
+            if pending.isEmpty, key == .alt("d") || key == .alt("D") || (inVisual && key == .char("R")) {
+                startOrGrowMultiedit(key)
+                return nil
+            }
             // Right after a snipe its own key repeats it, its backward key goes back (evil-snipe).
             let repeatKeys = snipeRepeatKeys
             snipeRepeatKeys = nil
@@ -275,6 +289,160 @@ struct VimEngine {
         }
     }
 
+    // MARK: - Multiedit
+
+    /// evil-multiedit's regions (ROADMAP C31; David's ~/.doom.d/config.el:738-759): places
+    /// holding the same text, where a change made in one is made in all. Empty when off.
+    private(set) var multiedit: [Range<Int>] = []
+    /// The text the regions were last placed on, to see what a key changed.
+    private var multieditText: [Character] = []
+    /// The text the regions hold, and whether only whole words match (from normal mode).
+    private var multieditOccurrence: [Character] = []
+    private var multieditWholeWord = false
+
+    /// Where `needle` occurs in the text, as evil-multiedit finds it (whole words from normal
+    /// mode, anywhere from visual mode), in order, not overlapping.
+    private func occurrences(of needle: [Character], wholeWord: Bool) -> [Range<Int>] {
+        guard !needle.isEmpty, needle.count <= text.count else { return [] }
+        var result: [Range<Int>] = []
+        var at = 0
+        while at + needle.count <= text.count {
+            if Array(text[at..<(at + needle.count)]) == needle,
+               !wholeWord || ((at == 0 || characterClass(at - 1, big: false) != 1) && (at + needle.count == text.count || characterClass(at + needle.count, big: false) != 1)) {
+                result.append(at..<(at + needle.count))
+                at += needle.count
+            } else {
+                at += 1
+            }
+        }
+        return result
+    }
+
+    /// Visual R marks every copy of the selection; ⌥D marks the word under the cursor (or the
+    /// selection), then each press the next copy after the marked ones; ⌥⇧D the one before.
+    private mutating func startOrGrowMultiedit(_ key: VimKey) {
+        let forward = key != .alt("D")
+        if multiedit.isEmpty {
+            let range: Range<Int>
+            if let selection, inVisual {
+                range = selection
+                multieditWholeWord = false
+            } else {
+                guard cursor < text.count, characterClass(cursor, big: false) == 1 else {
+                    failed = true
+                    failureHint = "\(Self.describe([key])): no word here"
+                    return
+                }
+                var low = cursor, high = cursor + 1
+                while low > 0, characterClass(low - 1, big: false) == 1 { low -= 1 }
+                while high < text.count, characterClass(high, big: false) == 1 { high += 1 }
+                range = low..<high
+                multieditWholeWord = true
+            }
+            guard !range.isEmpty else { return }
+            multieditOccurrence = Array(text[range])
+            multiedit = key == .char("R") ? occurrences(of: multieditOccurrence, wholeWord: false) : [range]
+            multieditText = text
+            // From visual mode the cursor ends just after the selection, as evil leaves it.
+            if inVisual { cursor = range.upperBound }
+            mode = .normal
+            clampCursor()
+            return
+        }
+        let all = occurrences(of: multieditOccurrence, wholeWord: multieditWholeWord)
+        let next = forward ? all.first { $0.lowerBound >= (multiedit.last?.upperBound ?? 0) } : all.last { $0.upperBound <= (multiedit.first?.lowerBound ?? 0) }
+        guard let next else {
+            failed = true
+            failureHint = "\(Self.describe([key])): no more matches"
+            return
+        }
+        multiedit = (multiedit + [next]).sorted { $0.lowerBound < $1.lowerBound }
+        mode = .normal
+    }
+
+    /// Keys evil-multiedit's state has (c, D, ⌃N, ⌃P, Return, Esc); nil for the rest, which run
+    /// as usual, any change they make in a region being made in all.
+    private mutating func multieditKey(_ key: VimKey) -> (VimEffect?, Void)? {
+        // The region under the cursor, or ending just before it, as iedit finds its overlay.
+        let current = multiedit.firstIndex { $0.contains(cursor) } ?? multiedit.firstIndex { $0.upperBound == cursor }
+        switch key {
+        case .escape, .ctrl("["), .ctrl("c"):
+            // Esc leaves it, as evil-force-normal-state aborts evil-multiedit.
+            multiedit = []
+            return (nil, ())
+        case .ctrl("n"), .ctrl("p"):
+            let forward = key == .ctrl("n")
+            guard let target = forward ? multiedit.first(where: { $0.lowerBound > cursor }) ?? multiedit.first : multiedit.last(where: { $0.lowerBound < cursor }) ?? multiedit.last else { return (nil, ()) }
+            cursor = target.lowerBound
+            clampCursor()
+            return (nil, ())
+        case .enter:
+            // Return turns the region under the cursor off.
+            guard let current else { return (nil, ()) }
+            multiedit.remove(at: current)
+            return (nil, ())
+        case .char("c"), .char("D"):
+            guard let current else { return nil }
+            let region = multiedit[current]
+            checkpoint(at: region.lowerBound)
+            if key == .char("c") { insertStartText = text }
+            text.removeSubrange(region)
+            cursor = region.lowerBound
+            mirrorMultiedit()
+            if key == .char("c") {
+                beginInsert()
+            } else {
+                clampCursor()
+            }
+            return (nil, ())
+        default:
+            return nil
+        }
+    }
+
+    /// Makes the change since `multieditText` in every region: a change inside (or touching) a
+    /// region gives all of them its new text; one outside moves the regions after it, and
+    /// drops any it overlaps.
+    private mutating func mirrorMultiedit() {
+        let old = multieditText, new = text
+        defer { multieditText = text }
+        guard old != new else { return }
+        let prefix = zip(old, new).prefix { $0 == $1 }.count
+        let room = min(old.count, new.count) - prefix
+        let suffix = min(zip(old.reversed(), new.reversed()).prefix { $0 == $1 }.count, room)
+        let oldEnd = old.count - suffix, delta = new.count - old.count
+        guard let edited = multiedit.firstIndex(where: { $0.lowerBound <= prefix && oldEnd <= $0.upperBound }) else {
+            multiedit = multiedit.compactMap { region in
+                if region.lowerBound >= oldEnd { return (region.lowerBound + delta)..<(region.upperBound + delta) }
+                if region.upperBound <= prefix { return region }
+                return nil
+            }
+            if multiedit.isEmpty { multieditOccurrence = [] }
+            return
+        }
+        let region = multiedit[edited]
+        let content = Array(new[region.lowerBound..<(region.upperBound + delta)])
+        // Rebuild: each region, in order, takes the new content.
+        var result: [Character] = []
+        var regions: [Range<Int>] = []
+        var last = 0
+        var newCursor = cursor
+        for (index, r) in multiedit.enumerated() {
+            result += old[last..<r.lowerBound]
+            regions.append(result.count..<(result.count + content.count))
+            // A region before the cursor (in the text as it is now) changes its length.
+            let nowAt = r.lowerBound + (r.lowerBound > region.lowerBound ? delta : 0)
+            if index != edited, nowAt < cursor { newCursor += content.count - r.count }
+            result += content
+            last = r.upperBound
+        }
+        result += old[last...]
+        text = result
+        cursor = min(max(newCursor, 0), text.count)
+        multiedit = regions
+        multieditOccurrence = content
+    }
+
     mutating func handle(_ keys: [VimKey]) -> VimEffect? {
         var effect: VimEffect?
         for key in keys { effect = handle(key) ?? effect }
@@ -288,6 +456,7 @@ struct VimEngine {
         // Pasted Windows line breaks become "\n", which is what vim's lines end in.
         text = Array(newText.replacingOccurrences(of: "\r\n", with: "\n"))
         cursor = min(max(newCursor, 0), text.count)
+        if !multiedit.isEmpty { mirrorMultiedit() }
     }
 
     /// Moves the cursor where a click put it; a click leaves visual mode.

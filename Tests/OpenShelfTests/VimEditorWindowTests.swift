@@ -79,6 +79,22 @@ struct VimEditorWindowTests {
         }
     }
 
+    /// Typing in a multiedit region goes into every region as it is typed, and ⌥D is M-d.
+    @Test func multieditTypingGoesIntoEveryRegion() {
+        #expect(VimTextView.vimKey(for: Self.key("∂", keyCode: 2, modifiers: .option)) == .alt("d"))
+        #expect(VimTextView.vimKey(for: Self.key("Î", keyCode: 2, modifiers: [.option, .shift])) == .alt("D"))
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        view.load("ab x ab")
+        for c in "viwRc" { view.keyDown(with: Self.key(String(c))) }
+        view.insertText("Q", replacementRange: view.selectedRange())
+        #expect(view.string == "Q x Q")
+        view.insertText("R", replacementRange: view.selectedRange())
+        #expect(view.string == "QR x QR")
+        view.keyDown(with: Self.key("\u{1b}", keyCode: 53))
+        #expect(view.engine.string == "QR x QR")
+        #expect(view.layoutManager?.temporaryAttribute(.backgroundColor, atCharacterIndex: 5, effectiveRange: nil) != nil)
+    }
+
     /// Search matches get a background while / is typed and after the search, until :noh.
     @Test func searchMatchesAreHighlighted() {
         let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))

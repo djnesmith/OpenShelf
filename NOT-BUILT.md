@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 26 | 0 | 2 |
+| Vim features (C16–C43) | 27 | 0 | 1 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 44 | 5 | 43 |
+| **Total** | 45 | 5 | 42 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -248,7 +248,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | evil-visualstar: `*` `#` on a visual selection | Built | From the cursor, as Doom: `viw#` finds the word itself first | — |
 | evil-escape `jk` | Built | | — |
 | `⌥J` / `⌥K` move lines (his `config.el`) | Built | | — |
-| evil-multiedit: visual `R`, `M-d` / `M-D` (his `config.el:738-759`) | Not built | Edit every match at once | L |
+| evil-multiedit: visual `R`, `M-d` / `M-D` (his `config.el:738-759`) | Built | `M-d` is `⌥D`; in the regions `c` `D` `⌃N` `⌃P` Return, Esc to leave | — |
 | Slurp, barf, raise (`s-R` sp-raise-sexp) | Built | His keys: `⌃L` `⌃H` slurp, `⌃J` `⌃K` barf (`~/.doom.d/config.el:821-824`), `⌘⇧R` raise (`:456`); lines are not re-indented | — |
 
 ### Vim itself

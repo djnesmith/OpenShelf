@@ -868,4 +868,17 @@ struct VimDoomTextObjectTests {
     func lineCommands(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// visual R, then keys in the regions, as evil-multiedit with David's keys (C31). emacs --batch hangs on c, which is checked by hand.
+    @Test(arguments: [
+        ("|foo bar foo baz foo", "viwRD<Esc>", "| bar  baz "),
+        ("|foo bar foo", "viwRaZ<Esc><Esc>", "foo |Zbar foo"),
+        ("|foo bar foo", "viwRiZ<Esc><Esc>", "foo|Z bar fooZ"),
+        ("|foo bar foo", "viwRxx<Esc>", "foo|ar foo"),
+        ("|foo bar foo", "viwR<C-n>x<Esc>", "oo bar |oo"),
+        ("|foo bar foo", "viwR<Esc>x", "foo|bar foo"),
+    ])
+    func multiedit(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

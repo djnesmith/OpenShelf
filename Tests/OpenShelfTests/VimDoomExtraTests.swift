@@ -333,4 +333,37 @@ struct VimDoomExtraTests {
         // "d" into a register.
         #expect(VimEngineTests.run("|a\nb", ":1d x<CR>\"xp").string == "b\na")
     }
+
+    /// evil-multiedit's change and ⌥D (emacs --batch hangs on its c, so these are by hand, from
+    /// iedit's rule: a change in one region is made in all of them).
+    @Test func multieditChangesEveryRegion() {
+        func marked(_ start: String, _ keys: String) -> String { VimEngineTests.marked(VimEngineTests.run(start, keys)) }
+        #expect(marked("|foo bar foo baz foo", "viwRcX<Esc><Esc>") == "|X bar X baz X")
+        #expect(marked("|foo bar foo baz foo", "viwRcXY<Esc>") == "X|Y bar XY baz XY")
+        // ⌥D marks the word, each press the next copy; whole words only.
+        #expect(marked("|foo foobar foo", "<A-d><A-d>cX<Esc><Esc>") == "|X foobar X")
+        #expect(marked("|foo bar foo baz foo", "<A-d>cX<Esc><Esc>") == "|X bar foo baz foo")
+        #expect(marked("foo bar foo baz |foo", "<A-d><A-D>cX<Esc><Esc>") == "foo bar X baz |X")
+        // From visual mode words don't matter.
+        #expect(marked("|foo foobar foo", "viwRcX<Esc><Esc>") == "|X Xbar X")
+        // Return turns the region under the cursor off.
+        #expect(marked("|foo bar foo baz foo", "viwR<C-n><CR>ggcX<Esc><Esc>") == "|X bar foo baz X")
+        // One undo takes the change back everywhere.
+        #expect(VimEngineTests.run("|foo bar foo", "viwRcX<Esc>u").string == "foo bar foo")
+        // Esc leaves multiedit; the regions are gone.
+        var engine = VimEngineTests.run("|foo bar foo", "viwR")
+        #expect(engine.multiedit == [0..<3, 8..<11])
+        _ = engine.handle(VimEngineTests.keys("<Esc>"))
+        #expect(engine.multiedit.isEmpty)
+    }
+
+    /// Typing in insert mode goes into every region as the window passes it on (syncInsert).
+    @Test func multieditMirrorsLiveTyping() {
+        var engine = VimEngineTests.run("|ab x ab", "viwRc")
+        engine.syncInsert(text: "Q x ", cursor: 1)
+        #expect(engine.string == "Q x Q")
+        #expect(engine.cursor == 1)
+        engine.syncInsert(text: "QR x Q", cursor: 2)
+        #expect(engine.string == "QR x QR")
+    }
 }

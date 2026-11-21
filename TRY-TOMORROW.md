@@ -100,7 +100,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `ma` on a line, move away, `d'a` deletes the lines between;
     `gp` after a paste selects it again;
     `/foo` highlights every foo as you type; Esc clears them; on a long text `zt` puts the
-    line at the top, `⌃D` goes half a window down; `G` then `⌃O` comes back; `:g/TODO/d` drops every TODO line, `:%sort u` sorts and dedupes. (#53)
+    line at the top, `⌃D` goes half a window down; `G` then `⌃O` comes back; `:g/TODO/d` drops every TODO line, `:%sort u` sorts and dedupes;
+    `viw` then `R` on a name, `c`, type a new one: every copy changes as you type. (#53)
 
 ## Needs your decision
 
