@@ -313,4 +313,24 @@ struct VimDoomExtraTests {
         #expect(line(VimEngineTests.run("|ab\ncd\nef\ngh", "jxjjxggg;g;g,")) == 3)
         #expect(VimEngineTests.run("|ab", "g;").failureHint != nil)
     }
+
+    /// :m :t and :g d at the last line, where evil (an Emacs buffer without a final line break)
+    /// leaves one behind; the window's text keeps none, as vim does. Plus undo and errors.
+    @Test func lineCommandEdges() {
+        func marked(_ start: String, _ keys: String) -> String { VimEngineTests.marked(VimEngineTests.run(start, keys)) }
+        #expect(marked("|a\nb\nc", ":1m$<CR>") == "b\nc\n|a")
+        #expect(marked("|a\nb\nc", ":1,2t$<CR>") == "a\nb\nc\na\n|b")
+        #expect(marked("|ab\ncd\nab", ":g/ab/d<CR>") == "|cd")
+        #expect(marked("|ab\ncd\nab\nef", ":v/ab/d<CR>") == "ab\n|ab")
+        #expect(VimEngineTests.run("|ab\ncd\nab", ":g/ab/s/b/X/<CR>u").string == "ab\ncd\nab")
+        #expect(VimEngineTests.run("|a\nb\nc", ":%norm Ax<CR>u").string == "a\nb\nc")
+        let pastEnd = VimEngineTests.run("|a\nb", ":5d<CR>")
+        #expect(pastEnd.message == "E16: Invalid range" && pastEnd.string == "a\nb")
+        #expect(VimEngineTests.run("|a\nb\nc", ":1,2m1<CR>").message == "E134: Cannot move a range of lines into itself")
+        #expect(VimEngineTests.run("|a\nb", ":g/zz/d<CR>").message == "E486: Pattern not found: zz")
+        // A line number past the end still goes to the last line.
+        #expect(VimEngineTests.marked(VimEngineTests.run("|a\nb\nc", ":99<CR>")) == "a\nb\n|c")
+        // "d" into a register.
+        #expect(VimEngineTests.run("|a\nb", ":1d x<CR>\"xp").string == "b\na")
+    }
 }

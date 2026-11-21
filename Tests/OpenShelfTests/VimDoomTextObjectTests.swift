@@ -826,4 +826,46 @@ struct VimDoomTextObjectTests {
     func sentence(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// :d :m :t :co :sort :norm :g :v with ranges (C38), as evil's ex commands.
+    @Test(arguments: [
+        ("|a\nb\nc\nd\ne", ":2,3d<CR>", "a\n|d\ne"),
+        ("|a\nb\nc\nd\ne", ":2d<CR>", "a\n|c\nd\ne"),
+        ("|a\nb\nc\nd\ne", ":d<CR>", "|b\nc\nd\ne"),
+        ("|a\nb\nc\nd\ne", ":%d<CR>", "|"),
+        ("|a\nb\nc\nd\ne", ":$d<CR>", "a\nb\nc\n|d"),
+        ("|a\nb\nc\nd\ne", ":.,+2d<CR>", "|d\ne"),
+        ("|a\nb\nc\nd\ne", ":2,3m0<CR>", "b\n|c\na\nd\ne"),
+        ("|a\nb\nc\nd\ne", ":2m4<CR>", "a\nc\nd\n|b\ne"),
+        ("|a\nb\nc\nd\ne", ":3t0<CR>", "|c\na\nb\nc\nd\ne"),
+        ("|a\nb\nc\nd\ne", ":2co3<CR>", "a\nb\nc\n|b\nd\ne"),
+        ("|c 3\na 1\nb 2\nA 0\na 1", ":sort<CR>", "|A 0\na 1\na 1\nb 2\nc 3"),
+        ("|c 3\na 1\nb 2\nA 0\na 1", ":sort!<CR>", "|c 3\nb 2\na 1\na 1\nA 0"),
+        ("|c 3\na 1\nb 2\nA 0\na 1", ":sort i<CR>", "|A 0\na 1\na 1\nb 2\nc 3"),
+        ("|c 3\na 1\nb 2\nA 0\na 1", ":sort u<CR>", "|A 0\na 1\nb 2\nc 3"),
+        ("|c 3\na 1\nb 2\nA 0\na 1", ":2,4sort<CR>", "c 3\n|A 0\na 1\nb 2\na 1"),
+        ("|a\nb\nc\nd\ne", ":%norm Ax<CR>", "ax\nbx\ncx\ndx\ne|x"),
+        ("|a1\nb\na2", ":g/a/s/a/X/<CR>", "X1\nb\n|X2"),
+        ("|a1\nb\na2", ":g/a/norm Ay<CR>", "a1y\nb\na2|y"),
+        ("|a\nb\nc", ":g/./m0<CR>", "|c\nb\na"),
+        ("|a\nb\nc\nd\ne", "jVj:d<CR>", "a\n|d\ne"),
+        ("|a\nb\nc\nd\ne", ":2,3d<CR>u", "a\n|b\nc\nd\ne"),
+        ("|a\nb\nc\nd\ne", ":%norm Ax<CR>u", "|a\nb\nc\nd\ne"),
+        ("|a\nb\nc\nd\ne", "majj:'a,.d<CR>", "|d\ne"),
+        ("|a\nb\nc\nd\ne", ":2;+1d<CR>", "a\n|d\ne"),
+        ("|a\nb\nc\nd\ne", ":2,3delete<CR>", "a\n|d\ne"),
+        ("|a\nb\nc\nd\ne", ":2,3move 0<CR>", "b\n|c\na\nd\ne"),
+        ("|a\nb\nc\nd\ne", ":2,3norm I- <CR>", "a\n- b\n-| c\nd\ne"),
+        ("|ab\ncd\nab\nx", ":g/ab/d<CR>", "cd\n|x"),
+        ("|ab\ncd\nab\nef", ":v/ab/s/./Z/<CR>", "ab\nZd\nab\n|Zf"),
+        ("|a\nb\nc", ":g/b/t.<CR>", "a\nb\n|b\nc"),
+        ("|a\nb\nc\nd", ":g/./m0<CR>", "|d\nc\nb\na"),
+        ("|x1\nb\nx2\nc\nd", ":g/x/m3<CR>", "b\nx1\n|x2\nc\nd"),
+        ("|a\nB", ":sort<CR>", "|B\na"),
+        ("|a\nB", ":sort i<CR>", "|a\nB"),
+        ("a|bc\ndef", ":%norm x<CR>", "bc\n|ef"),
+    ])
+    func lineCommands(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

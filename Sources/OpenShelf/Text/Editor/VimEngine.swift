@@ -584,6 +584,8 @@ struct VimEngine {
             }
             return .cancel
         default:
+            // :norm keeps trailing blanks, which it types.
+            if let effect = runLineCommand(String(body.drop { $0 == " " })) { return effect.0 }
             if let substitute = VimSubstitute.parse(command) {
                 self.substitute(substitute)
                 return nil
@@ -598,6 +600,240 @@ struct VimEngine {
             }
             return nil
         }
+    }
+
+    // MARK: - Ex commands on lines
+
+    /// A line number for an ex address: `.`, `$`, a number, 'a, each with +N / -N after; or
+    /// +N / -N alone, from the current line. 0-based; nil when there is none at the start.
+    private func exAddress(_ text: inout Substring, current: Int) -> Int?? {
+        let last = lineStarts.count - 1
+        var line: Int?
+        if text.hasPrefix(".") {
+            line = current
+            text = text.dropFirst()
+        } else if text.hasPrefix("$") {
+            line = last
+            text = text.dropFirst()
+        } else if text.hasPrefix("'"), text.count >= 2 {
+            let name = text[text.index(after: text.startIndex)]
+            if name == "<" || name == ">" {
+                guard let visual = lastVisual else { return .some(nil) }
+                let ends = (min(visual.anchor, visual.cursor, self.text.count), min(max(visual.anchor, visual.cursor), self.text.count))
+                line = lineIndex(name == "<" ? ends.0 : ends.1)
+            } else {
+                guard let at = name == "'" ? contextMark : marks[name] else { return .some(nil) }
+                line = lineIndex(min(at, self.text.count))
+            }
+            text = text.dropFirst(2)
+        } else if let digits = Optional(text.prefix(while: \.isNumber)), let number = Int(digits) {
+            line = number - 1
+            text = text.dropFirst(digits.count)
+        }
+        while let sign = text.first, sign == "+" || sign == "-" {
+            text = text.dropFirst()
+            let digits = text.prefix(while: \.isNumber)
+            let step = Int(digits) ?? 1
+            text = text.dropFirst(digits.count)
+            line = (line ?? current) + (sign == "+" ? step : -step)
+        }
+        return line.map { .some($0) } ?? nil
+    }
+
+    /// The lines a range names (`%`, `'<,'>`, `a,b`, `a;b`, `a`), and what follows it.
+    /// nil lines with `given` set: a range that names no line (past the end, an unset mark).
+    private func exRange(_ command: String) -> (lines: ClosedRange<Int>?, rest: Substring, given: Bool) {
+        var rest = Substring(command.drop { $0 == " " || $0 == "\t" })
+        let last = lineStarts.count - 1
+        var current = lineIndex(cursor)
+        if rest.hasPrefix("%") { return (0...last, rest.dropFirst(), true) }
+        guard let firstAddress = exAddress(&rest, current: current) else { return (nil, rest, false) }
+        guard let first = firstAddress else { return (nil, rest.drop { !$0.isLetter }, true) }
+        var second = first
+        if let separator = rest.first, separator == "," || separator == ";" {
+            rest = rest.dropFirst()
+            if separator == ";" { current = first }
+            guard let next = exAddress(&rest, current: current), let end = next else { return (nil, rest.drop { !$0.isLetter }, true) }
+            second = end
+        }
+        guard first >= 0, second >= 0, first <= last, second <= last else { return (nil, rest, true) }
+        return (min(first, second)...max(first, second), rest, true)
+    }
+
+    /// :d :m :t (:co) :sort :norm :g :v with ranges (ROADMAP C38), as evil's ex commands.
+    /// nil when `command` is none of them; else the effect (always none) in a tuple.
+    private mutating func runLineCommand(_ command: String) -> (VimEffect?, Void)? {
+        let parsed = exRange(command)
+        let current = lineIndex(cursor)
+        let word = parsed.rest.prefix { $0.isLetter }
+        var rest = parsed.rest.dropFirst(word.count)
+        func named(_ short: String, _ long: String) -> Bool { word.count >= short.count && long.hasPrefix(word) }
+        func fail(_ text: String) -> (VimEffect?, Void) {
+            message = text
+            failed = true
+            return (nil, ())
+        }
+        let ours = named("d", "delete") || named("m", "move") || named("t", "t") || named("co", "copy") || named("sor", "sort")
+            || named("norm", "normal") || named("g", "global") || named("v", "vglobal")
+        guard ours else { return nil }
+        if parsed.given, parsed.lines == nil { return fail("E16: Invalid range") }
+        if named("d", "delete") {
+            let lines = parsed.lines ?? current...current
+            let register = rest.trimmingCharacters(in: .whitespaces).first
+            if let register, !Self.isRegisterName(register) { return fail("E488: Trailing characters") }
+            let saved = activeRegister
+            activeRegister = register
+            applyLines(.delete, lines.lowerBound, lines.upperBound)
+            activeRegister = saved
+            return (nil, ())
+        }
+        if named("m", "move") || named("t", "t") || named("co", "copy") {
+            let copying = !named("m", "move")
+            rest = Substring(rest.trimmingCharacters(in: .whitespaces))
+            var target: Int
+            if rest == "0" {
+                target = -1
+            } else {
+                guard let address = exAddress(&rest, current: current), let line = address, rest.isEmpty else { return fail("E14: Invalid address") }
+                target = line
+            }
+            let lines = parsed.lines ?? current...current
+            guard target < lineStarts.count else { return fail("E14: Invalid address") }
+            if !copying, lines.contains(target), target != lines.upperBound { return fail("E134: Cannot move a range of lines into itself") }
+            var all = string.components(separatedBy: "\n")
+            let block = Array(all[lines])
+            if copying {
+                all.insert(contentsOf: block, at: target + 1)
+                target = target + block.count
+            } else {
+                all.removeSubrange(lines)
+                let at = target >= lines.upperBound ? target - block.count + 1 : target + 1
+                all.insert(contentsOf: block, at: at)
+                target = at + block.count - 1
+            }
+            checkpoint(at: lineStarts[lines.lowerBound])
+            text = Array(all.joined(separator: "\n"))
+            cursor = firstNonBlank(lineStarts[min(target, lineStarts.count - 1)])
+            wantedColumn = nil
+            return (nil, ())
+        }
+        if named("sor", "sort") {
+            var reverse = false
+            if rest.first == "!" { reverse = true; rest = rest.dropFirst() }
+            let options = rest.filter { !$0.isWhitespace }
+            guard options.allSatisfy({ "iu".contains($0) }) else { return fail("E474: Invalid argument (sort takes i and u here, as evil's)") }
+            let lines = parsed.given ? parsed.lines! : 0...(lineStarts.count - 1)
+            var all = string.components(separatedBy: "\n")
+            var block = Array(all[lines])
+            let ignoreCase = options.contains("i")
+            func key(_ line: String) -> String { ignoreCase ? line.lowercased() : line }
+            block = block.enumerated().sorted { a, b in key(a.element) == key(b.element) ? a.offset < b.offset : key(a.element) < key(b.element) }.map(\.element)
+            if options.contains("u") {
+                var seen: [String] = []
+                block = block.filter { line in
+                    if seen.last.map({ key($0) == key(line) }) == true { return false }
+                    seen.append(line)
+                    return true
+                }
+            }
+            if reverse { block.reverse() }
+            all.replaceSubrange(lines, with: block)
+            let joined = all.joined(separator: "\n")
+            if joined != string {
+                checkpoint(at: lineStarts[lines.lowerBound])
+                text = Array(joined)
+            }
+            cursor = firstNonBlank(lineStarts[lines.lowerBound])
+            wantedColumn = nil
+            return (nil, ())
+        }
+        if named("norm", "normal") {
+            if rest.first == "!" { rest = rest.dropFirst() }
+            guard rest.first == " " else { return fail("E471: Argument required") }
+            let keys = Array(rest.dropFirst()).map(Self.key(for:))
+            let lines = parsed.lines ?? current...current
+            return (onLines(Array(lines)) { engine in
+                for key in keys {
+                    engine.failed = false
+                    _ = engine.handle(key)
+                    if engine.failed { break }
+                }
+                if engine.mode != .normal { _ = engine.handle(.escape) }
+            }, ())
+        }
+        if named("g", "global") || named("v", "vglobal") {
+            var invert = named("v", "vglobal")
+            if rest.first == "!" { invert = true; rest = rest.dropFirst() }
+            guard let delimiter = rest.first, !delimiter.isLetter, !delimiter.isNumber, delimiter != " " else { return fail("E492: Not an editor command") }
+            rest = rest.dropFirst()
+            var pattern = "", escaped = false
+            while let c = rest.first {
+                rest = rest.dropFirst()
+                if escaped { pattern.append(c == delimiter ? String(c) : "\\" + String(c)); escaped = false; continue }
+                if c == "\\" { escaped = true; continue }
+                if c == delimiter { break }
+                pattern.append(c)
+            }
+            let inner = rest.trimmingCharacters(in: .whitespaces).isEmpty ? "p" : String(rest)
+            if pattern.isEmpty { pattern = lastSearch?.pattern ?? "" }
+            let (icu, caseOverride) = VimSubstitute.icuPattern(pattern)
+            let ignoreCase = caseOverride ?? !pattern.contains(where: \.isUppercase)
+            guard !pattern.isEmpty, let regex = try? NSRegularExpression(pattern: icu, options: ignoreCase ? [.caseInsensitive] : []) else { return fail("E35: No previous regular expression") }
+            let all = string.components(separatedBy: "\n")
+            let lines = parsed.given ? parsed.lines! : 0...(all.count - 1)
+            let marked = lines.filter { i in
+                (regex.firstMatch(in: all[i], range: NSRange(all[i].startIndex..., in: all[i])) != nil) != invert
+            }
+            guard !marked.isEmpty else { return fail("E486: Pattern not found: \(pattern)") }
+            lastSearch = (pattern, true, false)
+            if inner == "p" { return (nil, ()) }
+            return (onLines(marked) { engine in
+                _ = engine.runCommandLine(":" + inner)
+            }, ())
+        }
+        return nil
+    }
+
+    /// Runs `body` with the cursor on each of `lines` (0-based, as they are now) in turn, as :g
+    /// and :norm do, following each line through the changes the earlier runs make (a line
+    /// deleted on the way is skipped), all in one undo step.
+    private mutating func onLines(_ lines: [Int], _ body: (inout VimEngine) -> Void) -> VimEffect? {
+        var current = string.components(separatedBy: "\n")
+        // Each line's id; lines the commands make get none.
+        var ids: [Int?] = Array(current.indices)
+        let undoBase = undoStack.count, trimmedBefore = undoTrimmed
+        let wasRepeating = isRepeating
+        isRepeating = true
+        defer {
+            isRepeating = wasRepeating
+            let first = undoBase - (undoTrimmed - trimmedBefore)
+            if first >= 0, undoStack.count > first + 1 { undoStack.removeSubrange((first + 1)...) }
+        }
+        for id in lines {
+            guard let line = ids.firstIndex(where: { $0 == id }) else { continue }
+            cursor = lineStarts[line]
+            body(&self)
+            // Match the lines again: the same at either end keep their ids; in between, a line
+            // with the same text as an old one there takes its id.
+            let new = string.components(separatedBy: "\n")
+            let prefix = zip(current, new).prefix { $0 == $1 }.count
+            let room = min(current.count, new.count) - prefix
+            let suffix = min(zip(current.reversed(), new.reversed()).prefix { $0 == $1 }.count, room)
+            var middle = Array(zip(current[prefix..<(current.count - suffix)], ids[prefix..<(current.count - suffix)]))
+            var newIds: [Int?] = Array(ids[..<prefix])
+            for text in new[prefix..<(new.count - suffix)] {
+                if let match = middle.firstIndex(where: { $0.0 == text }) {
+                    newIds.append(middle[match].1)
+                    middle.remove(at: match)
+                } else {
+                    newIds.append(nil)
+                }
+            }
+            newIds += ids[(current.count - suffix)...]
+            ids = newIds
+            current = new
+        }
+        return nil
     }
 
     // MARK: - gq
