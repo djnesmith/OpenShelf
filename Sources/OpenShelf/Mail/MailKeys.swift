@@ -552,6 +552,11 @@ enum MailKeys {
         return rowsNow < rowsBefore
     }
 
+    /// How `c` gives the To field the keyboard: the field's own AXFocused, then the app's
+    /// focused element, alternating.
+    enum ToFocusRoute: Equatable { case field, app }
+    static func toFocusRoute(attempt: Int) -> ToFocusRoute { attempt % 2 == 1 ? .field : .app }
+
     /// How a command's effect shows in Mail.
     enum Verification: Equatable { case rowsLeave, flag, read, none }
 
