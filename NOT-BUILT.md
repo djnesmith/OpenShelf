@@ -1,7 +1,7 @@
 # Not built yet
 
 What is left of ROADMAP.md, MAIL-PLAN.md and TRY-TOMORROW.md, checked against the code at
-a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing and snooze work). Sizes come from ROADMAP.md: S small, M medium, L large.
+2acaf61 (2026-11-21; every vim row C16–C43 built; the Mail rows as of the day's Mail keys work). Sizes come from ROADMAP.md: S small, M medium, L large.
 "Needs first" names what must happen before work starts. "—" means nothing.
 
 ## Count
@@ -215,7 +215,7 @@ a read-only check of each app's menus and Accessibility first. Size M-L, a guess
 
 ## Vim: related features
 
-Every not-built and partly-built row below is on the roadmap as C16–C43 (ROADMAP.md); the Edit window surviving a relaunch (C44) is won't build (David, 2026-11-20: "i think this is too much of an edge case to worry about").
+Every vim row on the roadmap, C16–C43 (ROADMAP.md), is built as of 2acaf61; what a row below says is missing is a detail of a built feature, not a roadmap item; the Edit window surviving a relaunch (C44) is won't build (David, 2026-11-20: "i think this is too much of an edge case to worry about").
 
 Checked against the engine at 6833d73 by running each key sequence (2026-11-20). "Built" means
 it matches vim --clean where vim has it. Ordered by what David's Doom setup has: Doom's

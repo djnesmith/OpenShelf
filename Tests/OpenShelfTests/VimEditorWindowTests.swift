@@ -558,4 +558,25 @@ struct VimEditorWindowTests {
         #expect(VimEditorWindow.hints(destination: "on the clipboard", wraps: false).contains("⌥⌘Z wrap: off"))
         #expect(on.range(of: "⌘W")!.lowerBound < on.range(of: "⌥⌘Z")!.lowerBound)
     }
+
+    /// The whole window, never put on screen: built, filled, searched (highlights), scrolled,
+    /// highlights cleared, then closed, with no crash; closed twice is harmless.
+    @Test @MainActor func theWindowOpensSearchesScrollsAndCloses() {
+        let window = VimEditorWindow()
+        let panel = window.makePanel()
+        window.load((1...200).map { "line \($0) foo" }.joined(separator: "\n"))
+        let view = window.panelTextView!
+        for c in "/foo" { view.keyDown(with: Self.key(String(c))) }
+        view.keyDown(with: Self.key("\r", keyCode: 36))
+        view.keyDown(with: Self.key("n"))
+        view.keyDown(with: Self.key("\u{04}", keyCode: 2, modifiers: .control))
+        for c in "zzGgg" { view.keyDown(with: Self.key(String(c))) }
+        for c in ":noh" { view.keyDown(with: Self.key(String(c))) }
+        view.keyDown(with: Self.key("\r", keyCode: 36))
+        view.keyDown(with: Self.key("\u{1b}", keyCode: 53))
+        #expect(window.text.hasPrefix("line 1 foo"))
+        panel.close()
+        panel.close()
+        #expect(!panel.isVisible)
+    }
 }
