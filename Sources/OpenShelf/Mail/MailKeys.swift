@@ -41,7 +41,10 @@ enum MailKeys {
         "b": .snooze, "v": .file, "l": .file,
         "m": .menu("Message", "Mute"),
         "!": .menu("Message", "Move to Junk"),
-        "I": .menu("Message", "Mark as Read"), "U": .menu("Message", "Unread"),
+        // Mail has one item it renames by state: "Mark as Read" on an unread message, "Mark
+        // as Unread" on a read one ("Unread" is only its nib name; keys.log 2026-11-21 01:50:
+        // "no “Unread” in Mail's Message menu", David: "marking unread or read does not work").
+        "I": .menu("Message", "Mark as Read"), "U": .menu("Message", "Mark as Unread"),
         "z": .menu("Edit", "Undo"),
         "c": .menu("File", "New Message"),
         "?": .showKeys,
@@ -439,6 +442,22 @@ enum MailKeys {
         var selected: Set<String>
         var flagged: [String: Bool] = [:]
         var read: [String: Bool] = [:]
+    }
+
+    /// ⇧I and ⇧U: press the item when Mail shows it; when Mail shows only the other title the
+    /// messages are already that way, so nothing is toggled back.
+    enum ReadPlan: Equatable { case press, already, missing }
+
+    static func readPlan(present: Bool, oppositePresent: Bool) -> ReadPlan {
+        present ? .press : (oppositePresent ? .already : .missing)
+    }
+
+    static func oppositeRead(_ title: String) -> String? {
+        switch title {
+        case "Mark as Read": "Mark as Unread"
+        case "Mark as Unread": "Mark as Read"
+        default: nil
+        }
     }
 
     /// How a command's effect shows in Mail.

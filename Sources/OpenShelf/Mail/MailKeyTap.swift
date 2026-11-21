@@ -364,6 +364,18 @@ enum MailKeyActions {
             if !conversationAction(archive: title == "Archive") { performVerified(title, under: top) }
         case .menu("Edit", "Undo"):
             undo()
+        case .menu("Message", let title) where MailKeys.oppositeRead(title) != nil:
+            let bar = MailMenu.menuBar() ?? []
+            let present = item(title, under: "Message", in: bar) != nil
+            let opposite = MailKeys.oppositeRead(title).map { item($0, under: "Message", in: bar) != nil } ?? false
+            switch MailKeys.readPlan(present: present, oppositePresent: opposite) {
+            case .already:
+                let state = title == "Mark as Read" ? "read" : "unread"
+                KeysLog.note("\(title): Mail shows only the other item; already \(state)")
+                ToastController.shared.show(Toast(systemImage: "envelope", title: "Already \(state)", subtitle: "Mail shows “\(MailKeys.oppositeRead(title)!)” for this selection"), for: .seconds(2))
+            case .press, .missing:
+                performVerified(title, under: "Message")
+            }
         case .menu(let top, let title) where verifiedTitles.contains(title):
             performVerified(title, under: top)
         case .menu(let top, let title):
@@ -438,7 +450,7 @@ enum MailKeyActions {
 
     /// Commands whose effect is checked in Mail after the key (archive, delete, junk, flag,
     /// read, mute).
-    static let verifiedTitles: Set<String> = ["Archive", "Delete", "Move to Junk", "Toggle Flag", "Mark as Read", "Unread", "Mute"]
+    static let verifiedTitles: Set<String> = ["Archive", "Delete", "Move to Junk", "Toggle Flag", "Mark as Read", "Mark as Unread", "Mute"]
 
     /// Does the command in the main viewer and checks it happened: the viewer's toolbar
     /// button first (one press), then the list gets the keyboard and the menu item is
