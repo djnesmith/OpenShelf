@@ -1102,7 +1102,7 @@ struct VimEngine {
         "m": "marks are not built", "'": "marks are not built", "`": "marks are not built",
         "z": "not built", "[": "not built", "]": "not built", "g'": "marks are not built", "g`": "marks are not built",
     ]
-    static let unbuiltAlone = ["gn", "gN", "gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g-", "g+", "gd", "gD", "g*", "g#", "g&"]
+    static let unbuiltAlone = ["gn", "gN", "gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g+", "gd", "gD", "g*", "g#", "g&"]
 
     private func unbuiltCommand(_ keys: [VimKey], from start: Int) -> String?? {
         var typed = ""
@@ -1271,6 +1271,13 @@ struct VimEngine {
             if case .char("v") = second, !inVisual {
                 index += 1
                 return .done(Command(count: nil, action: .simple("gv")))
+            }
+            // Doom's evil-numbers keys (doom+/modules/editor/evil/config.el:567-571): g= and g- add
+            // and take one, as ⌃A and ⌃X; in visual mode they count up, and g+ adds one to each.
+            if case .char(let g) = second, g == "=" || g == "-" || (g == "+" && inVisual) {
+                index += 1
+                let name = inVisual ? (g == "=" ? "visualIncrementEach" : g == "-" ? "visualDecrementEach" : "visualIncrement") : (g == "=" ? "increment" : "decrement")
+                return .done(Command(count: count, action: .simple(name)))
             }
             // g⌃A / g⌃X in visual mode: numbers that count up, one step more each (evil-numbers).
             if inVisual, second == .ctrl("a") || second == .ctrl("x") {

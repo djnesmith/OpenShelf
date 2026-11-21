@@ -609,4 +609,27 @@ struct VimDoomTextObjectTests {
     func defun(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// g= g- and visual g= g- g+, Doom's evil-numbers keys.
+    @Test(arguments: [
+        ("|x 5 y", "g=", "x |6 y"),
+        ("|x 5 y", "3g=", "x |8 y"),
+        ("|x 5 y", "g-", "x |4 y"),
+        ("x 5 |y 7", "g=", "x 5 y |8"),
+        ("|x -1", "g=", "x |0"),
+        ("|0x0f", "g=", "0x1|0"),
+        ("|007", "g-", "00|6"),
+        ("|a1b2", "g=", "a|2b2"),
+        ("x |y", "g=", "x |y"),
+        ("|9", "g=.", "1|1"),
+        ("|0\n0\n0", "VGg=", "|1\n2\n3"),
+        ("|5\n5\n5", "VGg-", "|4\n3\n2"),
+        ("|0\n0\n0", "VGg+", "|1\n1\n1"),
+        ("|0\n0", "VG2g=", "|2\n4"),
+        ("1|23", "vg+", "1|33"),
+        ("|x 5\ny 5", "g=j.", "x 6\ny |6"),
+    ])
+    func doomNumbers(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

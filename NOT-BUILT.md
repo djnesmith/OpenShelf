@@ -244,7 +244,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | evil-snipe: `s`/`S` two-character find, `;` `,` | Built | Doom's way (David, 2026-11-21): `s` `S` and `f` `t` `F` `T` are evil-snipe's; vim's `s` `S` are `cl` `cc` | — |
 | evil-exchange `gx` / `gX` | Built | Not on visual blocks; a change between drops the mark | — |
 | evil-lion `gl` / `gL` align | Built | On a character, or a pattern after `/`; Return (the mode's own rules) not built | — |
-| evil-numbers `⌃A` `⌃X` | Built | Visual `⌃A` and `g⌃A` (increasing) too | — |
+| evil-numbers `⌃A` `⌃X` | Built | Visual `⌃A` and `g⌃A` (increasing) too; Doom's own `g=` `g-`, visual `g=` `g-` `g+` | — |
 | evil-visualstar: `*` `#` on a visual selection | Built | From the cursor, as Doom: `viw#` finds the word itself first | — |
 | evil-escape `jk` | Built | | — |
 | `⌥J` / `⌥K` move lines (his `config.el`) | Built | | — |
