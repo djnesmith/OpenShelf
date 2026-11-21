@@ -463,16 +463,40 @@ enum MailKeyActions {
         }
         let kind = MailKeys.verification(for: title)
         Task { @MainActor in
-            let before = await snapshot(viewer)
+            var before = await snapshot(viewer)
             let focusRole = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) } ?? "?"
             KeysLog.note("\(title): focus \(focusRole), \(before.rows) rows, \(before.selected.count) selected")
+            let inbox = MailKeys.showsUnified("Inbox", windowTitle: AXMenuNode.string(viewer, kAXTitleAttribute))
+            let clear = MailKeys.reminderToClear(title: title, bar: MailMenu.menuBar() ?? [], viewerShowsInbox: inbox, selected: before.selected.count)
+            if title == "Archive", let clear {
+                switch await clearReminder(clear, in: viewer, before: before) {
+                case .done:
+                    afterDone?()
+                    return
+                case .stop:
+                    ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Reminder cleared, nothing archived",
+                                                      subtitle: "Mail's selection moved; check the list"), for: .seconds(5))
+                    return
+                case .archive(let now):
+                    before = now
+                }
+            }
             let label = MailKeys.toolbarLabel(for: title)
             let button = label.flatMap { MailKeys.toolbarButton($0, in: AXDialogNode(element: viewer)) } as? AXDialogNode
             if label != nil, button == nil { KeysLog.note("\(title): no \(label!) button in the viewer's toolbar") }
+            // Delete with a reminder to clear: one press only. A second Delete on a message
+            // already in Trash would erase it.
+            let clearAfterDelete = title == "Delete" && clear != nil
+            let originalBefore = before
             var tried: [MailKeys.ActionRoute] = []
             var last: MailKeys.ActionOutcome?
             while true {
-                switch MailKeys.nextActionStep(tried: tried, last: last, toolbarAvailable: button != nil) {
+                let step = MailKeys.nextActionStep(tried: tried, last: last, toolbarAvailable: button != nil && !clearAfterDelete)
+                if clearAfterDelete, step == .gaveUp || { if case .unsure = step { true } else { false } }() {
+                    await clearAfterDeleting(originalBefore, in: viewer, then: afterDone)
+                    return
+                }
+                switch step {
                 case .done(let route):
                     KeysLog.note("\(title): done via \(route)\(kind == .none ? " (not verifiable)" : "")")
                     afterDone?()
@@ -504,6 +528,52 @@ enum MailKeyActions {
                     KeysLog.note("\(title): \(route) \(last.map { "\($0)" } ?? "?")")
                 }
             }
+        }
+    }
+
+    /// `x`'s second half: Delete left the reminded rows in the list, so Clear Reminder is
+    /// pressed while Mail still selects only those messages; proven when they leave.
+    private static func clearAfterDeleting(_ before: MailKeys.ListSnapshot, in viewer: AXUIElement, then afterDone: (() -> Void)?) async {
+        let now = await snapshot(viewer)
+        let item = MailMenu.find(MailMenu.clearReminder, in: MailMenu.menuBar() ?? [])
+        guard MailKeys.mayClearAfterDelete(before, now), let item, item.isEnabled else {
+            KeysLog.note("Delete: rows stayed; Clear Reminder not pressed (selection kept \(MailKeys.mayClearAfterDelete(before, now)), item on \(item?.isEnabled ?? false))")
+            ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Not sure Delete worked",
+                                              subtitle: "The messages are still in the list"), for: .seconds(5))
+            return
+        }
+        switch await clearReminder(item, in: viewer, before: now) {
+        case .done:
+            afterDone?()
+        case .stop, .archive:
+            ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Not sure Delete worked",
+                                              subtitle: "Mail still shows the messages after Clear Reminder"), for: .seconds(5))
+        }
+    }
+
+    enum ClearResult { case done, stop, archive(MailKeys.ListSnapshot) }
+
+    /// Presses Clear Reminder with the list holding the keyboard (as Archive needs), then up
+    /// to 1.5 s of looking at the list. Logs counts only.
+    private static func clearReminder(_ item: MenuNode, in viewer: AXUIElement, before: MailKeys.ListSnapshot) async -> ClearResult {
+        let list = AXSelectableList.inViewer(viewer)
+        let selectedRows = list?.selectedRows.count ?? 0
+        if let list { AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue) }
+        try? await Task.sleep(for: .milliseconds(100))
+        let pressed = item.press()
+        var after = before
+        var next = MailKeys.AfterClear.archive
+        for _ in 0..<6 {
+            try? await Task.sleep(for: .milliseconds(250))
+            after = await snapshot(viewer)
+            next = MailKeys.afterClearingReminder(before, after, selectedRows: selectedRows)
+            if next == .done { break }
+        }
+        KeysLog.note("Clear Reminder \(pressed ? "pressed" : "didn't respond"), rows \(before.rows) → \(after.rows), \(selectedRows) selected rows: \(next)")
+        switch next {
+        case .done: return .done
+        case .stop: return .stop
+        case .archive: return .archive(after)
         }
     }
 

@@ -19,6 +19,7 @@ enum MailMenu {
 
     static let remindMeLater = ["Message", "Remind Me", "Remind Me Later…"]
     static let archive = ["Message", "Archive"]
+    static let clearReminder = ["Message", "Remind Me", "Clear Reminder"]
     static let send = ["Message", "Send"]
 
     /// Every item the snooze needs, for the check before it runs.

@@ -451,6 +451,44 @@ enum MailKeys {
         ["Mark as Read", "Mark as Unread"].first(where: shows)
     }
 
+    /// `e` or `x` in an inbox on a message whose reminder fired (David, 2026-11-21: "if i hit e on a
+    /// message that has a Reminder in the inbox can it clear the reminder?"). Such a row is
+    /// already in Archive, so Archive alone leaves it in the inbox. Only in an inbox: a
+    /// snoozed message (Remind Me, then Archive) keeps its pending reminder wherever else
+    /// `e` meets it. Nil (Archive exactly as before) without an enabled
+    /// Message › Remind Me › Clear Reminder ("e for archived messages with no reminders
+    /// remains the same").
+    @MainActor
+    static func reminderToClear(title: String, bar: [MenuNode], viewerShowsInbox: Bool, selected: Int) -> MenuNode? {
+        guard ["Archive", "Delete"].contains(title), viewerShowsInbox, selected > 0,
+              let item = MailMenu.find(MailMenu.clearReminder, in: bar), item.isEnabled else { return nil }
+        return item
+    }
+
+    enum AfterClear: Equatable {
+        /// Every selected row left the list: nothing left to archive.
+        case done
+        /// Mail still selects only messages that were selected before: archive those.
+        case archive
+        /// The selection moved to other messages: Archive now could act on them.
+        case stop
+    }
+
+    /// `x` on a message whose reminder fired (David, 2026-11-21: "yeah x would need the same
+    /// clear reminder"): Delete goes first, since a row the cleared reminder took out of the
+    /// list can no longer be trashed from it; Clear Reminder second, only while Mail still
+    /// selects nothing but messages selected before the Delete.
+    static func mayClearAfterDelete(_ before: ListSnapshot, _ now: ListSnapshot) -> Bool {
+        !now.selected.isEmpty && now.selected.isSubset(of: before.selected)
+    }
+
+    /// What to do after Clear Reminder, from the list before and after it.
+    static func afterClearingReminder(_ before: ListSnapshot, _ after: ListSnapshot, selectedRows: Int) -> AfterClear {
+        if !after.selected.isEmpty, after.selected.isSubset(of: before.selected) { return .archive }
+        if selectedRows > 0, before.selected.isDisjoint(with: after.selected), before.rows - after.rows >= selectedRows { return .done }
+        return .stop
+    }
+
     /// How a command's effect shows in Mail.
     enum Verification: Equatable { case rowsLeave, flag, read, none }
 
@@ -565,7 +603,7 @@ enum MailKeys {
         ("j / k  or  ⌃N / ⌃P", "next / previous message"), ("o", "open"), ("/", "search"),
         ("g i  g f  g s  g t  g d  g a", "All Inboxes, Flagged, All Sent, All Trash, All Drafts, All Mail"),
         ("g A  g T  g j  g u  g l  g r", "Archive, Today, All Junk, Follow Up, Send Later, Remind Me"),
-        ("e  or  ]", "archive"), ("[", "archive, then the message above"), ("x", "move to Trash"),
+        ("e  or  ]", "archive (in an inbox, clears a fired reminder)"), ("[", "archive, then the message above"), ("x", "move to Trash (in an inbox, clears a fired reminder)"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),
 ("⇧U", "mark read / unread (toggles)"), ("u  or  z", "undo"), ("c", "new message"),

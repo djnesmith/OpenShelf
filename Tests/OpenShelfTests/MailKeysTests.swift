@@ -726,4 +726,56 @@ struct MailKeysTests {
         #expect(MailKeys.unifiedIndex(for: "Send Later", in: ["Send Later (2)"]) == 0)
         #expect(MailKeys.help.contains { $0.0.contains("g r") && $0.1.contains("Remind Me") })
     }
+
+    typealias Item = MailMenuTests.FakeItem
+
+    static func bar(clear: Item?) -> [MenuNode] {
+        [Item("Message", [
+            Item("Archive"),
+            Item("Move to", [Item("Clear Reminder")]),
+            Item("Remind Me", [Item("Remind Me in 1 Hour")] + (clear.map { [$0] } ?? [])),
+        ])]
+    }
+
+    @Test func reminderIsClearedOnlyWhenMailOffersIt() {
+        // No Clear Reminder, or off: e and x press exactly what they did before.
+        #expect(MailKeys.reminderToClear(title: "Archive", bar: Self.bar(clear: nil), viewerShowsInbox: true, selected: 1) == nil)
+        #expect(MailKeys.reminderToClear(title: "Delete", bar: Self.bar(clear: nil), viewerShowsInbox: true, selected: 1) == nil)
+        #expect(MailKeys.reminderToClear(title: "Archive", bar: Self.bar(clear: Item("Clear Reminder", enabled: false)), viewerShowsInbox: true, selected: 2) == nil)
+        #expect(MailKeys.reminderToClear(title: "Delete", bar: Self.bar(clear: Item("Clear Reminder", enabled: false)), viewerShowsInbox: true, selected: 2) == nil)
+        // Present and on, in an inbox: that exact item, not the mailbox under Move to.
+        let clear = Item("Clear Reminder")
+        for title in ["Archive", "Delete"] {
+            let found = MailKeys.reminderToClear(title: title, bar: Self.bar(clear: clear), viewerShowsInbox: true, selected: 3)
+            #expect(found as? Item === clear)
+        }
+        #expect(clear.pressed == 0)
+        // Outside an inbox (a snoozed message's pending reminder), other keys, no selection.
+        #expect(MailKeys.reminderToClear(title: "Archive", bar: Self.bar(clear: clear), viewerShowsInbox: false, selected: 1) == nil)
+        #expect(MailKeys.reminderToClear(title: "Move to Junk", bar: Self.bar(clear: clear), viewerShowsInbox: true, selected: 1) == nil)
+        #expect(MailKeys.reminderToClear(title: "Archive", bar: Self.bar(clear: clear), viewerShowsInbox: true, selected: 0) == nil)
+    }
+
+    @Test func afterClearReminderArchivesOnlyWhatWasSelected() {
+        let before = MailKeys.ListSnapshot(rows: 10, selected: ["a", "b", "c"])
+        // Every selected row left (Mail moved on to the next message): done.
+        #expect(MailKeys.afterClearingReminder(before, .init(rows: 8, selected: ["z"]), selectedRows: 2) == .done)
+        #expect(MailKeys.afterClearingReminder(before, .init(rows: 8, selected: []), selectedRows: 2) == .done)
+        // Nothing left, or some left and the rest still selected: archive those.
+        #expect(MailKeys.afterClearingReminder(before, before, selectedRows: 2) == .archive)
+        #expect(MailKeys.afterClearingReminder(before, .init(rows: 9, selected: ["c"]), selectedRows: 2) == .archive)
+        // The selection moved while selected rows remain, or took in another message: stop.
+        #expect(MailKeys.afterClearingReminder(before, .init(rows: 9, selected: ["z"]), selectedRows: 2) == .stop)
+        #expect(MailKeys.afterClearingReminder(before, .init(rows: 9, selected: ["c", "z"]), selectedRows: 2) == .stop)
+        #expect(MailKeys.afterClearingReminder(before, .init(rows: 10, selected: []), selectedRows: 2) == .stop)
+    }
+
+    @Test func xClearsTheReminderOnlyOnTheMessagesItDeleted() {
+        let before = MailKeys.ListSnapshot(rows: 10, selected: ["a", "b"])
+        #expect(MailKeys.mayClearAfterDelete(before, before))
+        #expect(MailKeys.mayClearAfterDelete(before, .init(rows: 9, selected: ["b"])))
+        #expect(!MailKeys.mayClearAfterDelete(before, .init(rows: 9, selected: ["z"])))
+        #expect(!MailKeys.mayClearAfterDelete(before, .init(rows: 9, selected: ["b", "z"])))
+        #expect(!MailKeys.mayClearAfterDelete(before, .init(rows: 8, selected: [])))
+    }
 }
