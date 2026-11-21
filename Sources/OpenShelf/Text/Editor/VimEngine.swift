@@ -1140,7 +1140,7 @@ struct VimEngine {
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
             guard index < keys.count else { return .incomplete }
-            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikj".contains(kind) else { return .invalid }
+            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikja".contains(kind) else { return .invalid }
             index += 1
             return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
@@ -2120,12 +2120,103 @@ struct VimEngine {
         case "q": return anyQuoteObject(inner: inner, count: count).map { ($0, false) }
         // Doom's ig / ag (+evil:whole-buffer-txtobj): all the text, as characters.
         case "g": return (0..<text.count, false)
+        case "a": return argumentObject(inner: inner, count: count).map { ($0, false) }
         case "i", "k", "j": return indentObject(inner: inner, kind).map { ($0, true) }
         default: return nil
         }
     }
 
     // MARK: - Doom's text objects
+
+    /// Doom's ia / aa (evil-args): one argument between ( [ { and , or ; and the closer.
+    /// ia is the argument; aa adds the delimiter and one space after it, or for the last
+    /// argument the delimiter before it. Only , and ; split arguments, as in evil-args, so a
+    /// Clojure form is one argument. A port of evil-args.el, edges included.
+    private func argumentObject(inner: Bool, count: Int) -> Range<Int>? {
+        let openers: Set<Character> = ["(", "{", "["], closers: Set<Character> = [")", "}", "]"], delimiters: Set<Character> = [",", ";"]
+        let all = openers.union(closers).union(delimiters)
+        let n = text.count
+        func at(_ i: Int, _ set: Set<Character>) -> Bool { i >= 0 && i < n && set.contains(text[i]) }
+        /// evil-jump-item on a bracket: the matching one, any kind counting.
+        func jump(_ i: Int) -> Int? {
+            let step = at(i, openers) ? 1 : -1
+            var depth = 0, j = i
+            while j >= 0, j < n {
+                if at(j, openers) { depth += step } else if at(j, closers) { depth -= step }
+                if depth == 0 { return j }
+                j += step
+            }
+            return nil
+        }
+        func backwardDelimiter(_ from: Int, count: Int) -> Int? {
+            var point = from, count = count
+            while count > 0 {
+                guard let found = (0..<max(point, 0)).last(where: { at($0, all) }) else {
+                    return max(lineStart(point) - 1, 0)
+                }
+                point = found
+                while at(point, closers) {
+                    guard let open = jump(point) else { return nil }
+                    point = open - 1
+                }
+                if at(point, openers) { return point }
+                if at(point, delimiters) {
+                    count -= 1
+                    if count <= 0 { return point }
+                }
+            }
+            return point
+        }
+        func forwardDelimiter(_ from: Int, count: Int) -> Int? {
+            var point = from, count = count
+            while count > 0 {
+                guard let found = (min(point, n)..<n).first(where: { at($0, all) }) else { return lineEnd(point) }
+                point = found
+                while at(point, openers) {
+                    guard let close = jump(point) else { return nil }
+                    point = close + 1
+                }
+                if at(point, closers) { return point }
+                if at(point, delimiters) {
+                    count -= 1
+                    if count <= 0 { return point }
+                    point += 1
+                }
+            }
+            return point
+        }
+        /// evil-args--backward-arg-no-skip: after the delimiter before, one space and a line break skipped.
+        func argStart(_ from: Int) -> Int? {
+            guard var point = backwardDelimiter(from, count: 1) else { return nil }
+            point = min(point + 1, n)
+            if point < n, text[point] == " " { point += 1 }
+            if point < n, text[point] == "\n" { point = firstNonBlank(point + 1) }
+            return point
+        }
+        if inner {
+            guard let start = argStart(cursor), let end = forwardDelimiter(cursor, count: max(count, 1)) else { return nil }
+            return start..<max(start, end)
+        }
+        // At the text's end evil-args reads the character after it, which fails in Doom.
+        guard var end = forwardDelimiter(cursor, count: max(count, 1)), end < n else { return nil }
+        let endsOnCloser = !at(end, delimiters)
+        if !endsOnCloser {
+            // evil-forward-arg from the delimiter: past it and one space, or onto the next line.
+            end += 1
+            if end < n, text[end] == " " { end += 1 }
+            if end < n, text[end] == "\n" { end = firstNonBlank(end + 1) }
+        }
+        guard var start = argStart(cursor) else { return nil }
+        if endsOnCloser {
+            var back = start - 1
+            while back >= 0, " \t\n".contains(text[back]) { back -= 1 }
+            if !at(back, openers) {
+                guard let delimiter = backwardDelimiter(start, count: 1) else { return nil }
+                start = delimiter
+            }
+        }
+        return start..<max(start, end)
+    }
 
     /// Doom's ii / ai, ik / ak, ij / aj (evil-indent-plus): the lines around
     /// the cursor's at its indentation or deeper, blank lines included but not at the ends;

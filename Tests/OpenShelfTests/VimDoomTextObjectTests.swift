@@ -141,4 +141,56 @@ struct VimDoomTextObjectTests {
     func indent(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// ia / aa, evil-args (C18).
+    @Test(arguments: [
+        ("foo(a, b|b, c)", "dia", "foo(a, |, c)"),
+        ("foo(a, b|b, c)", "daa", "foo(a, |c)"),
+        ("foo(a|a, bb, c)", "dia", "foo(|, bb, c)"),
+        ("foo(a|a, bb, c)", "daa", "foo(|bb, c)"),
+        ("foo(a, bb, c|c)", "dia", "foo(a, bb, |)"),
+        ("foo(a, bb, c|c)", "daa", "foo(a, bb|)"),
+        ("f(x, g(y, z|), w)", "dia", "f(x, g(y, |), w)"),
+        ("f(x, g(y, z|), w)", "daa", "f(x, g(y|), w)"),
+        ("f(x, g(y|, z), w)", "dia", "f(x, g(|, z), w)"),
+        ("f(x, g(y|, z), w)", "daa", "f(x, g(|z), w)"),
+        ("f(|x)", "dia", "f(|)"),
+        ("f(|x)", "daa", "f(|)"),
+        ("f(a,b|,c)", "dia", "f(a,|,c)"),
+        ("f(a,b|,c)", "daa", "f(a,|c)"),
+        ("f(a ,b| , c)", "dia", "f(a ,|, c)"),
+        ("f(a ,b| , c)", "daa", "f(a ,|c)"),
+        ("call(one,\n     tw|o,\n     three)", "dia", "call(one,\n     |,\n     three)"),
+        ("call(one,\n     tw|o,\n     three)", "daa", "call(one,\n     |three)"),
+        ("call(\n  one,\n  tw|o\n)", "dia", "call(\n  one,\n  |)"),
+        ("call(\n  one,\n  tw|o\n)", "daa", "call(\n  one|)"),
+        ("[1, 2|2, 3]", "dia", "[1, |, 3]"),
+        ("[1, 2|2, 3]", "daa", "[1, |3]"),
+        ("{a: 1, b|: 2}", "dia", "{a: 1, |}"),
+        ("{a: 1, b|: 2}", "daa", "{a: 1|}"),
+        ("(defn f [x y|]\n  (+ x y))", "dia", "(defn f [|]\n  (+ x y))"),
+        ("(defn f [x y|]\n  (+ x y))", "daa", "(defn f [|]\n  (+ x y))"),
+        ("(foo a b|)", "dia", "(|)"),
+        ("(foo a b|)", "daa", "(|)"),
+        ("f(a, \"b, c|\", d)", "dia", "f(a, \"b, |, d)"),
+        ("f(a, \"b, c|\", d)", "daa", "f(a, \"b, |d)"),
+        ("foo ba|r", "dia", "|f"),
+        ("foo ba|r", "daa", "foo ba|r"),
+        ("f(a, [1, 2], b|)", "dia", "f(a, [1, 2], |)"),
+        ("f(a, [1, 2], b|)", "daa", "f(a, [1, 2]|)"),
+        ("f(a|, [1, 2], b)", "dia", "f(|, [1, 2], b)"),
+        ("f(a|, [1, 2], b)", "daa", "f(|[1, 2], b)"),
+        ("f( a|, b )", "dia", "f( |, b )"),
+        ("f( a|, b )", "daa", "f( |b )"),
+        ("foo(a|a, bb, c)", "d2ia", "foo(|, c)"),
+        ("foo(a|a, bb, c)", "d2aa", "foo(|c)"),
+        ("foo(a, b|b, c)", "ciaX<Esc>", "foo(a, |X, c)"),
+        ("foo(a, b|b, c)", "vaad", "foo(a, |c)"),
+        ("foo ba|r\nmore", "daa", "|\nmore"),
+        ("x = f(a, b); y|\nz", "daa", "x = f(a, b|)\nz"),
+        ("x\nfoo ba|r", "dia", "x\n|"),
+    ])
+    func argument(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }
