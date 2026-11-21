@@ -87,7 +87,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     indented line selects its block; `daa` in `f(a, b, c)` on b leaves `f(a, c)`;
     `ciu` on a link changes its host and path; `dax` in an HTML tag removes one attribute;
     `ysiw⌃F` then `inc` and Return wraps a word in `(inc …)`, `dsf` unwraps `foo(x)`;
-    `ciB` inside `{:a [1 2]}` on the 2 changes `1 2` (the nearest block, as in Doom). (#53)
+    `ciB` inside `{:a [1 2]}` on the 2 changes `1 2` (the nearest block, as in Doom);
+    `gcc` comments a Clojure line with `;; `, `gcip` a paragraph, again to uncomment. (#53)
 
 ## Needs your decision
 

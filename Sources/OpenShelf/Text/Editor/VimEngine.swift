@@ -476,6 +476,66 @@ struct VimEngine {
         wantedColumn = nil
     }
 
+    // MARK: - Comments
+
+    /// The line comment for the text, which has no file type: Doom takes it from the major
+    /// mode, so the mode is guessed (David, 2026-11-21). A line already commented decides;
+    /// else text starting with "(" or ";" is Lisp (";;", as clojure-mode), SQL's first word
+    /// gives "--", a " //" after code or lines ending in { } or ; give "//", and anything
+    /// else "#".
+    static func commentString(for text: String) -> String {
+        let lines = text.split(separator: "\n").map { $0.drop { $0 == " " || $0 == "\t" } }.filter { !$0.isEmpty }
+        for line in lines {
+            if line.hasPrefix(";") { return ";;" }
+            if line.hasPrefix("//") { return "//" }
+            if line.hasPrefix("--") { return "--" }
+            if line.hasPrefix("#") { return "#" }
+        }
+        guard let first = lines.first else { return "#" }
+        if first.hasPrefix("(") { return ";;" }
+        // A "//" after code, but not a URL's "://".
+        if lines.contains(where: { $0.contains(" //") }) { return "//" }
+        let word = first.prefix { $0.isLetter }.lowercased()
+        if ["select", "with", "insert", "update", "delete", "create"].contains(word) { return "--" }
+        if lines.contains(where: { line in line.trimmingCharacters(in: .whitespaces).last.map { "{};".contains($0) } ?? false }) { return "//" }
+        return "#"
+    }
+
+    /// gc on lines `first`...`last`, as evil-nerd-commenter: blank lines are left alone; if
+    /// every other line is commented they are uncommented (all the comment characters and one
+    /// space after them go), else each gets the comment and a space at the lines' smallest
+    /// indentation. One undo step; the cursor goes to the first line's first non-blank.
+    private mutating func toggleComment(_ first: Int, _ last: Int) {
+        let marker = Self.commentString(for: string)
+        let markerCharacter = marker.first!
+        var lines = string.components(separatedBy: "\n")
+        let indices = (first...last).filter { !lines[$0].allSatisfy { $0 == " " || $0 == "\t" } }
+        guard !indices.isEmpty else { return }
+        func body(_ line: String) -> Substring { line.drop { $0 == " " || $0 == "\t" } }
+        // ";" or "#" alone starts a comment; "//" and "--" need both characters.
+        let start = marker == ";;" ? ";" : marker
+        let commented = indices.allSatisfy { body(lines[$0]).hasPrefix(start) }
+        if commented {
+            for i in indices {
+                let line = lines[i]
+                let indent = line.prefix { $0 == " " || $0 == "\t" }
+                var rest = body(line).drop { $0 == markerCharacter }
+                if rest.first == " " { rest = rest.dropFirst() }
+                lines[i] = String(indent) + rest
+            }
+        } else {
+            let column = indices.map { lines[$0].prefix { $0 == " " || $0 == "\t" }.count }.min() ?? 0
+            for i in indices {
+                let line = lines[i]
+                lines[i] = String(line.prefix(column)) + marker + " " + line.dropFirst(column)
+            }
+        }
+        checkpoint(at: lineStarts[first])
+        text = Array(lines.joined(separator: "\n"))
+        cursor = firstNonBlank(lineStarts[first])
+        wantedColumn = nil
+    }
+
     // MARK: - Moving lines
 
     /// ⌥J / ⌥K (David's Doom config, ~/.doom.d/config.el my/move-line-*): the cursor's line,
@@ -549,7 +609,7 @@ struct VimEngine {
             for range in ranges.reversed() { text.replaceSubrange(range, with: Array(transformed(String(text[range]), op))) }
             mode = .normal
             cursor = corner
-        case .indent, .outdent, .surround, .format:
+        case .indent, .outdent, .surround, .format, .comment:
             mode = .normal
             applyLines(op, block.first, block.last)
         }
@@ -776,6 +836,8 @@ struct VimEngine {
         case surround = "S"
         /// gq: re-wraps lines to the text width (ROADMAP C12).
         case format = "q"
+        /// gc: comments or uncomments lines, as evil-nerd-commenter (ROADMAP C25).
+        case comment = "C"
     }
 
     struct Command {
@@ -840,7 +902,7 @@ struct VimEngine {
     /// vim commands this engine doesn't have, read to their end so the keys after them
     /// never run as commands of their own (2026-11-20: `=ip` and `ma` fell into insert
     /// mode). nil: not one of them; .some(nil): wait for more keys; .some(reason): done.
-    static let unbuiltOperators = ["=", "!", "g?", "gc", "gw", "gx", "gl", "gL", "g@", "zf"]
+    static let unbuiltOperators = ["=", "!", "g?", "gw", "gx", "gl", "gL", "g@", "zf"]
     static let unbuiltWithArgument: [String: String] = [
         "m": "marks are not built", "'": "marks are not built", "`": "marks are not built",
         "z": "not built", "[": "not built", "]": "not built", "g'": "marks are not built", "g`": "marks are not built",
@@ -976,6 +1038,9 @@ struct VimEngine {
             if case .char(let g) = second, ["~", "u", "U", "q"].contains(g) {
                 index += 1
                 op = Operator(rawValue: g)
+            } else if case .char("c") = second {
+                index += 1
+                op = .comment
             }
         }
         if let op {
@@ -987,7 +1052,7 @@ struct VimEngine {
             guard let doubled = next() else { return .incomplete }
             // dd, cc, yy, >>, <<, g~~, guu, gUU, gqq, and gugu-style repeats. gUgg is gU to the first line.
             var repeated = false
-            if case .char(let d) = doubled, d == op.rawValue {
+            if case .char(let d) = doubled, d == op.rawValue || (op == .comment && d == "c") {
                 repeated = true
             } else if case .char("g") = doubled, [.toggleCase, .lower, .upper, .format].contains(op) {
                 guard index + 1 < keys.count else { return .incomplete }
@@ -1162,7 +1227,7 @@ struct VimEngine {
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
             guard index < keys.count else { return .incomplete }
-            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikjaux".contains(kind) else { return .invalid }
+            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikjauxc".contains(kind) else { return .invalid }
             index += 1
             return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
@@ -1251,6 +1316,7 @@ struct VimEngine {
         case .textObject(_, "a")?: "no argument here"
         case .textObject(_, "u")?: "no URL here"
         case .textObject(_, "x")?: "no attribute here"
+        case .textObject(_, "c")?: "not in a comment"
         default: "nothing to do"
         }
         return "\(keys): \(reason)"
@@ -1309,6 +1375,14 @@ struct VimEngine {
                 let last = min(lineIndex(cursor) + (command.count ?? 1) - 1, lineStarts.count - 1)
                 wrap(start..<lineEnd(lineStarts[last]), in: pair, trimming: true)
             }
+            return nil
+        case .motion(.textObject(let inner, "c")) where inVisual:
+            // A comment over several lines selects a block, as evil-nerd-commenter's ic.
+            guard let comment = commentObject() else {
+                failed = true
+                return nil
+            }
+            selectComment(comment, inner: inner)
             return nil
         case .motion(.textObject(let inner, let kind)):
             // In visual mode a text object selects its range.
@@ -1801,6 +1875,28 @@ struct VimEngine {
             apply(op, from: word.start, to: Target(position: word.end, kind: word.inclusive ? .inclusive : .exclusive))
             return
         }
+        if case .textObject(let inner, "c") = motion {
+            guard let comment = commentObject() else {
+                failed = true
+                return
+            }
+            if !inner, comment.lines.count > 1, op == .delete {
+                // Doom's dac on comment lines takes the lines, keeping the cursor's column.
+                let column = cursor - lineStart(cursor)
+                applyLines(.delete, comment.lines.lowerBound, comment.lines.upperBound - 1)
+                let start = lineStart(cursor)
+                cursor = start + min(column, max(lineEnd(start) - start - 1, 0))
+                return
+            }
+            if inner, comment.lines.count > 1 {
+                selectComment(comment, inner: true)
+                applyBlock(op)
+                clampCursor()
+                return
+            }
+            apply(op, to: inner ? comment.inner : comment.outer)
+            return
+        }
         if case .textObject(let inner, let kind) = motion, "ikj".contains(kind) {
             guard let (lines, _) = textObject(inner: inner, kind, count: count) else {
                 failed = true
@@ -1897,7 +1993,8 @@ struct VimEngine {
     /// dd, cc, yy, >>, <<, g~~, guu, gUU on `count` lines.
     private mutating func runLine(_ op: Operator, count: Int) {
         let line = lineIndex(cursor)
-        guard count == 1 || line + 1 < lineStarts.count else {
+        // gcc with a count past the last line still comments it, as evil-nerd-commenter does.
+        guard count == 1 || line + 1 < lineStarts.count || op == .comment else {
             failed = true
             return
         }
@@ -1912,6 +2009,7 @@ struct VimEngine {
     private mutating func applyLines(_ op: Operator, _ first: Int, _ last: Int) {
         if op == .surround { return wrapLines(first, last, in: surroundPair, indenting: false) }
         if op == .format { return format(first, last) }
+        if op == .comment { return toggleComment(first, last) }
         let starts = lineStarts
         let start = starts[first]
         let bodyEnd = lineEnd(starts[last])
@@ -1943,7 +2041,7 @@ struct VimEngine {
             cursor = start + indent.count
             beginInsert()
             return
-        case .surround, .format:
+        case .surround, .format, .comment:
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: start)
@@ -1960,7 +2058,10 @@ struct VimEngine {
     /// An operator on the characters in `range`.
     private mutating func apply(_ op: Operator, to range: Range<Int>) {
         if op == .surround { return wrap(range, in: surroundPair, trimming: true) }
-        if op == .format { return format(lineIndex(range.lowerBound), lineIndex(max(range.upperBound - 1, range.lowerBound))) }
+        if op == .format || op == .comment {
+            let first = lineIndex(range.lowerBound), last = lineIndex(max(range.upperBound - 1, range.lowerBound))
+            return op == .format ? format(first, last) : toggleComment(first, last)
+        }
         let taken = String(text[range])
         switch op {
         case .yank:
@@ -1976,7 +2077,7 @@ struct VimEngine {
                 beginInsert()
                 return
             }
-        case .surround, .format:
+        case .surround, .format, .comment:
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: range.lowerBound)
@@ -2154,6 +2255,7 @@ struct VimEngine {
         case "g": return (0..<text.count, false)
         case "a": return argumentObject(inner: inner, count: count).map { ($0, false) }
         case "u": return urlObject(inner: inner).map { ($0, false) }
+        case "c": return commentObject().map { (inner ? $0.inner : $0.outer, false) }
         case "x": return xmlAttributeObject(inner: inner).map { ($0, false) }
         case "i", "k", "j": return indentObject(inner: inner, kind).map { ($0, true) }
         default: return nil
@@ -2161,6 +2263,89 @@ struct VimEngine {
     }
 
     // MARK: - Doom's text objects
+
+    /// A comment for Doom's ic / ac (evil-nerd-commenter): its lines; the inner text of a
+    /// one-line comment (from its first word to the line's end); the columns of the block a
+    /// comment over several lines makes; and the outer range, comment characters included.
+    private struct Comment {
+        var lines: Range<Int>
+        var inner: Range<Int>
+        var columns: Range<Int>
+        var outer: Range<Int>
+    }
+
+    /// A port of evilnc-get-comment-bounds, with Emacs's comment face read as: from the comment
+    /// characters (the guessed comment string's) to the line's end, its line break included.
+    /// Blanks outside a comment count as comment, as evil-nerd-commenter treats them.
+    private func commentObject() -> Comment? {
+        let marker = Self.commentString(for: string)
+        let start = marker == ";;" ? ";" : marker
+        let starts = lineStarts, n = text.count
+        // Where each line's comment begins, if it has one (outside a "…" string).
+        let commentStarts: [Int?] = starts.map { lineStartIndex in
+            var inString = false, i = lineStartIndex
+            let end = lineEnd(lineStartIndex)
+            while i < end {
+                if text[i] == "\\" { i += 2; continue }
+                if text[i] == "\"" { inString.toggle() }
+                if !inString, String(text[i..<min(i + start.count, end)]) == start { return i }
+                i += 1
+            }
+            return nil
+        }
+        func inComment(_ i: Int) -> Bool {
+            guard i >= 0, i < n, let from = commentStarts[lineIndex(i)] else { return false }
+            return i >= from
+        }
+        func counts(_ i: Int) -> Bool { i >= 0 && i < n && (inComment(i) || text[i] == " " || text[i] == "\t") }
+        var b = cursor, e = cursor
+        while counts(b - 1) { b -= 1 }
+        while counts(e + 1) { e += 1 }
+        // A blank last line is left out.
+        let lastStart = lineStart(e)
+        if text[lastStart..<lineEnd(e)].allSatisfy({ $0 == " " || $0 == "\t" }) { e = lastStart - 1 }
+        guard b < e else { return nil }
+        let firstLine = lineIndex(b), lastLine = lineIndex(e)
+        let oneLine = e <= lineEnd(b)
+        if oneLine {
+            while b < e, !inComment(b) { b += 1 }
+            while e > b, !inComment(e) { e -= 1 }
+            guard b < e else { return nil }
+        }
+        guard inComment(b) || !oneLine else { return nil }
+        // The first word after the comment characters, as forward-word then backward-word.
+        var word = b
+        while word < n, !(text[word].isLetter || text[word].isNumber) { word += 1 }
+        let innerEnd = lineEnd(lastLine < starts.count ? starts[lastLine] : b)
+        let inner = min(word, innerEnd)..<innerEnd
+        // The block: from the leftmost first comment letter to the last line's end.
+        let bodyColumns = (firstLine...lastLine).compactMap { line -> Int? in
+            guard let from = commentStarts[line] else { return nil }
+            var i = from
+            while i < lineEnd(starts[line]), text[i] == start.first! || text[i] == " " || text[i] == "\t" { i += 1 }
+            return i < lineEnd(starts[line]) ? i - starts[line] : nil
+        }
+        let left = bodyColumns.min() ?? 0
+        let right = lineEnd(starts[lastLine]) - starts[lastLine]
+        return Comment(lines: firstLine..<(lastLine + 1), inner: inner, columns: left..<max(left, right), outer: b..<e)
+    }
+
+    /// Selects a comment in visual mode: characters for one line, a block for several.
+    private mutating func selectComment(_ comment: Comment, inner: Bool) {
+        if inner, comment.lines.count > 1 {
+            let starts = lineStarts
+            mode = .visualBlock
+            wantedColumn = nil
+            anchor = starts[comment.lines.lowerBound] + comment.columns.lowerBound
+            cursor = starts[comment.lines.upperBound - 1] + max(comment.columns.upperBound - 1, comment.columns.lowerBound)
+            return
+        }
+        let range = inner ? comment.inner : comment.outer
+        guard !range.isEmpty else { return }
+        if mode != .visual { mode = .visual }
+        anchor = range.lowerBound
+        cursor = range.upperBound - 1
+    }
 
     /// Doom's iB / aB (evil-textobj-anyblock, set to ( { [ < in Doom's evil module): of the
     /// bracket pairs around the cursor, the smallest; around none, the next pair after it.

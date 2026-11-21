@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43; C30 partly) | 7 | 1 | 20 |
+| Vim features (C16–C43; C30 partly) | 9 | 1 | 18 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 25 | 6 | 61 |
+| **Total** | 27 | 6 | 59 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -237,10 +237,10 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `ii` / `ai`, indent level (evil-indent-plus; also `ij` `ik`) | Built | With evil-indent-plus's quirks: `dii` leaves an empty line | — |
 | `ig` / `ag`, whole buffer (Doom) | Built | | — |
 | `if` / `af`, function (Doom defun) | Not built | For Clojure, the top-level form | M |
-| `ic` / `ac`, comment (evil-nerd-commenter) | Not built | | S |
+| `ic` / `ac`, comment (evil-nerd-commenter) | Built | Comments over several lines make a block, as in Doom | — |
 | `iu` url, `ix` XML attribute (exato) | Built | A URL needs a scheme, as in Emacs | — |
 | `iB` / `aB` any block (anyblock) | Built | Doom's meaning (David, 2026-11-21): the nearest of `( ) { } [ ] < >`; `i{` is `{ }` | — |
-| Comment: `gcc`, `gc{motion}`, visual `gc` (evil-nerd-commenter) | Not built | Needs a comment string per file type (`;;` Clojure). `gcc` now does nothing and gives no hint | S-M |
+| Comment: `gcc`, `gc{motion}`, visual `gc` (evil-nerd-commenter) | Built | Comment string guessed from the text (`;;` Lisp, `--` SQL, `//`, else `#`) | — |
 | evil-snipe: `s`/`S` two-character find, `;` `,` | Not built | The engine's `s` is vim's substitute, as plain vim | M |
 | evil-exchange `gx` / `gX` | Not built | Swap two text spans | S-M |
 | evil-lion `gl` / `gL` align | Not built | The Text wheel's Align Table covers some of it | M |

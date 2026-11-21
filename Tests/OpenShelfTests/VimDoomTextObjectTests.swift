@@ -339,4 +339,76 @@ struct VimDoomTextObjectTests {
     func anyBlock(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// gc, evil-nerd-commenter, each in the mode its comment string guesses (C25).
+    @Test(arguments: [
+        ("(defn f [x]\n  |(inc x))", "gcc", "(defn f [x]\n  |;; (inc x))"),
+        ("(defn f [x]\n  |(inc x))", "gcip", "|;; (defn f [x]\n;;   (inc x))"),
+        ("|(a)\n(b)\n(c)", "gcj", "|;; (a)\n;; (b)\n(c)"),
+        ("|(a)\n(b)", "Vjgc", "|;; (a)\n;; (b)"),
+        ("(a)\n|;; (b)\n(c)", "gcc", "(a)\n|(b)\n(c)"),
+        ("|;; (a)\n;; (b)", "gcip", "|(a)\n(b)"),
+        ("|(a)\n;; (b)", "gcip", "|;; (a)\n;; ;; (b)"),
+        ("  |(a)\n\n  (b)", "gcG", "  |;; (a)\n\n  ;; (b)"),
+        ("|(a) ; tail", "gcc", "|;; (a) ; tail"),
+        ("|var x = 1;\nvar y;", "gcc", "|// var x = 1;\nvar y;"),
+        ("|var x = 1;\nvar y;", "gcj", "|// var x = 1;\n// var y;"),
+        ("|x = 1\ny = 2", "gcj", "|# x = 1\n# y = 2"),
+        ("|echo a", "gcc", "|# echo a"),
+        ("|select 1;\nselect 2;", "gcj", "|-- select 1;\n-- select 2;"),
+        ("|(a)", "3gcc", "|;; (a)"),
+        ("|(a)\n(b)\n(c)", "2gcc", "|;; (a)\n;; (b)\n(c)"),
+        ("|(a)", "gcc.", "|(a)"),
+        ("|(a)", "gccu", "|(a)"),
+        ("|  ;; x", "gcc", "  |x"),
+        ("|a\n  b", "gcj", "|# a\n#   b"),
+        ("|;;   x", "gcc", "  |x"),
+        ("|;x", "gcc", "|x"),
+        ("|;; x\n\n;; y", "gcG", "|x\n\ny"),
+        ("|  ;; a\n    ;; b", "gcj", "  |a\n    b"),
+        ("|;;x", "gcc", "|x"),
+        ("|#x", "gcc", "|x"),
+        ("|# x\n#y", "gcj", "|x\ny"),
+        ("|// x", "gcc", "|x"),
+        ("|-- x", "gcc", "|x"),
+        ("|\n", "gcc", "|\n"),
+        ("|(a)\n  \n(b)", "gcG", "|;; (a)\n  \n;; (b)"),
+        ("|;;; x", "gcc", "|x"),
+        ("|(a)\n(b)", "gc}", "|;; (a)\n;; (b)"),
+    ])
+    func comment(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
+
+    /// ic / ac, evil-nerd-commenter (C22).
+    @Test(arguments: [
+        ("(a)\n;; x|y\n;; z\n(b)", "dic", "(a)\n;; |y\n;; \n(b)"),
+        ("(a)\n;; x|y\n;; z\n(b)", "dac", "(a)\n(b|)"),
+        ("(a) ; tai|l", "dic", "(a) ;| "),
+        ("(a) ; tai|l", "dac", "(a) |l"),
+        ("(a)\n  ;; x|y\n(b)", "dic", "(a)\n  ;;| \n(b)"),
+        ("(a)\n  ;; x|y\n(b)", "dac", "(a)\n | \n(b)"),
+        ("x // co|mment\ny", "dic", "x //| \ny"),
+        ("x // co|mment\ny", "dac", "x| \ny"),
+        ("(a)\n;; x|y\n;; z\n(b)", "vicd", "(a)\n;; |y\n;; \n(b)"),
+        ("(a)\n;; x|y\n;; z\n(b)", "cicQ<Esc>", "(a)\n;; |Qy\n;; Q\n(b)"),
+        ("(a) ; tai|l\n(b)", "dac", "(a)| \n(b)"),
+        ("(a) ; tai|l\n(b)", "dic", "(a) ;| \n(b)"),
+        ("(a)\n;; x|y\n(b)", "dac", "(a)\n|\n(b)"),
+        ("(a)\n;; x|y\n;; z\n(b)", "dac", "(a)\n(b|)"),
+        ("(a)\n  ;; x|y\n  ;; z\n(b)", "dac", "(a)\n(b|)"),
+        ("(a)\n;; x|y\n;; zzz\n(b)", "dic", "(a)\n;;| \n;; \n(b)"),
+        ("(a)\n;; xxx|y\n;; z\n(b)", "dic", "(a)\n;; |xxy\n;; \n(b)"),
+        ("(a)\n  ;; x|y\n  ;; z\n(b)", "dic", "(a)\n  ;; |y\n  ;; \n(b)"),
+        ("(a) |; tail\n(b)", "dic", "(a) ;| \n(b)"),
+        ("(a|) ; tail\n(b)", "dic", "(a) ;| \n(b)"),
+        ("x // a|b\ny", "dac", "x| \ny"),
+        ("(a)\n;; x|y\n\n;; z\n(b)", "dac", "(a)\n|\n\n;; z\n(b)"),
+        ("(a)\n|(b)", "dic", "(a)\n|(b)"),
+        ("(a)\n;;   x|y\n;; z\n(b)", "dic", "(a)\n;; | xy\n;; \n(b)"),
+        ("(a)\n;; x|y\n;;   zz\n(b)", "dic", "(a)\n;;| \n;; \n(b)"),
+    ])
+    func commentObject(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

@@ -45,4 +45,18 @@ struct VimDoomExtraTests {
     @Test(.timeLimit(.minutes(1))) func hugeCountOnAnyBlockTakesTheOutermostPair() {
         #expect(VimEngineTests.run("(a [b (c|)])", "999999diB").string == "(a [])")
     }
+
+    /// gc's comment string, guessed from the text (David, 2026-11-21: guess the mode; SQL gets --).
+    @Test(arguments: [
+        ("(defn f [x] x)", ";;"), ("; note\n(a)", ";;"), ("x = 1\n// old\n", "//"), ("x\n  # old", "#"), ("-- q\nselect 1", "--"),
+        ("SELECT * FROM t", "--"), ("with a as (select 1)", "--"), ("Create table t", "--"), ("var x = 1;", "//"), ("if (a) {\n}", "//"),
+        ("echo hi", "#"), ("x // note", "//"), ("see https://a.b", "#"), ("", "#"), ("   \n  ", "#"), ("selection = 2", "#"),
+    ])
+    func commentStringIsGuessedFromTheText(text: String, expected: String) {
+        #expect(VimEngine.commentString(for: text) == expected)
+    }
+
+    @Test func commentIsOneUndoStep() {
+        #expect(VimEngineTests.run("w\n|(a)\n(b)", "kddgcjuu").string == "w\n(a)\n(b)")
+    }
 }
