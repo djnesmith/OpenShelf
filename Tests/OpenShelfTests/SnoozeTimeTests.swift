@@ -118,6 +118,74 @@ struct SnoozeTimeTests {
         #expect(SnoozeTime.parse("3 months", now: day(2026, 11, 30), calendar: cal) == day(2027, 2, 28, 7))
     }
 
+    /// End of the month and next month, any case, across month lengths and the year end.
+    @Test func endOfMonthAndNextMonth() {
+        let cal = Self.calendar
+        func day(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 10) -> Date { cal.date(from: DateComponents(year: y, month: m, day: d, hour: h))! }
+        for text in ["end of the month", "End of month", "EOM", "eom"] {
+            #expect(SnoozeTime.parse(text, now: day(2026, 11, 18), calendar: cal) == day(2026, 11, 30, 7), "\(text)")   // 30-day month
+            #expect(SnoozeTime.parse(text, now: day(2026, 12, 5), calendar: cal) == day(2026, 12, 31, 7), "\(text)")    // 31-day month
+        }
+        // On the last day: before 7am it is today; after, next month's last day.
+        #expect(SnoozeTime.parse("eom", now: day(2026, 11, 30, 6), calendar: cal) == day(2026, 11, 30, 7))
+        #expect(SnoozeTime.parse("eom", now: day(2026, 11, 30, 9), calendar: cal) == day(2026, 12, 31, 7))
+        #expect(SnoozeTime.parse("eom", now: day(2026, 12, 31, 9), calendar: cal) == day(2027, 1, 31, 7))
+        #expect(SnoozeTime.parse("end of month", now: day(2028, 2, 10), calendar: cal) == day(2028, 2, 29, 7))
+        for text in ["next month", "Next Month", "NEXT MONTH"] {
+            #expect(SnoozeTime.parse(text, now: day(2026, 11, 18), calendar: cal) == day(2026, 12, 1, 7), "\(text)")
+            #expect(SnoozeTime.parse(text, now: day(2026, 12, 31, 23), calendar: cal) == day(2027, 1, 1, 7), "\(text)")
+        }
+    }
+
+    /// "from now" on every unit: "month from now" is the same day next month.
+    @Test func fromNowOnEveryUnit() {
+        let now = Self.wednesday(10)
+        let cal = Self.calendar
+        func same(_ a: String, _ b: String) { #expect(SnoozeTime.parse(a, now: now, calendar: cal) == SnoozeTime.parse(b, now: now, calendar: cal) && SnoozeTime.parse(b, now: now, calendar: cal) != nil, "\(a)") }
+        same("month from now", "1 month")
+        same("a month from now", "1 month")
+        same("A Month From Now", "1 month")
+        same("1 month from now", "1 month")
+        same("3 months from now", "3 months")
+        same("5 hours from now", "5h")
+        same("an hour from now", "1h")
+        same("2 weeks from now", "2w")
+        same("3 days from now", "3d")
+        same("10 minutes from now", "10")
+        same("year from now", "1y")
+        #expect(SnoozeTime.parse("from now", now: now, calendar: cal) == nil)
+        #expect(Self.describe(SnoozeTime.parse("month from now", now: now, calendar: cal)) == "Fri, Dec 18 at 7:00 AM")
+    }
+
+    /// Bare day names, every spelling, any case: 7am on the next such day; today's own name
+    /// is today before 7am, else a week on (David, 2026-11-20: "yeah mon tue, days of week
+    /// work"). mon is always Monday, never months; months need a number and mo, mos or month.
+    @Test func dayNamesAndMon() {
+        let now = Self.wednesday(10)
+        let cal = Self.calendar
+        let names: [(String, String)] = [
+            ("sun", "Sun, Nov 22"), ("sunday", "Sun, Nov 22"), ("mon", "Mon, Nov 23"), ("monday", "Mon, Nov 23"),
+            ("tue", "Tue, Nov 24"), ("tues", "Tue, Nov 24"), ("tuesday", "Tue, Nov 24"),
+            ("wed", "Wed, Nov 25"), ("wednesday", "Wed, Nov 25"),   // today, after 7am: next week
+            ("thu", "Thu, Nov 19"), ("thur", "Thu, Nov 19"), ("thurs", "Thu, Nov 19"), ("thursday", "Thu, Nov 19"),
+            ("fri", "Fri, Nov 20"), ("friday", "Fri, Nov 20"), ("sat", "Sat, Nov 21"), ("saturday", "Sat, Nov 21"),
+        ]
+        for (name, day) in names {
+            for form in [name, name.capitalized, name.uppercased()] {
+                #expect(Self.describe(SnoozeTime.parse(form, now: now, calendar: cal)) == day + " at 7:00 AM", "\(form)")
+            }
+        }
+        #expect(Self.describe(SnoozeTime.parse("wed", now: Self.wednesday(6), calendar: cal)) == "Wed, Nov 18 at 7:00 AM")
+        #expect(Self.describe(SnoozeTime.parse("mon 2pm", now: now, calendar: cal)) == "Mon, Nov 23 at 2:00 PM")
+        #expect(Self.describe(SnoozeTime.parse("MON 2PM", now: now, calendar: cal)) == "Mon, Nov 23 at 2:00 PM")
+        let twoMonths = SnoozeTime.parse("2 months", now: now, calendar: cal)
+        #expect(twoMonths != nil)
+        #expect(SnoozeTime.parse("2mo", now: now, calendar: cal) == twoMonths)
+        #expect(SnoozeTime.parse("2 mos", now: now, calendar: cal) == twoMonths)
+        #expect(SnoozeTime.parse("2 mon", now: now, calendar: cal) == nil)   // not understood, never 2 months
+        #expect(SnoozeTime.parse("mo", now: now, calendar: cal) == nil)
+    }
+
     /// Friday 2026-11-20 at the given time, New York.
     static func friday(_ hour: Int, _ minute: Int = 0) -> Date {
         calendar.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: hour, minute: minute))!

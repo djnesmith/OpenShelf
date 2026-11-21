@@ -38,10 +38,19 @@ enum SnoozeTime {
     /// system's detector reads ("fri 2pm", "dec 3 9am"). A date with no time of day is 7am.
     /// Nil when nothing is understood or the time has passed.
     static func parse(_ text: String, now: Date, calendar: Calendar) -> Date? {
-        let typed = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        var typed = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !typed.isEmpty else { return nil }
         if let preset = presets.first(where: { $0.name == typed || $0.aliases.contains(typed) }) {
             return date(of: preset, now: now, calendar: calendar)
+        }
+        if let named = namedTimes[typed] { return date(of: named, now: now, calendar: calendar) }
+        // "5 hours from now", "a month from now", "month from now": the same as "5 hours",
+        // "1 month" (David, 2026-11-20 evening: "\"month from now\" is the same day next month").
+        if typed.hasSuffix(" from now") {
+            var amount = String(typed.dropLast(" from now".count)).trimmingCharacters(in: .whitespaces)
+            for article in ["a ", "an "] where amount.hasPrefix(article) { amount = "1 " + amount.dropFirst(article.count) }
+            if unitSpellings.values.contains(where: { $0.contains(amount) }) { amount = "1 " + amount }
+            typed = amount
         }
         // "in N units" is ours alone, even when N makes no sense ("in 5000 days").
         if typed.range(of: Self.relativePattern, options: .regularExpression) != nil {
@@ -149,6 +158,32 @@ enum SnoozeTime {
         // A time alone.
         guard hasTime, let time = at(today) else { return .notOurs }
         return Reading(time > now ? time : calendar.date(byAdding: .day, value: 1, to: today).flatMap(at))
+    }
+
+    /// Times by name (David, 2026-11-20 evening: "\"next month\" or \"end of the month\" should
+    /// work"; "\"next month\" is start of month").
+    enum NamedTime: Sendable { case endOfMonth, startOfNextMonth }
+
+    static let namedTimes: [String: NamedTime] = [
+        "end of the month": .endOfMonth, "end of month": .endOfMonth, "eom": .endOfMonth,
+        "next month": .startOfNextMonth,
+    ]
+
+    /// 7am on this month's last day (next month's when that has passed); 7am on the 1st of
+    /// next month.
+    static func date(of named: NamedTime, now: Date, calendar: Calendar) -> Date? {
+        guard let thisMonth = calendar.dateInterval(of: .month, for: now) else { return nil }
+        func sevenAM(_ day: Date) -> Date? { calendar.date(bySettingHour: 7, minute: 0, second: 0, of: day) }
+        switch named {
+        case .startOfNextMonth:
+            return sevenAM(thisMonth.end)
+        case .endOfMonth:
+            guard let lastDay = calendar.date(byAdding: .day, value: -1, to: thisMonth.end), let time = sevenAM(lastDay) else { return nil }
+            if time > now { return time }
+            guard let nextMonth = calendar.dateInterval(of: .month, for: thisMonth.end),
+                  let nextLast = calendar.date(byAdding: .day, value: -1, to: nextMonth.end) else { return nil }
+            return sevenAM(nextLast)
+        }
     }
 
     /// The units a typed time can name, each with every spelling (David, 2026-11-20 evening:

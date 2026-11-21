@@ -20,7 +20,7 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    no message text). It shows whether OpenShelf finds the dialog and can set both pickers. (#58)
 2. **Snooze** (works on your Mail as of 8:05 AM; its false "Not snoozed" toast is fixed).
    Select a test message, press **b** (single keys on) or **⌃⌥S**: the cursor is already in
-   the field. Type `2` (new: a number alone is minutes; also try `5h`, `3d`, `2w`, `2 months`, `1y`, `morning`, and see the date it shows before Return), **Return**.
+   the field. Type `2` (new: a number alone is minutes; also try `5h`, `3d`, `2w`, `2 months`, `1y`, `morning`, `eom`, `next month`, `month from now`, `5 hours from now`, and see the date it shows before Return), **Return**.
    *Expect:* Mail's dialog flashes and closes, "Snoozed, Until …" shows briefly (1.5 s), and the message moves to
    "Remind Me" as Mail's own Remind Me does, then comes back two minutes later. Whatever the
    toast says, send `~/Library/Logs/OpenShelf/snooze.log` (no message text). (#58)
