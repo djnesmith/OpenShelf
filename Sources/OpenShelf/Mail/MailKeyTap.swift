@@ -332,6 +332,8 @@ enum MailKeyActions {
         case .menu("Message", "Archive"), .menu("Edit", "Delete"):
             guard case .menu(let top, let title) = action else { return }
             if !conversationAction(archive: title == "Archive") { performVerified(title, under: top) }
+        case .menu("Edit", "Undo"):
+            undo()
         case .menu(let top, let title) where verifiedTitles.contains(title):
             performVerified(title, under: top)
         case .menu(let top, let title):
@@ -659,6 +661,39 @@ enum MailKeyActions {
         return CGRect(origin: position, size: size)
     }
 
+    /// `z`: Mail's Undo item, whatever it is titled now ("Undo Archive"), then a look at
+    /// the viewer: rows, selection, flag and read states. A change ends it quietly;
+    /// nothing changed after 1.5 s: a toast says so.
+    static func undo() {
+        guard let bar = MailMenu.menuBar(), let edit = bar.first(where: { $0.title == "Edit" }) else {
+            _ = notPressed("Undo", "Mail's menus can't be read"); return
+        }
+        guard let index = MailKeys.undoIndex(in: edit.children.map(\.title)) else { _ = notPressed("Undo", "no Undo in Mail's Edit menu"); return }
+        let item = edit.children[index]
+        guard item.isEnabled else { _ = notPressed("Undo", "Mail has nothing to undo here"); return }
+        guard let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute).flatMap { MailKeys.isMainViewer(AXDialogNode(element: $0)) ? $0 : nil }
+        Task { @MainActor in
+            var before: MailKeys.ListSnapshot?
+            if let viewer { before = await snapshot(viewer) }
+            guard item.press() else { _ = notPressed("Undo", "Mail's Undo didn't respond"); return }
+            KeysLog.note("menu Edit › Undo: pressed (\(item.title.split(separator: " ").count) word title)")
+            guard let viewer, let before else { return }
+            var after = before
+            for _ in 0..<6 {
+                try? await Task.sleep(for: .milliseconds(250))
+                after = await snapshot(viewer)
+                if after != before { break }
+            }
+            KeysLog.note("undo: rows \(before.rows) → \(after.rows), \(after == before ? "no change" : "changed")")
+            if after == before {
+                ToastController.shared.show(Toast(systemImage: "arrow.uturn.backward", title: "Not sure Undo worked", subtitle: "Mail showed no change"), for: .seconds(4))
+            }
+        }
+    }
+
     /// `u`: a message open in its own window closes, as Esc does; in the viewer the keyboard
     /// goes back to the message list, on the selected message (the selection is unchanged).
     static func backToList() {
@@ -790,13 +825,16 @@ enum MailKeyActions {
               }).first else { return false }
         var rowsValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(sidebar, kAXRowsAttribute as CFString, &rowsValue) == .success, let rows = rowsValue as? [AXUIElement] else { return false }
-        func label(_ element: AXUIElement, depth: Int = 0) -> String {
-            if AXMenuNode.string(element, kAXRoleAttribute) == kAXStaticTextRole, let value = AXMenuNode.string(element, kAXValueAttribute) { return value }
-            guard depth < 3 else { return "" }
-            for child in AXMenuNode.childElements(element) { let text = label(child, depth: depth + 1); if !text.isEmpty { return text } }
-            return ""
+        let labels = rows.map { row in
+            MailKeys.sidebarLabel(row, role: { AXMenuNode.string($0, kAXRoleAttribute) }, value: { AXMenuNode.string($0, kAXValueAttribute) },
+                                  label: { AXMenuNode.string($0, kAXTitleAttribute) ?? AXMenuNode.string($0, kAXDescriptionAttribute) },
+                                  children: { AXMenuNode.childElements($0) })
         }
-        guard let index = MailKeys.unifiedIndex(for: name, in: rows.map { label($0) }) else { return false }
+        guard let index = MailKeys.unifiedIndex(for: name, in: labels) else {
+            // Counts only, no names.
+            KeysLog.note("sidebar: \(rows.count) rows, \(labels.filter { !$0.isEmpty }.count) with a name read, none matched")
+            return false
+        }
         return AXUIElementSetAttributeValue(sidebar, kAXSelectedRowsAttribute as CFString, [rows[index]] as CFArray) == .success
     }
 

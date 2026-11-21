@@ -102,6 +102,26 @@ enum MailKeys {
         }
     }
 
+    /// Mail's Undo item: titled after what it undoes ("Undo Archive", "Undo Move"), so
+    /// "Undo" alone matched nothing (keys.log 2026-11-21 01:17: "no “Undo” in Mail's Edit
+    /// menu"). The first item that is "Undo" or starts with "Undo ".
+    static func undoIndex(in titles: [String]) -> Int? {
+        titles.firstIndex { $0 == "Undo" || $0.hasPrefix("Undo ") }
+    }
+
+    /// A sidebar row's name: the first value of a static text or text field inside it (a
+    /// smart mailbox such as Today shows its name in a text field, 2026-11-20: g T missed
+    /// it), else the row's own title or description. Read 4 levels deep.
+    static func sidebarLabel<T>(_ row: T, role: (T) -> String?, value: (T) -> String?, label: (T) -> String?, children: (T) -> [T]) -> String {
+        func text(_ node: T, depth: Int) -> String? {
+            if ["AXStaticText", "AXTextField"].contains(role(node) ?? ""), let found = value(node), !found.isEmpty { return found }
+            guard depth < 4 else { return nil }
+            for child in children(node) { if let found = text(child, depth: depth + 1) { return found } }
+            return nil
+        }
+        return text(row, depth: 0) ?? label(row) ?? ""
+    }
+
     static let afterStar: [Character: Action] = ["a": .menu("Edit", "Select All"), "n": .clearSelection]
 
     /// How long a prefix waits for its second key.

@@ -186,6 +186,35 @@ struct MailKeysTests {
         #expect(MailKeys.conversationPlan(bound: nil, selectedRows: 1, current: ["<a>", "<b>"]) == .thisMessage)
     }
 
+    /// z finds Mail's Undo by its start: "Undo Archive", "Undo Move", plain "Undo"; never
+    /// Redo or a word that only starts with Undo.
+    @Test func undoIsFoundByItsStart() {
+        #expect(MailKeys.undoIndex(in: ["Undo Archive", "Redo", "Cut"]) == 0)
+        #expect(MailKeys.undoIndex(in: ["Redo Move", "Undo Move"]) == 1)
+        #expect(MailKeys.undoIndex(in: ["Undo"]) == 0)
+        #expect(MailKeys.undoIndex(in: ["Undone", "Redo"]) == nil)
+        #expect(MailKeys.undoIndex(in: []) == nil)
+        #expect(MailKeys.outcome(for: "z", pending: nil) == .act(.menu("Edit", "Undo")))
+    }
+
+    /// A sidebar row's name: a static text (Archive), or a text field (the smart mailbox
+    /// Today under Smart Mailboxes, 2026-11-20), else the row's title; so g T finds Today.
+    @Test func sidebarRowsReadTextFieldsToo() {
+        final class N { let role: String; let value: String?; let title: String?; let kids: [N]
+            init(_ role: String, value: String? = nil, title: String? = nil, _ kids: [N] = []) { self.role = role; self.value = value; self.title = title; self.kids = kids } }
+        func name(_ row: N) -> String { MailKeys.sidebarLabel(row, role: { $0.role }, value: { $0.value }, label: { $0.title }, children: { $0.kids }) }
+        let archive = N("AXRow", [N("AXCell", [N("AXImage"), N("AXStaticText", value: "Archive")])])
+        let today = N("AXRow", [N("AXCell", [N("AXImage"), N("AXTextField", value: "Today")])])
+        let header = N("AXRow", [N("AXCell", [N("AXStaticText", value: "Smart Mailboxes")])])
+        let titled = N("AXRow", title: "Notes", [N("AXCell", [N("AXImage")])])
+        let deep = N("AXRow", [N("AXCell", [N("AXGroup", [N("AXGroup", [N("AXTextField", value: "Deep")])])])])
+        #expect(name(archive) == "Archive")
+        #expect(name(today) == "Today")
+        #expect(name(titled) == "Notes")
+        #expect(name(deep) == "Deep")
+        #expect(MailKeys.unifiedIndex(for: "Today", in: [archive, header, today].map(name)) == 2)
+    }
+
     /// Esc and `* n` mean select none.
     @Test func escapeAndStarNSelectNone() {
         #expect(MailKeys.outcome(for: MailKeys.escape, pending: nil) == .act(.clearSelection))
