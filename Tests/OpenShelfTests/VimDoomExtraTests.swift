@@ -246,4 +246,29 @@ struct VimDoomExtraTests {
         _ = engine.handle(VimEngineTests.keys("`a"))
         #expect(VimEngineTests.marked(engine).hasSuffix("\n|line 1999 text"))
     }
+
+    /// Search highlight (ROADMAP C35), as Doom's evil-search: matches show while / is typed and
+    /// after the search, until :noh or Esc in normal mode (Doom's +evil-disable-ex-highlights-h).
+    @Test func searchHighlightsShowUntilNohOrEsc() {
+        var engine = VimEngine("foo Foo foo bar")
+        #expect(engine.searchHighlights.isEmpty)
+        _ = engine.handle(VimEngineTests.keys("/fo"))
+        #expect(engine.searchHighlights == [0..<2, 4..<6, 8..<10])
+        _ = engine.handle(VimEngineTests.keys("o<CR>"))
+        #expect(engine.searchHighlights == [0..<3, 4..<7, 8..<11])
+        _ = engine.handle(VimEngineTests.keys("w"))
+        #expect(engine.searchHighlights.count == 3)
+        _ = engine.handle(VimEngineTests.keys(":noh<CR>"))
+        #expect(engine.searchHighlights.isEmpty)
+        _ = engine.handle(VimEngineTests.keys("n"))
+        #expect(engine.searchHighlights.count == 3)
+        _ = engine.handle(VimEngineTests.keys("<Esc>"))
+        #expect(engine.searchHighlights.isEmpty)
+        // * is whole words, case as typed.
+        _ = engine.handle(VimEngineTests.keys("gg*"))
+        #expect(engine.searchHighlights == [0..<3, 8..<11])
+        // Uppercase in the pattern makes it match case.
+        _ = engine.handle(VimEngineTests.keys("/Foo<CR>"))
+        #expect(engine.searchHighlights == [4..<7])
+    }
 }

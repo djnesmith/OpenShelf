@@ -436,6 +436,48 @@ struct VimEngine {
     /// The last : command, for @:.
     private var lastExCommand: String?
 
+    /// Search matches stay shown after a search until :noh or Esc in normal mode, as Doom's
+    /// evil-search does (ROADMAP C35; Esc is Doom's +evil-disable-ex-highlights-h).
+    private(set) var highlightsSearch = false
+
+    /// What the window highlights for the search: the matches of what is being typed after
+    /// / or ?, else of the last search while it stays shown. At most 10,000.
+    var searchHighlights: [Range<Int>] {
+        if mode == .commandLine, let first = commandLine.first, first == "/" || first == "?", commandLine.count > 1 {
+            return allMatches(String(commandLine.dropFirst()), wholeWord: false)
+        }
+        guard highlightsSearch, let last = lastSearch else { return [] }
+        return allMatches(last.pattern, wholeWord: last.wholeWord)
+    }
+
+    /// Every match of `pattern`, as / finds them (smartcase, whole words for * and #).
+    private func allMatches(_ pattern: String, wholeWord: Bool) -> [Range<Int>] {
+        let needle = Array(pattern)
+        guard !needle.isEmpty, needle.count <= text.count else { return [] }
+        let ignoreCase = !wholeWord && !pattern.contains(where: \.isUppercase)
+        let wanted = ignoreCase ? needle.map { Character($0.lowercased()) } : needle
+        var result: [Range<Int>] = []
+        var at = 0
+        while at + needle.count <= text.count, result.count < 10_000 {
+            var hit = true
+            for i in 0..<needle.count {
+                let c = ignoreCase ? Character(text[at + i].lowercased()) : text[at + i]
+                if c != wanted[i] { hit = false; break }
+            }
+            if hit, wholeWord {
+                if at > 0, characterClass(at - 1, big: false) == 1 { hit = false }
+                if at + needle.count < text.count, characterClass(at + needle.count, big: false) == 1 { hit = false }
+            }
+            if hit {
+                result.append(at..<(at + needle.count))
+                at += needle.count
+            } else {
+                at += 1
+            }
+        }
+        return result
+    }
+
     private mutating func runCommandLine(_ line: String) -> VimEffect? {
         guard let prefix = line.first else { return nil }
         let body = String(line.dropFirst())
@@ -463,6 +505,9 @@ struct VimEngine {
         case "set relativenumber", "set rnu": return .relativeNumber(true)
         case "set norelativenumber", "set nornu": return .relativeNumber(false)
         case "set relativenumber!", "set rnu!", "set invrelativenumber", "set invrnu": return .relativeNumber(nil)
+        case "noh", "nohl", "nohlsearch":
+            highlightsSearch = false
+            return nil
         case "q!": return .cancel
         case "q":
             if isChanged {
@@ -2091,6 +2136,7 @@ struct VimEngine {
         }
         let before = cursor
         cursor = target.position
+        if case .searchNext = motion { highlightsSearch = true } else if case .searchWord = motion { highlightsSearch = true }
         switch motion {
         case .up, .down: break
         case .lineEnd: wantedColumn = .max
@@ -2175,7 +2221,7 @@ struct VimEngine {
             return nil
         }
         switch name {
-        case "escape": break
+        case "escape": highlightsSearch = false
         case "x": operate(.delete, motion: .right, count: n)
         case "X": operate(.delete, motion: .left, count: n)
         case "D": operate(.delete, motion: .lineEnd, count: n)

@@ -98,7 +98,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `ggVG=` re-indents a pasted Clojure form as Doom would (needs cljfmt);
     `/foo` Return, `cgn` `bar` Esc, then `.` `.` changes each foo in turn;
     `ma` on a line, move away, `d'a` deletes the lines between;
-    `gp` after a paste selects it again. (#53)
+    `gp` after a paste selects it again;
+    `/foo` highlights every foo as you type; Esc clears them. (#53)
 
 ## Needs your decision
 

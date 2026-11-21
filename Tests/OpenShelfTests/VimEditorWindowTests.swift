@@ -47,6 +47,22 @@ struct VimEditorWindowTests {
         #expect(view.engine.message == "=: no formatter for this text")
     }
 
+    /// Search matches get a background while / is typed and after the search, until :noh.
+    @Test func searchMatchesAreHighlighted() {
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        view.load("ab é ab ab")
+        func shown(_ at: Int) -> Bool {
+            view.layoutManager?.temporaryAttribute(.backgroundColor, atCharacterIndex: at, effectiveRange: nil) != nil
+        }
+        for c in "/ab" { view.keyDown(with: Self.key(String(c))) }
+        #expect(shown(0) && shown(5) && shown(8) && !shown(3))
+        view.keyDown(with: Self.key("\r", keyCode: 36))
+        #expect(shown(5))
+        for c in ":noh" { view.keyDown(with: Self.key(String(c))) }
+        view.keyDown(with: Self.key("\r", keyCode: 36))
+        #expect(!shown(0) && !shown(5))
+    }
+
     /// ⌘⇧R reaches vim through the panel, as ⌘ keys go to the window first.
     @Test @MainActor func raiseKeyReachesVim() {
         let panel = EditorPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)

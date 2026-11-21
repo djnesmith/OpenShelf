@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 21 | 0 | 7 |
+| Vim features (C16–C43) | 22 | 0 | 6 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 39 | 5 | 48 |
+| **Total** | 40 | 5 | 47 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -260,7 +260,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `gu` `gU` `g~` (and `guu` `gUU` `g~~`) | Built | | — |
 | `=` re-indent (`==`, `=ip`) | Built | Through the Text wheel's Re-indent formatter (cljfmt for Clojure), so both agree | — |
 | `%` matching bracket | Built | | — |
-| `*` `#` `n` `N` `/` `?` | Built | No match highlighting; `:noh` not built | S |
+| `*` `#` `n` `N` `/` `?` | Built | Matches highlighted while typing and after, until `:noh` or Esc (C35) | — |
 | `gn` / `cgn` | Built | `cgn` then `.` changes match after match | — |
 | `f` `t` `F` `T` with `;` `,` | Built | evil-snipe's since C26 | — |
 | Marks `m{a-z}`, `'` and `` ` `` | Built | They move with the text, as evil's markers | — |

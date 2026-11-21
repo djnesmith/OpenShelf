@@ -586,14 +586,26 @@ final class VimTextView: NSTextView {
     }
 
     /// The range gx marked (evil-exchange) gets a background until the second gx.
+    /// Search matches (ROADMAP C35) and the range gx marked get a background; the cursor's own
+    /// selection stays on top.
     private func showMarks() {
         guard let layoutManager else { return }
         let whole = NSRange(location: 0, length: (string as NSString).length)
         layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: whole)
-        guard let mark = engine.exchangeHighlight, !mark.isEmpty else { return }
-        let start = utf16Offset(of: mark.lowerBound)
-        let range = NSRange(location: start, length: utf16Offset(of: mark.upperBound) - start)
-        layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.findHighlightColor.withAlphaComponent(0.5), forCharacterRange: range)
+        let matches = engine.searchHighlights
+        let mark = engine.exchangeHighlight
+        guard !matches.isEmpty || mark != nil else { return }
+        // UTF-16 offsets for every character once, rather than counting from the start per match.
+        var offsets = [0]
+        offsets.reserveCapacity(engine.text.count + 1)
+        for c in engine.text { offsets.append(offsets.last! + c.utf16.count) }
+        func nsRange(_ range: Range<Int>) -> NSRange { NSRange(location: offsets[range.lowerBound], length: offsets[range.upperBound] - offsets[range.lowerBound]) }
+        for match in matches {
+            layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.35), forCharacterRange: nsRange(match))
+        }
+        if let mark, !mark.isEmpty {
+            layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.findHighlightColor.withAlphaComponent(0.5), forCharacterRange: nsRange(mark))
+        }
     }
 
     /// vim's cursor as an offset in the view's text.
