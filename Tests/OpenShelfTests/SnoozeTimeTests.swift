@@ -238,4 +238,32 @@ struct SnoozeTimeTests {
         let nextWeek = SnoozeTime.presets.first { $0.name == "next week" }!
         #expect(Self.describe(SnoozeTime.date(of: nextWeek, now: monday, calendar: Self.calendar)) == "Mon, Nov 30 at 7:00 AM")
     }
+
+    /// Wednesday Nov 18: the first such day after today, then a week on.
+    @Test func dayAfterNext() {
+        let now = Self.wednesday(10)
+        let cal = Self.calendar
+        let names: [(String, String)] = [
+            ("thu", "Thu, Nov 26"), ("thur", "Thu, Nov 26"), ("thurs", "Thu, Nov 26"), ("thursday", "Thu, Nov 26"),
+            ("fri", "Fri, Nov 27"), ("friday", "Fri, Nov 27"), ("sat", "Sat, Nov 28"), ("saturday", "Sat, Nov 28"),
+            ("sun", "Sun, Nov 29"), ("sunday", "Sun, Nov 29"), ("mon", "Mon, Nov 30"), ("monday", "Mon, Nov 30"),
+            ("tue", "Tue, Dec 1"), ("tues", "Tue, Dec 1"), ("tuesday", "Tue, Dec 1"),
+            ("wed", "Wed, Dec 2"), ("wednesday", "Wed, Dec 2"),   // today's own name: two weeks on
+        ]
+        for (name, day) in names {
+            for form in [name, name.capitalized, name.uppercased()] {
+                #expect(Self.describe(SnoozeTime.parse("\(form) after next", now: now, calendar: cal)) == day + " at 7:00 AM", "\(form)")
+            }
+        }
+        // Today's name before 7am is still two weeks on, not next week.
+        #expect(Self.describe(SnoozeTime.parse("wednesday after next", now: Self.wednesday(6), calendar: cal)) == "Wed, Dec 2 at 7:00 AM")
+        #expect(Self.describe(SnoozeTime.parse("monday after next 2pm", now: now, calendar: cal)) == "Mon, Nov 30 at 2:00 PM")
+        #expect(Self.describe(SnoozeTime.parse("Monday After Next at 9:30am", now: now, calendar: cal)) == "Mon, Nov 30 at 9:30 AM")
+        #expect(Self.describe(SnoozeTime.parse("fri after next noon", now: now, calendar: cal)) == "Fri, Nov 27 at 12:00 PM")
+        let lateDecember = cal.date(from: DateComponents(year: 2026, month: 12, day: 28, hour: 10))!
+        #expect(Self.describe(SnoozeTime.parse("fri after next", now: lateDecember, calendar: cal)) == "Fri, Jan 8 at 7:00 AM")
+        for bad in ["mon after next 2", "mon after next 13pm", "blursday after next", "after next", "mon after"] {
+            #expect(SnoozeTime.parse(bad, now: now, calendar: cal) == nil, "\(bad)")
+        }
+    }
 }

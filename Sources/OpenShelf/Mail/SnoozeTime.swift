@@ -56,6 +56,7 @@ enum SnoozeTime {
         if typed.range(of: Self.relativePattern, options: .regularExpression) != nil {
             return relative(typed, now: now, calendar: calendar)
         }
+        if let afterNext = dayAfterNext(typed, now: now, calendar: calendar) { typed = afterNext }
         // Weekdays, month-days and times of day are worked out here against `now`; the
         // system's detector reads them against the real clock (on a Friday, "fri 2pm" was
         // next Friday).
@@ -71,6 +72,19 @@ enum SnoozeTime {
             found = calendar.date(bySettingHour: 7, minute: 0, second: 0, of: found) ?? found
         }
         return found > now ? found : nil
+    }
+
+    /// "monday after next", "fri after next 2pm" (David, 2026-11-21: "snooze text like
+    /// \"monday after next\" should work"): the first such day after today, then one week
+    /// on, so on a Monday "monday after next" is 14 days away. Rewritten as that month-day
+    /// with the rest of the text ("dec 2 2pm"), for `dayAndTime` to read the time.
+    static func dayAfterNext(_ typed: String, now: Date, calendar: Calendar) -> String? {
+        guard let match = typed.firstMatch(of: /^([a-z]+) after next(.*)$/), let weekday = weekdays[String(match.1)] else { return nil }
+        let today = calendar.startOfDay(for: now)
+        let ahead = (weekday - calendar.component(.weekday, from: today) + 6) % 7 + 1
+        guard let day = calendar.date(byAdding: .day, value: ahead + 7, to: today),
+              let month = months.first(where: { $0.value == calendar.component(.month, from: day) && $0.key.count == 3 })?.key else { return nil }
+        return "\(month) \(calendar.component(.day, from: day))\(match.2)"
     }
 
     static let weekdays = ["sun": 1, "sunday": 1, "mon": 2, "monday": 2, "tue": 3, "tues": 3, "tuesday": 3, "wed": 4, "wednesday": 4,
