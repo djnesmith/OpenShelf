@@ -211,4 +211,9 @@ struct VimDoomExtraTests {
         #expect(VimEngineTests.run("|ab cd", "mAw`a").cursor == 3)
         #expect(VimEngineTests.run("|ab cd", "mAw`A").cursor == 0)
     }
+
+    /// ga shows the character's code, as evil's (Emacs's what-cursor-position).
+    @Test func gaShowsTheCharacterCode() {
+        #expect(VimEngineTests.run("|a", "ga").message == "Char: a (97, #o141, #x61)")
+    }
 }

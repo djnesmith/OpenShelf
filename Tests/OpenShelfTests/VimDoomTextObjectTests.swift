@@ -728,4 +728,33 @@ struct VimDoomTextObjectTests {
     func marks(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// gJ, Doom's gp and visual gp, gP, and the unmatched-bracket jumps (C41).
+    @Test(arguments: [
+        ("|a\nb", "gJ", "a|b"),
+        ("|a\n  b", "gJ", "a|  b"),
+        ("|a\nb\nc", "3gJ", "ab|c"),
+        ("|a \nb", "gJ", "a |b"),
+        ("|a\n\nb", "gJ", "|a\nb"),
+        ("|a", "gJ", "|a"),
+        ("|a\nb\nc", "VjgJ", "a|b\nc"),
+        ("|ab cd", "yiwwPgpd", "ab |d"),
+        ("|ab\ncd", "yyjpgpd", "ab\nc|d"),
+        ("|ab cd", "yiwwviwgp0P", "a|bab ab"),
+        ("|ab cd", "yiwwviwp0P", "c|dab ab"),
+        ("|ab", "ylgP", "a|ab"),
+        ("|a\nb", "yygP", "a\n|a\nb"),
+        ("|a\nb", "yyjgPx", "a\na\n|"),
+        ("|ab", "yl3gP", "aaa|ab"),
+        ("(a (b) c|)", "[(x", "|a (b) c)"),
+        ("(a (b) |c)", "])x", "(a (b) |c"),
+        ("(a (b|) c)", "2[(x", "|a (b) c)"),
+        ("{a (b|) c}", "[{x", "|a (b) c}"),
+        ("{a (b|) c}", "]}x", "{a (b) |c"),
+        ("a |b", "[(x", "a| "),
+        ("(a\n(b)\n|c)", "d[(", "|c)"),
+    ])
+    func moreG(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

@@ -1279,6 +1279,8 @@ struct VimEngine {
         case searchWord(forward: Bool)
         /// 'a (the mark's line, linewise) and `a (its exact place), ROADMAP C37.
         case mark(Character, exact: Bool)
+        /// [( [{ ]) ]}: the unmatched bracket before or after the cursor (ROADMAP C41).
+        case unmatched(Character)
         /// iw, a", i(, ap…: a range around the cursor, after an operator or in visual mode.
         case textObject(inner: Bool, Character)
     }
@@ -1366,7 +1368,7 @@ struct VimEngine {
     static let unbuiltWithArgument: [String: String] = [
         "z": "not built", "[": "not built", "]": "not built",
     ]
-    static let unbuiltAlone = ["gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g+", "gd", "gD", "g*", "g#", "g&"]
+    static let unbuiltAlone = ["gi", "g;", "g,", "g+", "gd", "gD", "g*", "g#", "g&"]
 
     private func unbuiltCommand(_ keys: [VimKey], from start: Int) -> String?? {
         var typed = ""
@@ -1381,6 +1383,8 @@ struct VimEngine {
         if Self.unbuiltAlone.contains(where: { typed.hasPrefix($0) }), !inVisual || typed.hasPrefix("gJ") {
             return .some("not built")
         }
+        // [( [{ ]) ]} are built (ROADMAP C41); the rest of [ and ] are not.
+        if ["[(", "[{", "])", "]}"].contains(where: { typed.hasPrefix($0) }) { return nil }
         for (prefix, reason) in Self.unbuiltWithArgument where !inVisual && typed.hasPrefix(prefix) {
             // "gg", "gv", "gu" and the other built g commands are not "g'" and are left alone.
             if prefix == "z", typed.count > 1, typed.hasPrefix("zf") { break }
@@ -1538,6 +1542,13 @@ struct VimEngine {
             if case .char("v") = second, !inVisual {
                 index += 1
                 return .done(Command(count: nil, action: .simple("gv")))
+            }
+            // gJ joins without spaces; Doom's gp selects the last paste again (visual gp pastes
+            // without keeping what it replaced); gP pastes before and moves after; ga shows the
+            // character's code (ROADMAP C41).
+            if case .char(let g) = second, "JpPa".contains(g), !(inVisual && g != "J" && g != "p") {
+                index += 1
+                return .done(Command(count: count, action: .simple("g" + String(g))))
             }
             // gn / gN in normal mode select the next (last) search match.
             if case .char(let kind) = second, kind == "n" || kind == "N", !inVisual {
@@ -1776,6 +1787,14 @@ struct VimEngine {
         case ",": return .done(.repeatFind(reverse: true))
         case "n": return .done(.searchNext(reverse: false))
         case "N": return .done(.searchNext(reverse: true))
+        case "[", "]":
+            guard index < keys.count else { return .incomplete }
+            guard case .char(let bracket) = keys[index], (c == "[" && "({".contains(bracket)) || (c == "]" && ")}".contains(bracket)) else {
+                index -= 1
+                return .invalid
+            }
+            index += 1
+            return .done(.unmatched(bracket))
         case "'", "`":
             guard index < keys.count else { return .incomplete }
             guard case .char(let name) = keys[index], name.isASCII, name.isLetter else { return .invalid }
@@ -1916,7 +1935,7 @@ struct VimEngine {
         case .deleteSurround, .changeSurround, .addSurround, .align: true
         case .operate(let op, _): op != .yank && op != .exchange
         case .simple(let name):
-            ["x", "X", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement", "slurpForward", "slurpBackward", "barfForward", "barfBackward", "raise"].contains(name)
+            ["x", "X", "D", "C", "gJ", "gP", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement", "slurpForward", "slurpBackward", "barfForward", "barfBackward", "raise"].contains(name)
                 || (name.hasPrefix("line") && name != "liney" && name != "lineX") || (name.hasPrefix("r") && name.count == 2)
         }
     }
@@ -2117,6 +2136,13 @@ struct VimEngine {
                 cursor = corner
             case "p", "P":
                 replaceSelection()
+            case "gp":
+                replaceSelection(keepRegisters: true)
+            case "gJ":
+                let (low, high) = (min(anchor, cursor), max(anchor, cursor))
+                mode = .normal
+                cursor = low
+                joinWithoutSpaces(count: max(lineIndex(high) - lineIndex(low) + 1, 2))
             case ":":
                 // As vim: the command line starts with the selection's lines.
                 mode = .commandLine
@@ -2139,6 +2165,25 @@ struct VimEngine {
         case "i", "a", "A", "I": insertCount = min(n, 10_000)
             enterInsert(at: name == "i" ? cursor : name == "a" ? min(cursor + (lineIsEmpty(cursor) ? 0 : 1), lineEnd(cursor)) : name == "A" ? lineEnd(cursor) : firstNonBlank(lineStart(cursor)))
         case "p", "P": put(after: name == "p", count: n)
+        case "gP": put(after: false, count: n, cursorAfter: true)
+        case "gJ": joinWithoutSpaces(count: max(n, 2))
+        case "gp":
+            // Doom's +evil/reselect-paste: the last paste, as evil selects it (one character past
+            // its end, since evil takes the end as inclusive).
+            guard let paste = lastPaste, paste.upperBound <= text.count, !text.isEmpty else {
+                failed = true
+                return nil
+            }
+            mode = .visual
+            anchor = min(paste.lowerBound, text.count - 1)
+            cursor = min(paste.upperBound, text.count - 1)
+        case "ga":
+            // evil's ga is Emacs's what-cursor-position.
+            guard cursor < text.count else { break }
+            let c = text[cursor]
+            let value = c.unicodeScalars.first.map { Int($0.value) } ?? 0
+            let shown = c == "\n" ? "C-j" : c == "\t" ? "TAB" : String(c)
+            message = "Char: \(shown) (\(value), #o\(String(value, radix: 8)), #x\(String(value, radix: 16)))"
         case "u": undo(count: n)
         case "redo": redo(count: n)
         case "~": toggleCaseUnderCursor(count: n)
@@ -2343,6 +2388,24 @@ struct VimEngine {
             return Target(position: position, kind: .exclusive)
         case .textObject:
             return nil
+        case .unmatched(let bracket):
+            let backward = bracket == "(" || bracket == "{"
+            let partner: Character = ["(": ")", "{": "}", ")": "(", "}": "{"][bracket]!
+            var position = cursor
+            for _ in 0..<max(count, 1) {
+                var depth = 0, i = position + (backward ? -1 : 1)
+                var found: Int?
+                while i >= 0, i < text.count {
+                    if text[i] == partner { depth += 1 } else if text[i] == bracket {
+                        if depth == 0 { found = i; break }
+                        depth -= 1
+                    }
+                    i += backward ? -1 : 1
+                }
+                guard let found else { return nil }
+                position = found
+            }
+            return Target(position: position, kind: .exclusive)
         case .mark(let name, let exact):
             guard let position = marks[name] else {
                 message = "E20: Mark not set"
@@ -2843,7 +2906,27 @@ struct VimEngine {
         clampCursor()
     }
 
-    private mutating func put(after: Bool, count: Int) {
+    /// The last text p or P put in, for Doom's gp.
+    private var lastPaste: Range<Int>?
+
+    /// gJ: `count` lines joined with nothing put in or taken out between them; the cursor goes
+    /// to the last join.
+    private mutating func joinWithoutSpaces(count: Int) {
+        guard lineIndex(cursor) + 1 < lineStarts.count else {
+            failed = true
+            return
+        }
+        checkpoint()
+        for _ in 0..<(count - 1) {
+            let end = lineEnd(cursor)
+            guard end < text.count else { break }
+            text.remove(at: end)
+            cursor = end
+        }
+        clampCursor()
+    }
+
+    private mutating func put(after: Bool, count: Int, cursorAfter: Bool = false) {
         let register = fetch()
         guard !register.text.isEmpty else {
             message = "E353: Nothing in register"
@@ -2862,15 +2945,18 @@ struct VimEngine {
                 // After the last line, which has no line break of its own.
                 text.insert(contentsOf: ["\n"] + pasted.dropLast(), at: at)
                 cursor = firstNonBlank(at + 1)
+                lastPaste = at..<(at + pasted.count)
             } else {
                 text.insert(contentsOf: pasted, at: at)
-                cursor = firstNonBlank(at)
+                cursor = cursorAfter ? min(at + pasted.count, text.count) : firstNonBlank(at)
+                lastPaste = at..<(at + pasted.count)
             }
         } else {
             let at = after && !lineIsEmpty(cursor) ? min(cursor + 1, text.count) : cursor
             text.insert(contentsOf: pasted, at: at)
-            // Text that spans lines leaves the cursor at its start.
-            cursor = pasted.contains("\n") ? at : at + pasted.count - 1
+            // Text that spans lines leaves the cursor at its start; gP goes just after it.
+            cursor = cursorAfter ? at + pasted.count : pasted.contains("\n") ? at : at + pasted.count - 1
+            lastPaste = at..<(at + pasted.count)
         }
         clampCursor()
     }
@@ -4123,7 +4209,7 @@ struct VimEngine {
 
     /// p or P in visual mode: the selection is replaced by the register,
     /// and what was selected goes in the unnamed register.
-    private mutating func replaceSelection() {
+    private mutating func replaceSelection(keepRegisters: Bool = false) {
         guard let range = selection else { return }
         let replacement = fetch()
         // Nothing to put (an empty clipboard, or a picture on it): the selection stays, as in vim.
@@ -4136,7 +4222,8 @@ struct VimEngine {
         let (first, last) = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
         mode = .normal
         let named = activeRegister
-        activeRegister = nil
+        // Doom's visual gp (+evil/alt-paste) keeps the registers: what it replaces goes nowhere.
+        activeRegister = keepRegisters ? "_" : nil
         let lines = Array(replacement.linewise ? replacement.text : replacement.text + "\n")
         if linewise {
             let wasFinal = last == lineStarts.count - 1
