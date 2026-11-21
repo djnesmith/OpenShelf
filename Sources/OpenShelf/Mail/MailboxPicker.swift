@@ -1,7 +1,7 @@
 import AppKit
 
-/// The quick-filing picker: a field, the best matches below it, ↑ ↓ to choose, Return to
-/// move, Esc to close.
+/// The quick-filing picker: a field, the best matches below it, ↑ ↓ (or ⌃N ⌃P) to choose,
+/// Return to move, Esc to close.
 @MainActor
 final class MailboxPicker: NSObject, NSTextFieldDelegate {
     static let shared = MailboxPicker()
@@ -37,6 +37,7 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
         self.onChoose = onChoose
         let panel = self.panel ?? makePanel()
         field.stringValue = ""
+        highlighted = 0
         update()
         return panel
     }
@@ -54,7 +55,8 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
     var rowTexts: [String] { list.arrangedSubviews.compactMap { ($0 as? NSTextField)?.stringValue } }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
+        let panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.onStep = { [weak self] in self?.move(by: $0) }
         panel.title = "Move to…"
         panel.level = .floating
         panel.isReleasedWhenClosed = false
@@ -78,7 +80,6 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
     private func update() {
         matches = MailFiling.rank(field.stringValue, in: mailboxes, recent: recent)
         highlighted = min(highlighted, max(matches.count - 1, 0))
-        if field.stringValue.isEmpty { highlighted = 0 }
         list.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (index, box) in matches.enumerated() {
             let row = NSTextField(labelWithString: (index == highlighted ? "▸ " : "   ") + box.display)
@@ -96,11 +97,9 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
         case #selector(NSResponder.moveDown(_:)):
-            highlighted = min(highlighted + 1, max(matches.count - 1, 0))
-            update()
+            move(by: 1)
         case #selector(NSResponder.moveUp(_:)):
-            highlighted = max(highlighted - 1, 0)
-            update()
+            move(by: -1)
         case #selector(NSResponder.insertNewline(_:)):
             guard matches.indices.contains(highlighted) else { return true }
             let chosen = matches[highlighted]
@@ -115,8 +114,38 @@ final class MailboxPicker: NSObject, NSTextFieldDelegate {
         return true
     }
 
+    /// Moves the highlight one row, stopping at the first and last rows.
+    func move(by step: Int) {
+        highlighted = min(max(highlighted + step, 0), max(matches.count - 1, 0))
+        update()
+    }
+
     func close() {
         onChoose = nil
         panel?.orderOut(nil)
+    }
+
+    /// ⌃N down, ⌃P up; nil for any other key. Read from the key itself, not from the
+    /// user's key bindings, so it works whatever DefaultKeyBinding.dict says.
+    nonisolated static func step(for event: NSEvent) -> Int? {
+        guard event.type == .keyDown,
+              event.modifierFlags.intersection([.command, .control, .option, .shift]) == .control else { return nil }
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "n": return 1
+        case "p": return -1
+        default: return nil
+        }
+    }
+
+    /// Takes ⌃N and ⌃P before the field does, so neither types into it.
+    final class KeyPanel: NSPanel {
+        var onStep: (Int) -> Void = { _ in }
+        override func sendEvent(_ event: NSEvent) {
+            if let step = MailboxPicker.step(for: event) {
+                onStep(step)
+                return
+            }
+            super.sendEvent(event)
+        }
     }
 }

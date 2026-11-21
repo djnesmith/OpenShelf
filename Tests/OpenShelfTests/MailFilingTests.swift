@@ -82,6 +82,46 @@ struct MailFilingTests {
         #expect(chosen.count == 1)
     }
 
+    /// ⌃N and ⌃P move the highlight like ↓ and ↑, stop at the ends, and type nothing;
+    /// Return then picks the highlighted row. Sent to the panel, never put on screen.
+    @Test func controlNAndPMoveThePickerHighlight() {
+        func key(_ chars: String, _ flags: NSEvent.ModifierFlags = .control) -> NSEvent {
+            let typed = flags == .control ? String(UnicodeScalar(UInt8(chars.unicodeScalars.first!.value) & 0x1F)) : chars
+            return NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0,
+                                    context: nil, characters: typed, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: 0)!
+        }
+        #expect(MailboxPicker.step(for: key("n")) == 1)
+        #expect(MailboxPicker.step(for: key("p")) == -1)
+        #expect(MailboxPicker.step(for: key("n", [])) == nil)
+        #expect(MailboxPicker.step(for: key("n", [.control, .shift])) == nil)
+        #expect(MailboxPicker.step(for: key("n", [.control, .option])) == nil)
+        #expect(MailboxPicker.step(for: key("n", .command)) == nil)
+        #expect(MailboxPicker.step(for: key("j")) == nil)
+
+        let picker = MailboxPicker()
+        var chosen: [Box] = []
+        let panel = picker.prepare(mailboxes: Self.boxes, recent: []) { chosen.append($0) }
+        // The field has the keyboard, so a key the panel let through would reach it.
+        panel.makeFirstResponder(picker.pickerField)
+        let last = picker.matches.count - 1
+        #expect(last >= 1)
+        panel.sendEvent(key("p"))
+        #expect(picker.highlighted == 0)
+        panel.sendEvent(key("n"))
+        #expect(picker.highlighted == 1)
+        for _ in 0...last { panel.sendEvent(key("n")) }
+        #expect(picker.highlighted == last)
+        panel.sendEvent(key("p"))
+        #expect(picker.highlighted == last - 1)
+        #expect(picker.pickerField.stringValue.isEmpty)
+        #expect(picker.rowTexts[last - 1].hasPrefix("▸ "))
+        _ = picker.control(picker.pickerField, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        #expect(chosen == [picker.matches[last - 1]])
+        // Opened again: back on the first row.
+        picker.prepare(mailboxes: Self.boxes, recent: []) { _ in }
+        #expect(picker.highlighted == 0)
+    }
+
     @Test(arguments: [
         ("abc@example.com", "message://%3Cabc@example.com%3E"),
         ("<abc@example.com>", "message://%3Cabc@example.com%3E"),
