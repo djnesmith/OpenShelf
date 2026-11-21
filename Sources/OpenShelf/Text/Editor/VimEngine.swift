@@ -1963,7 +1963,7 @@ struct VimEngine {
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
             guard index < keys.count else { return .incomplete }
-            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikjauxcf".contains(kind) else { return .invalid }
+            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikjauxcfs".contains(kind) else { return .invalid }
             index += 1
             return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
@@ -2067,6 +2067,7 @@ struct VimEngine {
         case .textObject(_, "x")?: "no attribute here"
         case .textObject(_, "c")?: "not in a comment"
         case .textObject(_, "f")?: "no function here"
+        case .textObject(_, "s")?: "no sentence here"
         case .textObject(_, "n")?, .textObject(_, "N")?: "no match"
         default: "nothing to do"
         }
@@ -3248,6 +3249,7 @@ struct VimEngine {
         case "u": return urlObject(inner: inner).map { ($0, false) }
         case "c": return commentObject().map { (inner ? $0.inner : $0.outer, false) }
         case "n", "N": return searchMatch(forward: kind == "n").map { ($0, false) }
+        case "s": return sentenceObject(inner: inner, count: count).map { ($0, false) }
         case "f": return defunObject().map { ($0, true) }
         case "x": return xmlAttributeObject(inner: inner).map { ($0, false) }
         case "i", "k", "j": return indentObject(inner: inner, kind).map { ($0, true) }
@@ -3342,6 +3344,82 @@ struct VimEngine {
         changeIndex = target
         cursor = min(changes[target], text.count)
         clampCursor()
+    }
+
+    // MARK: - Sentences
+
+    /// is / as (ROADMAP C33), as evil's sentence objects with Doom's settings
+    /// (sentence-end-double-space nil): a sentence ends at . ? ! (and closing brackets or quotes
+    /// after them) followed by a blank or a line's end, or at its paragraph's end. is is the
+    /// sentence, or the blanks between two; as adds the blanks after it (with none, and one
+    /// sentence, the ones before), or for blanks the sentence after them. Counts take more.
+    private func sentenceObject(inner: Bool, count: Int) -> Range<Int>? {
+        let n = text.count
+        guard n > 0 else { return nil }
+        // The paragraph around the cursor: lines between blank lines.
+        let starts = lineStarts
+        func blankLine(_ line: Int) -> Bool { text[starts[line]..<lineEnd(starts[line])].allSatisfy { $0 == " " || $0 == "\t" } }
+        let here = lineIndex(min(cursor, n - 1))
+        guard !blankLine(here) else { return nil }
+        var first = here, last = here
+        while first > 0, !blankLine(first - 1) { first -= 1 }
+        while last + 1 < starts.count, !blankLine(last + 1) { last += 1 }
+        let low = starts[first], high = lineEnd(starts[last])
+        func space(_ i: Int) -> Bool { text[i] == " " || text[i] == "\t" || text[i] == "\n" }
+        // Sentences and the gaps between them, in order.
+        var pieces: [(range: Range<Int>, sentence: Bool)] = []
+        var i = low
+        while i < high {
+            let start = i
+            if space(i) {
+                while i < high, space(i) { i += 1 }
+                pieces.append((start..<i, false))
+                continue
+            }
+            var end = high
+            var j = i
+            while j < high {
+                if ".?!…‽".contains(text[j]) {
+                    var k = j + 1
+                    while k < high, "]\"'”’)}»›".contains(text[k]) { k += 1 }
+                    if k == high || text[k] == " " || text[k] == "\t" || text[k] == "\n" {
+                        end = k
+                        break
+                    }
+                    j = k
+                    continue
+                }
+                j += 1
+            }
+            pieces.append((start..<end, true))
+            i = end
+        }
+        let at = min(cursor, n - 1)
+        guard let index = pieces.firstIndex(where: { $0.range.contains(at) }) else { return nil }
+        let wanted = max(count, 1)
+        if inner {
+            guard index + wanted - 1 < pieces.count else { return nil }
+            return pieces[index].range.lowerBound..<pieces[index + wanted - 1].range.upperBound
+        }
+        if !pieces[index].sentence {
+            // Blanks, then the sentences after them.
+            let sentences = pieces[(index + 1)...].filter(\.sentence)
+            guard sentences.count >= wanted else { return nil }
+            return pieces[index].range.lowerBound..<sentences[sentences.index(sentences.startIndex, offsetBy: wanted - 1)].range.upperBound
+        }
+        let sentences = pieces[index...].enumerated().filter { $0.element.sentence }
+        guard sentences.count >= wanted else { return nil }
+        let lastIndex = index + sentences[wanted - 1].offset
+        var start = pieces[index].range.lowerBound, end = pieces[lastIndex].range.upperBound
+        // Blanks (not line breaks) after the last sentence; with none, and one sentence, before it.
+        var after = end
+        while after < high, text[after] == " " || text[after] == "\t" { after += 1 }
+        if after > end {
+            end = after
+        } else if wanted == 1 {
+            while start > low, text[start - 1] == " " || text[start - 1] == "\t" { start -= 1 }
+        }
+        return start..<end
     }
 
     // MARK: - gn

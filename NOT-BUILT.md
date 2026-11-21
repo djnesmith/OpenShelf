@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 24 | 0 | 4 |
+| Vim features (C16–C43) | 25 | 0 | 3 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 42 | 5 | 45 |
+| **Total** | 43 | 5 | 44 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -256,7 +256,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | Feature | State | Note | Size |
 |---|---|---|---|
 | `iw` `aw` `iW` `aW` `ip` `ap` | Built | | — |
-| `is` / `as` sentence | Not built | | S |
+| `is` / `as` sentence | Built | evil's, with Doom's one space after a period | — |
 | `gu` `gU` `g~` (and `guu` `gUU` `g~~`) | Built | | — |
 | `=` re-indent (`==`, `=ip`) | Built | Through the Text wheel's Re-indent formatter (cljfmt for Clojure), so both agree | — |
 | `%` matching bracket | Built | | — |

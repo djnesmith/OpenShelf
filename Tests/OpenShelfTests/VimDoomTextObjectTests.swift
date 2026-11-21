@@ -797,4 +797,33 @@ struct VimDoomTextObjectTests {
     func jumps(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// is / as, evil's sentences with Doom's sentence-end-double-space nil (C33).
+    @Test(arguments: [
+        ("One two. Thr|ee four.  Five six! Seven", "dis", "One two. |  Five six! Seven"),
+        ("One two. Thr|ee four.  Five six! Seven", "das", "One two. |Five six! Seven"),
+        ("|One two. Three.", "dis", "| Three."),
+        ("One two. Three|.", "das", "One two|."),
+        ("One. Two|. Three.", "d2as", "One.| "),
+        ("One two.\nThree| four.\n\nFive.", "dis", "One two.\n|\n\nFive."),
+        ("One two.\nThree| four.\n\nFive.", "das", "One two.\n|\n\nFive."),
+        ("Hi there.  B|ye now.", "cisX<Esc>", "Hi there.  |X"),
+        ("One (two.) Th|ree.", "dis", "One (two.)| "),
+        ("A b? C| d.", "das", "A b|?"),
+        ("One two. Thr|ee four.", "visd", "One two.| "),
+        ("One two.  |  Three.", "dis", "One two.|Three."),
+        ("One two.  |  Three.", "das", "One two|."),
+        ("e.g. this| is it.", "dis", "e.g.| "),
+        ("One. Tw|o. Three. Four.", "d2is", "One. |Three. Four."),
+        ("One. Tw|o. Three. Four.", "d3is", "One. | Four."),
+        ("One. Tw|o. Three. Four.", "d2as", "One. |Four."),
+        ("One? \"Tw|o!\" Three.", "dis", "One? | Three."),
+        ("A b|.\nC d.", "das", "|\nC d."),
+        ("|A.B c. D.", "dis", "| D."),
+        ("x\n\n|One. Two.\n\ny", "das", "x\n\n|Two.\n\ny"),
+        ("One. Two|.", "yisP", "One. Two|.Two."),
+    ])
+    func sentence(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }
