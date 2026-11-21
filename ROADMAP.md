@@ -517,17 +517,17 @@ Today a text or source file reaches the file wheel, which has only Pretty Print 
   (`TextSniffer` already spots JSON, YAML, EDN, XML and TOML)?
 - Permissions: none.
 
-**C16–C43. Vim features related to text objects and surround** — not built (David, 2026-11-20: "add add features to roadmap"). Checked against the engine at 6833d73 (NOT-BUILT.md, "Vim: related features"). Ordered by what his Doom setup has (`:editor evil` packages and text objects, `~/.config/emacs/sources/doom+/modules/editor/evil/config.el:640-682`, and `~/.doom.d/config.el`), then plain vim. None is built until David picks.
+**C16–C43. Vim features related to text objects and surround** — not built (David, 2026-11-20: "add add features to roadmap"). Checked against the engine at 6833d73 (NOT-BUILT.md, "Vim: related features"). Ordered by what his Doom setup has (`:editor evil` packages and text objects, `~/.config/emacs/sources/doom+/modules/editor/evil/config.el:640-682`, and `~/.doom.d/config.el`), then plain vim. Being built from 2026-11-21 (David: "let's do the rest of the vim upgrades"; where vim and his Doom differ, Doom wins: "do it my doom emacs way"). Rows marked built are done.
 
 In his Doom setup:
 
 | Id | What | Size | Needs first |
 |---|---|---|---|
 | C16 | Surround a function call: `ysiwf` asks for a name and makes `foo(x)` (evil-surround/embrace `f`) | S | — |
-| C17 | `iq` / `aq`: the nearest quotes of any kind (Doom) | S | — |
+| C17 | `iq` / `aq`: the nearest quotes of any kind (Doom) — **built** | S | — |
 | C18 | `ia` / `aa`: one argument, with its comma or space (evil-args); Clojure forms split on spaces | M | — |
 | C19 | `ii` / `ai` (and `ij` `ik`): lines at the cursor's indent or deeper (evil-indent-plus) | S | — |
-| C20 | `ig` / `ag`: the whole text (Doom) | S | — |
+| C20 | `ig` / `ag`: the whole text (Doom) — **built** | S | — |
 | C21 | `if` / `af`: the function; for Clojure the top-level form (Doom defun) | M | A rule per file type |
 | C22 | `ic` / `ac`: a comment (evil-nerd-commenter) | S | A comment string per file type |
 | C23 | `iu` URL and `ix` XML attribute (exato) | S each | — |

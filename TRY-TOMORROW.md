@@ -82,6 +82,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
 15. **Clean Image.** Drag a photo with a location, Tools › **Clean**, mark a small logo, Clean.
     *Expect:* a report naming what it removed (EXIF, GPS location, …) and the filled area, with
     Copy Report; the copy has no location and no logo. (#67)
+17. **Doom vim keys** in the Edit window (not yet installed; from the stage2-vim branch):
+    `ciq` inside any quotes changes what is between them; `yig` copies all the text. (#53)
 
 ## Needs your decision
 

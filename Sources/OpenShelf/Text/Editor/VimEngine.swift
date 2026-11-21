@@ -1140,7 +1140,7 @@ struct VimEngine {
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
             guard index < keys.count else { return .incomplete }
-            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>".contains(kind) else { return .invalid }
+            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qg".contains(kind) else { return .invalid }
             index += 1
             return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
@@ -1219,6 +1219,7 @@ struct VimEngine {
         case .textObject(_, let kind)? where "\"'`".contains(kind): "no \(kind)…\(kind) on this line"
         case .textObject(_, let kind)? where "([{<)]}>bB".contains(kind): "not inside \(Self.bracketPair(kind))"
         case .textObject(_, "t")?: "not inside a tag"
+        case .textObject(_, "q")?: "no quotes here"
         default: "nothing to do"
         }
         return "\(keys): \(reason)"
@@ -2108,8 +2109,89 @@ struct VimEngine {
         case "<", ">": return bracketObject(inner: inner, open: "<", close: ">", count: count)
         case "p": return paragraphObject(inner: inner, count: count).map { ($0, true) }
         case "t": return tagObject(inner: inner, count: count).map { ($0, false) }
+        case "q": return anyQuoteObject(inner: inner, count: count).map { ($0, false) }
+        // Doom's ig / ag (+evil:whole-buffer-txtobj): all the text, as characters.
+        case "g": return (0..<text.count, false)
         default: return nil
         }
+    }
+
+    // MARK: - Doom's text objects
+
+    /// Doom's iq / aq (`+evil:inner-any-quote`, evil-textobj-anyblock over ' " ` and “ ”):
+    /// each kind of quote gives a string, around the cursor or the next one after it, and
+    /// the smallest wins, even one ahead of the cursor over one around it, as in Doom.
+    /// aq takes the quotes alone, but evil adds the blanks after for ' and `, and for "
+    /// when the cursor is on the opening quote. 2iq is aq without blanks, as evil's count 2.
+    private func anyQuoteObject(inner: Bool, count: Int) -> Range<Int>? {
+        var spans: [(open: Int, close: Int, quote: Character)] = []
+        for quote in ["'", "\"", "`"] as [Character] {
+            if let span = evilQuoteSpan(quote) { spans.append((span.0, span.1, quote)) }
+        }
+        if let open = enclosingOpen("“", "”", before: cursor) ?? (cursor < text.count && text[cursor] == "“" ? cursor : nil),
+           let close = matchingClose("“", "”", from: open) {
+            spans.append((open, close, "“"))
+        }
+        if spans.isEmpty, let open = (cursor..<text.count).first(where: { text[$0] == "“" }), let close = matchingClose("“", "”", from: open) {
+            spans.append((open, close, "“"))
+        }
+        // A string before the cursor (none after it) loses to one around the cursor.
+        if spans.contains(where: { $0.open <= cursor && cursor <= $0.close }) { spans.removeAll { $0.close < cursor } }
+        guard let span = spans.min(by: { $0.close - $0.open < $1.close - $1.open }) else { return nil }
+        if inner, count != 2 { return (span.open + 1)..<span.close }
+        let quotesOnly = count == 2 || span.quote == "“" || (span.quote == "\"" && cursor != span.open)
+        if quotesOnly { return span.open..<(span.close + 1) }
+        let end = lineEnd(span.close)
+        var high = span.close + 1
+        while high < end, text[high] == " " || text[high] == "\t" { high += 1 }
+        var low = span.open
+        if high == span.close + 1 {
+            let start = lineStart(span.open)
+            while low > start, text[low - 1] == " " || text[low - 1] == "\t" { low -= 1 }
+        }
+        return low..<high
+    }
+
+    /// The string `quote` makes around the cursor, or the next one after it, as evil's
+    /// evil-select-quote finds it in a plain buffer: strings are read from the top with
+    /// backslash escapes, where `"` always makes strings and `quote` does too; with none
+    /// after the cursor, the last one before it. Inside a "…" string, a ' or ` pair is found on vim's
+    /// rule within that string.
+    private func evilQuoteSpan(_ quote: Character) -> (Int, Int)? {
+        var strings: [(open: Int, close: Int, quote: Character)] = []
+        var open: (Int, Character)?
+        var i = 0
+        while i < text.count {
+            let c = text[i]
+            if c == "\\" {
+                i += 2
+                continue
+            }
+            if let (start, kind) = open {
+                if c == kind {
+                    strings.append((start, i, kind))
+                    open = nil
+                }
+            } else if c == "\"" || c == quote {
+                open = (i, c)
+            }
+            i += 1
+        }
+        if let around = strings.first(where: { $0.open <= cursor && cursor <= $0.close }) {
+            if around.quote == quote { return (around.open, around.close) }
+            // In a "…" string: the ' or ` pair on vim's rule, within the string.
+            let quotes = ((around.open + 1)..<around.close).filter { i in
+                text[i] == quote && lineIndex(i) == lineIndex(cursor) && text[lineStart(i)..<i].reversed().prefix { $0 == "\\" }.count % 2 == 0
+            }
+            if let at = quotes.firstIndex(of: cursor) {
+                return at % 2 == 0 ? (at + 1 < quotes.count ? (quotes[at], quotes[at + 1]) : nil) : (quotes[at - 1], quotes[at])
+            }
+            if let before = quotes.last(where: { $0 < cursor }), let after = quotes.first(where: { $0 > cursor }) { return (before, after) }
+            return nil
+        }
+        // The next string after the cursor, or with none, the last one before it.
+        let own = strings.filter { $0.quote == quote }
+        return (own.first(where: { $0.open > cursor }) ?? own.last).map { ($0.open, $0.close) }
     }
 
     // MARK: - vim's own cursor steps, for word motions and objects
