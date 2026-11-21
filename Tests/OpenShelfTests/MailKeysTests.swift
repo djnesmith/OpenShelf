@@ -374,10 +374,12 @@ struct MailKeysTests {
         let label: String?
         let children: [DialogNode]
         let date: Date? = nil
-        init(_ role: String, id: String? = nil, label: String? = nil, _ children: [DialogNode] = []) {
+        let staticText: String?
+        init(_ role: String, id: String? = nil, label: String? = nil, text: String? = nil, _ children: [DialogNode] = []) {
             self.role = role
             identifier = id
             self.label = label
+            staticText = text
             self.children = children
         }
         func setDate(_ date: Date) -> Bool { false }
@@ -791,5 +793,26 @@ struct MailKeysTests {
         #expect(MailKeys.rowAfterSnooze(selected: [0], rowsBefore: 1, rowsAfter: 0) == nil)
         #expect(MailKeys.rowAfterSnooze(selected: [], rowsBefore: 5, rowsAfter: 5) == nil)
         #expect(MailKeys.rowAfterSnooze(selected: [0], rowsBefore: 1, rowsAfter: 1) == nil)
+    }
+
+    /// `c`: the new message's To field, never the body or the toolbar.
+    @MainActor @Test func newMessageFindsTheToField() {
+        // By the field's own name.
+        let named = Node("AXTextField", label: "To:")
+        let compose = Node("AXWindow", [
+            Node("AXToolbar", [Node("AXTextField", label: "To:")]),
+            Node("AXScrollArea", [Node("AXTextField", label: "Subject:"), named, Node("AXWebArea", [Node("AXTextArea")])]),
+        ])
+        #expect(MailKeys.toField(in: compose) as? Node === named)
+        // By the "To:" label just before it, the From popup and Cc label skipped.
+        let afterLabel = Node("AXTextField")
+        let labelled = Node("AXWindow", [Node("AXGroup", [
+            Node("AXPopUpButton", id: "popup_from"), Node("AXStaticText", text: "To:"), afterLabel,
+            Node("AXStaticText", text: "Cc:"), Node("AXTextField"),
+        ])])
+        #expect(MailKeys.toField(in: labelled) as? Node === afterLabel)
+        // No To anywhere (only the body and Subject): none, nothing focused.
+        let none = Node("AXWindow", [Node("AXTextField", label: "Subject:"), Node("AXWebArea", [Node("AXStaticText", text: "To:"), Node("AXTextArea")])])
+        #expect(MailKeys.toField(in: none) == nil)
     }
 }

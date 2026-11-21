@@ -364,6 +364,8 @@ enum MailKeyActions {
             if !conversationAction(archive: title == "Archive") { performVerified(title, under: top) }
         case .menu("Edit", "Undo"):
             undo()
+        case .menu("File", "New Message"):
+            if press("New Message", under: "File") { focusTo() }
         case .toggleRead:
             let bar = MailMenu.menuBar() ?? []
             guard let title = MailKeys.toggleReadTitle(shows: { item($0, under: "Message", in: bar) != nil }) else {
@@ -764,6 +766,44 @@ enum MailKeyActions {
         var position = CGPoint.zero, size = CGSize.zero
         guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position), AXValueGetValue(sizeValue as! AXValue, .cgSize, &size) else { return nil }
         return CGRect(origin: position, size: size)
+    }
+
+    /// After `c`: once the new message's window is in front (up to 2 s), its To field gets
+    /// the keyboard unless it has it already, and it is read back. keys.log says where focus
+    /// was (role only) and what happened.
+    static func focusTo() {
+        guard let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        Task { @MainActor in
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard let window = AXMenuNode.element(app, kAXFocusedWindowAttribute),
+                      MailKeyTap.facts(window, app: app).hasComposeControls else { continue }
+                guard let to = MailKeys.toField(in: AXDialogNode(element: window)) as? AXDialogNode else {
+                    KeysLog.note("c: new message open, no To field found")
+                    ToastController.shared.show(Toast(systemImage: "envelope", title: "New message: To not found",
+                                                      subtitle: "Click the To field"), for: .seconds(4))
+                    return
+                }
+                @MainActor func inTo() -> Bool {
+                    MailKeys.isInside(AXMenuNode.element(app, kAXFocusedUIElementAttribute), to.element,
+                                      parent: { AXMenuNode.element($0, kAXParentAttribute) }, same: { CFEqual($0, $1) })
+                }
+                let was = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) } ?? "none"
+                if inTo() { KeysLog.note("c: To had the keyboard already"); return }
+                AXUIElementSetAttributeValue(to.element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                try? await Task.sleep(for: .milliseconds(150))
+                let ok = inTo()
+                KeysLog.note("c: focus was \(was) (To field: \(to.role), id \(to.identifier ?? "none")); To has the keyboard \(ok)")
+                if !ok {
+                    ToastController.shared.show(Toast(systemImage: "envelope", title: "New message: cursor not in To",
+                                                      subtitle: "Click the To field"), for: .seconds(4))
+                }
+                return
+            }
+            KeysLog.note("c: no new message window within 2 s")
+        }
     }
 
     /// `z`: Mail's Undo item, whatever it is titled now ("Undo Archive"), then a look at

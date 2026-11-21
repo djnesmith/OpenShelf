@@ -499,6 +499,30 @@ enum MailKeys {
         return first > 0 ? first - 1 : nil
     }
 
+    /// A new message's To field (David, 2026-11-21: "compose new mail \"c\" goes straight to
+    /// the body of the mail instead of to the To: field like it should"): the first text
+    /// field named "To:" (its title or description), else the first text field after a
+    /// static text "To:" (Mail's label, ComposeViewControllerWK2.loctable ts0-pD-Elh). The
+    /// body (a web area) and the toolbar are never searched.
+    @MainActor
+    static func toField(in window: DialogNode) -> DialogNode? {
+        let names: Set<String> = ["To:", "To"]
+        var afterLabel = false
+        func walk(_ node: DialogNode, depth: Int) -> DialogNode? {
+            guard depth < 10 else { return nil }
+            for child in node.children where !["AXWebArea", "AXToolbar"].contains(child.role) {
+                if textRoles.contains(child.role) {
+                    if afterLabel || names.contains(child.label ?? "") { return child }
+                } else if let text = child.staticText, names.contains(text.trimmingCharacters(in: .whitespaces)) {
+                    afterLabel = true
+                }
+                if let found = walk(child, depth: depth + 1) { return found }
+            }
+            return nil
+        }
+        return walk(window, depth: 0)
+    }
+
     /// How a command's effect shows in Mail.
     enum Verification: Equatable { case rowsLeave, flag, read, none }
 

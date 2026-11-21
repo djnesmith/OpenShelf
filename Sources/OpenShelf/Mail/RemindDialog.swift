@@ -12,6 +12,8 @@ protocol DialogNode {
     /// (toolbar segments such as Archive, Delete, Junk).
     var label: String? { get }
     var children: [DialogNode] { get }
+    /// A static text's words ("To:"); nil for any other role, so no field's contents are read.
+    var staticText: String? { get }
     /// A date picker's date; nil for anything else.
     var date: Date? { get }
     /// Sets a date picker's date; false when it can't be set.
@@ -25,6 +27,7 @@ protocol DialogNode {
 
 extension DialogNode {
     var identifier: String? { nil }
+    var staticText: String? { nil }
     var label: String? { title }
     var valueDescription: String { date.map { "date " + ISO8601DateFormatter().string(from: $0) } ?? "no date" }
     func pressReporting() -> (ok: Bool, detail: String) {
@@ -136,6 +139,7 @@ struct AXDialogNode: DialogNode {
     var identifier: String? { AXMenuNode.string(element, kAXIdentifierAttribute) }
     var label: String? { AXMenuNode.string(element, kAXTitleAttribute) ?? AXMenuNode.string(element, kAXDescriptionAttribute) }
     var children: [DialogNode] { AXMenuNode.childElements(element).map(AXDialogNode.init) }
+    var staticText: String? { role == kAXStaticTextRole ? AXMenuNode.string(element, kAXValueAttribute) : nil }
 
     var date: Date? {
         var value: CFTypeRef?
