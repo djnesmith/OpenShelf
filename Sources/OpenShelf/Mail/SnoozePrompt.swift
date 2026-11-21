@@ -55,7 +55,7 @@ final class SnoozePrompt: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         panel.delegate = self
         panel.onPreset = { [weak self] index in self?.choosePreset(index) }
 
-        field.placeholderString = "fri 2pm, in 3 hours, dec 3 9am"
+        field.placeholderString = "5, 2h, 3d, 2w, fri 2pm, dec 3 9am"
         field.delegate = self
         understood.textColor = .secondaryLabelColor
         var rows: [NSView] = [field, understood]

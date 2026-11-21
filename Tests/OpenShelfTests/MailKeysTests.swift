@@ -65,10 +65,17 @@ struct MailKeysTests {
         // j/k from a message of a conversation move the viewer's list (2026-11-20).
         #expect(inViewer("AXGroup", .nextMessage))
         #expect(inViewer("AXGroup", .previousMessage))
-        #expect(!inViewer("AXGroup", .firstMessage))
         #expect(!inViewer("AXTextField", .nextMessage))
         #expect(!inViewer("AXGroup", .nextMessage, editable: true))
-        #expect(!inViewer("AXGroup", .favorite("Inbox")))
+        // g keys anywhere in the viewer outside a field (focus on the window after a g key).
+        #expect(inViewer("AXGroup", .favorite("Inbox")))
+        #expect(inViewer("AXWindow", .favorite("Today")))
+        #expect(inViewer("AXWindow", .firstMessage))
+        #expect(MailKeys.mayTake(focusedRole: "AXWindow", isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: true, gPrefix: true))
+        #expect(!MailKeys.mayTake(focusedRole: "AXTextField", isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: true, gPrefix: true))
+        #expect(!MailKeys.mayTake(focusedRole: "AXWindow", isEditable: true, sendEnabled: false, modifiers: [], inMessageViewer: true, gPrefix: true))
+        #expect(!MailKeys.mayTake(focusedRole: "AXWindow", isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: true))   // * stays in the list
+        #expect(!inViewer("AXTextField", .favorite("Today")))
         #expect(!inViewer("AXGroup", .menu("Message", "Open Message")))
         #expect(!inViewer("AXGroup", nil))
         #expect(!inViewer("AXGroup", .menu("Message", "Reply"), editable: true))

@@ -53,9 +53,69 @@ struct SnoozeTimeTests {
     }
 
     /// Nothing understood, a time already past, and nonsense counts give nothing.
-    @Test(arguments: ["", "   ", "banana", "in 0 hours", "in 5000 days", "in many days", "today 9am", "feb 30", "fri 2", "tomorrow 3", "2", "13pm", "25:00"])
+    @Test(arguments: ["", "   ", "banana", "in 0 hours", "in 5000 days", "in many days", "today 9am", "feb 30", "fri 2", "tomorrow 3", "13pm", "25:00",
+                     // A word amount needs a unit; nothing over 1000.
+                     "five", "a", "1001", "0", "0m", "5 fortnights", "5 ms"])
     func notUnderstood(text: String) {
         #expect(SnoozeTime.parse(text, now: Self.wednesday(10), calendar: Self.calendar) == nil, "\(text)")
+    }
+
+    /// Every spelling of every unit, with and without a space, with "in", in any case (David,
+    /// 2026-11-20 evening: "all the permutations"), generated from the parser's own table.
+    @Test func everyUnitSpelling() {
+        let now = Self.wednesday(10)
+        let cal = Self.calendar
+        func sevenAM(_ component: Calendar.Component, _ value: Int) -> Date {
+            cal.date(bySettingHour: 7, minute: 0, second: 0, of: cal.date(byAdding: component, value: value, to: cal.startOfDay(for: now))!)!
+        }
+        let expected: [SnoozeTime.Unit: Date] = [
+            .minute: cal.date(byAdding: .minute, value: 5, to: now)!,
+            .hour: cal.date(byAdding: .hour, value: 5, to: now)!,
+            .day: sevenAM(.day, 5),
+            .week: sevenAM(.day, 35),
+            .month: sevenAM(.month, 5),
+            .year: sevenAM(.year, 5),
+        ]
+        #expect(Set(SnoozeTime.unitSpellings.keys) == Set(SnoozeTime.Unit.allCases))
+        var checked = 0
+        for (unit, spellings) in SnoozeTime.unitSpellings {
+            for spelling in spellings {
+                for form in ["5\(spelling)", "5 \(spelling)", "in 5 \(spelling)", "in 5\(spelling)", "5 \(spelling.uppercased())", "In 5 \(spelling.capitalized)", " 5 \(spelling) "] {
+                    #expect(SnoozeTime.parse(form, now: now, calendar: cal) == expected[unit], "\(form)")
+                    checked += 1
+                }
+            }
+        }
+        #expect(checked == 27 * 7)
+        // m is minutes, mo is months.
+        #expect(SnoozeTime.parse("5m", now: now, calendar: cal) == expected[.minute])
+        #expect(SnoozeTime.parse("5mo", now: now, calendar: cal) == expected[.month])
+    }
+
+    /// A number alone is minutes; word amounts take a unit with or without "in"; morning is
+    /// tomorrow 7am. Wednesday 10am.
+    @Test(arguments: [
+        ("5", "Wed, Nov 18 at 10:05 AM"),
+        ("90", "Wed, Nov 18 at 11:30 AM"),
+        ("in 5", "Wed, Nov 18 at 10:05 AM"),
+        ("two weeks", "Wed, Dec 2 at 7:00 AM"),
+        ("an hour", "Wed, Nov 18 at 11:00 AM"),
+        ("morning", "Thu, Nov 19 at 7:00 AM"),
+        ("Morning", "Thu, Nov 19 at 7:00 AM"),
+        ("3pm", "Wed, Nov 18 at 3:00 PM"),
+    ])
+    func numbersAndMorning(text: String, expected: String) {
+        #expect(Self.describe(SnoozeTime.parse(text, now: Self.wednesday(10), calendar: Self.calendar)) == expected, "\(text)")
+    }
+
+    /// A month or year onto a day the target month lacks lands on its last day, at 7am.
+    @Test func monthEndsClamp() {
+        let cal = Self.calendar
+        func day(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 10) -> Date { cal.date(from: DateComponents(year: y, month: m, day: d, hour: h))! }
+        #expect(SnoozeTime.parse("1 month", now: day(2027, 1, 31), calendar: cal) == day(2027, 2, 28, 7))
+        #expect(SnoozeTime.parse("1mo", now: day(2028, 1, 31), calendar: cal) == day(2028, 2, 29, 7))
+        #expect(SnoozeTime.parse("1y", now: day(2028, 2, 29), calendar: cal) == day(2029, 2, 28, 7))
+        #expect(SnoozeTime.parse("3 months", now: day(2026, 11, 30), calendar: cal) == day(2027, 2, 28, 7))
     }
 
     /// Friday 2026-11-20 at the given time, New York.

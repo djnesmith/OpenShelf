@@ -12,7 +12,8 @@ enum SnoozeTime {
     /// David, 2026-11-19: tomorrow morning 7am, this afternoon 2pm, tonight 5pm, in two days
     /// 7am, this weekend Saturday 7am, next week Monday 7am.
     static let presets: [Preset] = [
-        Preset(name: "tomorrow morning", aliases: ["tomorrow"]),
+        // David, 2026-11-20 evening: "\"morning\" is tomorrow morning".
+        Preset(name: "tomorrow morning", aliases: ["tomorrow", "morning"]),
         Preset(name: "this afternoon", aliases: ["afternoon"]),
         Preset(name: "tonight", aliases: []),
         Preset(name: "in two days", aliases: ["in 2 days"]),
@@ -150,22 +151,51 @@ enum SnoozeTime {
         return Reading(time > now ? time : calendar.date(byAdding: .day, value: 1, to: today).flatMap(at))
     }
 
-    static let relativePattern = #"^in (\d+|[a-z]+) (minutes?|mins?|hours?|hrs?|days?|weeks?)$"#
+    /// The units a typed time can name, each with every spelling (David, 2026-11-20 evening:
+    /// "5 should mean 5 minutes from now", "5h and 2w should work too", "2 weeks, 5 hours,
+    /// etc... all the permutations"). `m` is minutes; months need "mo" or longer.
+    enum Unit: CaseIterable, Sendable { case minute, hour, day, week, month, year }
 
-    /// "in 3 hours", "in an hour", "in two days": minutes and hours from now; days and weeks
-    /// at 7am, as the presets are.
+    static let unitSpellings: [Unit: [String]] = [
+        .minute: ["m", "min", "mins", "minute", "minutes"],
+        .hour: ["h", "hr", "hrs", "hour", "hours"],
+        .day: ["d", "day", "days"],
+        .week: ["w", "wk", "wks", "week", "weeks"],
+        .month: ["mo", "mos", "month", "months"],
+        .year: ["y", "yr", "yrs", "year", "years"],
+    ]
+
+    static let amountWords = ["a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10]
+
+    /// "in 3 hours", "5", "5m", "5 mins", "2h", "3d", "2w", "4 months", "1y": the "in" and
+    /// the space are optional; a number alone is minutes; a word amount ("two") needs a unit.
+    static let relativePattern: String = {
+        let spellings = unitSpellings.values.flatMap { $0 }.sorted { $0.count > $1.count }.joined(separator: "|")
+        let words = amountWords.keys.sorted { $0.count > $1.count }.joined(separator: "|")
+        return #"^(?:in )?(\d+|"# + words + #")\s*("# + spellings + #")?$"#
+    }()
+
+    /// Minutes and hours from now; days, weeks, months and years at 7am, as the presets are.
+    /// A month or year from a day the target month lacks (Jan 31 + 1 month) is that month's
+    /// last day.
     static func relative(_ typed: String, now: Date, calendar: Calendar) -> Date? {
-        let words = ["a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10]
         guard let regex = try? NSRegularExpression(pattern: relativePattern),
               let match = regex.firstMatch(in: typed, range: NSRange(typed.startIndex..., in: typed)),
-              let amountRange = Range(match.range(at: 1), in: typed), let unitRange = Range(match.range(at: 2), in: typed) else { return nil }
+              let amountRange = Range(match.range(at: 1), in: typed) else { return nil }
         let amountText = String(typed[amountRange])
-        guard let amount = Int(amountText) ?? words[amountText], amount > 0, amount <= 1000 else { return nil }
-        let unit = typed[unitRange]
-        if unit.hasPrefix("min") { return calendar.date(byAdding: .minute, value: amount, to: now) }
-        if unit.hasPrefix("h") { return calendar.date(byAdding: .hour, value: amount, to: now) }
-        let days = unit.hasPrefix("w") ? amount * 7 : amount
-        return at(7, daysAfter: days, now: now, calendar: calendar)
+        let spelled = Range(match.range(at: 2), in: typed).map { String(typed[$0]) }
+        let unit: Unit? = spelled.map { word in unitSpellings.first { $0.value.contains(word) }?.key } ?? .minute
+        guard let unit, let amount = Int(amountText) ?? (spelled == nil ? nil : amountWords[amountText]), amount > 0, amount <= 1000 else { return nil }
+        switch unit {
+        case .minute: return calendar.date(byAdding: .minute, value: amount, to: now)
+        case .hour: return calendar.date(byAdding: .hour, value: amount, to: now)
+        case .day: return at(7, daysAfter: amount, now: now, calendar: calendar)
+        case .week: return at(7, daysAfter: amount * 7, now: now, calendar: calendar)
+        case .month, .year:
+            // Calendar keeps the day, or the month's last day when the month is shorter.
+            guard let day = calendar.date(byAdding: unit == .month ? .month : .year, value: amount, to: calendar.startOfDay(for: now)) else { return nil }
+            return calendar.date(bySettingHour: 7, minute: 0, second: 0, of: day)
+        }
     }
 
     /// How the prompt shows a time: "Fri, Nov 21 at 2:00 PM".

@@ -143,7 +143,7 @@ enum MailKeys {
     /// `inMessageWindow`: a message open in its own window (David, 2026-11-20: "r/a/f
     /// should work as well for an open message"): only the keys that act on one message.
     static func mayTake(focusedRole: String?, isEditable: Bool, sendEnabled: Bool, modifiers: Modifiers, mailHasFocus: Bool = true,
-                        inMessageViewer: Bool = false, inMessageWindow: Bool = false, action: Action? = nil) -> Bool {
+                        inMessageViewer: Bool = false, inMessageWindow: Bool = false, action: Action? = nil, gPrefix: Bool = false) -> Bool {
         // A panel over Mail (Spotlight, Alfred) has the keys: never take them.
         guard mailHasFocus else { return false }
         guard modifiers.isEmpty || modifiers == .shift else { return false }
@@ -153,7 +153,17 @@ enum MailKeys {
             return actsOnOneMessage(action)
         }
         if listRoles.contains(role) || role == "AXWebArea" { return true }
-        guard inMessageViewer, !textRoles.contains(role), let action else { return false }
+        guard inMessageViewer, !textRoles.contains(role) else { return false }
+        // g and its second key work anywhere in the viewer: after a g key through the
+        // sidebar focus sits on the window, and g passed to Mail, whose type-select then
+        // took the T of g T (keys.log 2026-11-21 01:27:57, David: "g T sometimes just goes
+        // down the list of messages").
+        if gPrefix { return true }
+        guard let action else { return false }
+        switch action {
+        case .favorite, .firstMessage, .lastMessage: return true
+        default: break
+        }
         // j/k from a message of a conversation in the reading pane move the viewer's list
         // (David, 2026-11-20: "j / k and Ctrl n / Ctrl p should work to move down and up for
         // messages when a conversation's message is selected").

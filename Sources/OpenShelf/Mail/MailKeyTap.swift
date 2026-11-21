@@ -197,7 +197,8 @@ final class MailKeyTap {
             // A prefix (g, *) has no action yet, so it is taken only in the list.
             inMessageViewer: inViewer,
             inMessageWindow: inWindow,
-            action: action
+            action: action,
+            gPrefix: outcome == .prefix("g")
         )
         // Outside the list, in the viewer or a message window and nothing editable: why.
         if (inViewer || inWindow || role == "AXWebArea"), !isEditable, !sendEnabled, let name = character(of: event) {
