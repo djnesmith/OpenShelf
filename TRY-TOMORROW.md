@@ -85,7 +85,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
 17. **Doom vim keys** in the Edit window (not yet installed; from the stage2-vim branch):
     `ciq` inside any quotes changes what is between them; `yig` copies all the text; `vii` on an
     indented line selects its block; `daa` in `f(a, b, c)` on b leaves `f(a, c)`;
-    `ciu` on a link changes its host and path; `dax` in an HTML tag removes one attribute. (#53)
+    `ciu` on a link changes its host and path; `dax` in an HTML tag removes one attribute;
+    `ysiw⌃F` then `inc` and Return wraps a word in `(inc …)`, `dsf` unwraps `foo(x)`. (#53)
 
 ## Needs your decision
 

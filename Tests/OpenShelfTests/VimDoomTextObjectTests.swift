@@ -272,4 +272,34 @@ struct VimDoomTextObjectTests {
     func xml(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// ysiwf and ⌃F, dsf, csf (C16; evil-surround and embrace).
+    @Test(arguments: [
+        ("x = ba|r + 1", "ysiwffoo<CR>", "x = |foo(bar) + 1"),
+        ("x = ba|r + 1", "ysiw<C-f>foo<CR>", "x = |(foo bar) + 1"),
+        ("(a |b)", "ysiw<C-f>inc<CR>", "(a |(inc b))"),
+        ("foo(ba|r)", "dsf", "ba|r"),
+        ("(inc (dec x|))", "ds<C-f>", "(inc x|)"),
+        ("a |b c", "viwSfg<CR>", "a |g(b) c"),
+        ("a b|c d", "ysiwf<CR>", "a |(bc) d"),
+        ("a b| c", "yssff<CR>", "|f(a b c)"),
+        ("a.b(c|)", "dsf", "a.|c"),
+        ("foo(a, (b|))", "dsf", "a, (b|)"),
+        ("foo (ba|r)", "dsf", "foo (ba|r)"),
+        ("foo-bar(x|)", "dsf", "|x"),
+        ("x = |bar + 1", "ys2wfg<CR>", "x = |g(bar +) 1"),
+        ("x foo(ba|r) y", "csf)", "x |(bar) y"),
+        ("x (foo ba|r) y", "cs<C-f>]", "x |[bar] y"),
+        ("x foo(ba|r) y", "cs)fg<CR>", "x foo|g(bar) y"),
+        ("(defn f [x]\n  (+ x| 1))", "ysa(<C-f>inc<CR>", "(defn f [x]\n  |(inc (+ x 1)))"),
+        ("a b|c d", "ysiwfab<BS>c<CR>", "a |ac(bc) d"),
+        ("f(|x)", "dsf", "|x"),
+        ("|f(x)", "dsf", "|f(x)"),
+        ("(a (b c|))", "ds<C-f>", "(a c|)"),
+        ("a foo|(x)", "dsf", "a |x"),
+        ("fo|o(x)", "dsf", "fo|o(x)"),
+    ])
+    func functionSurround(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

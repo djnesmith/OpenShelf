@@ -952,7 +952,12 @@ struct VimEngine {
                 }
             }
             guard index < keys.count else { return .incomplete }
-            guard case .char(let target) = keys[index], Self.surroundTargets.contains(target) else { return .invalid }
+            // ⌃F as a target is embrace's "(name …)" form, kept as \u{6}.
+            let target: Character
+            if keys[index] == .ctrl("f") { target = "\u{6}" } else {
+                guard case .char(let typed) = keys[index], Self.surroundTargets.contains(typed) else { return .invalid }
+                target = typed
+            }
             index += 1
             if c == "d" { return .done(Command(count: count, action: .deleteSurround(target))) }
             return parseReplacement(keys, &index).map { Command(count: count, action: .changeSurround(target, $0)) }
@@ -1053,12 +1058,29 @@ struct VimEngine {
         }
     }
 
-    static let surroundTargets = "\"'`()b[]r{}B<>at"
+    static let surroundTargets = "\"'`()b[]r{}B<>atf"
 
     /// A surround replacement: one character, or a tag typed up to its ">"
     /// ("<em>", or after t: "em>").
     private func parseReplacement(_ keys: [VimKey], _ index: inout Int) -> ReplacementParse {
         guard index < keys.count else { return .incomplete }
+        // f and ⌃F (evil-surround and embrace in Doom): a function name typed up to Return,
+        // for "name(…)" and "(name …)".
+        if keys[index] == .char("f") || keys[index] == .ctrl("f") {
+            var name = String(keys[index] == .char("f") ? Self.functionCall : Self.prefixCall)
+            index += 1
+            while index < keys.count {
+                let key = keys[index]
+                index += 1
+                switch key {
+                case .char(let k): name.append(k)
+                case .enter: return .done(name)
+                case .backspace: if name.count > 1 { name.removeLast() }
+                default: return .invalid
+                }
+            }
+            return .incomplete
+        }
         guard case .char(let c) = keys[index] else { return .invalid }
         index += 1
         if c == "<" || c == "t" {
@@ -2805,9 +2827,14 @@ struct VimEngine {
 
     // MARK: - Surround
 
+    /// Marks before a typed function name in a replacement: ysiwf (name(…)) and ysiw⌃F ((name …)).
+    static let functionCall: Character = "\u{1}", prefixCall: Character = "\u{2}"
+
     /// What a surround replacement puts around the text. ( [ { add a space
     /// inside, ) ] } and their aliases b r B don't; < or t takes a tag.
     static func surroundPair(_ replacement: String) -> (open: String, close: String)? {
+        if replacement.first == functionCall { return (replacement.dropFirst() + "(", ")") }
+        if replacement.first == prefixCall { return ("(" + replacement.dropFirst() + " ", ")") }
         if replacement.hasPrefix("<") {
             let name = replacement.dropFirst().prefix { !$0.isWhitespace && $0 != ">" }
             return name.isEmpty ? nil : (replacement, "</\(name)>")
@@ -2836,6 +2863,25 @@ struct VimEngine {
         case "t":
             guard let outer = tagObject(inner: false, count: count), let inner = tagObject(inner: true, count: count) else { return nil }
             return (outer.lowerBound..<inner.lowerBound, inner.upperBound..<outer.upperBound)
+        case "f", "\u{6}":
+            // embrace's function pairs: the nearest "(" around the cursor with a name right
+            // before it (f: "name(") or a name and a space after it (⌃F: "(name ").
+            func isName(_ c: Character) -> Bool { c.isLetter || c.isNumber || c == "_" || c == "-" }
+            var position = cursor < text.count && text[cursor] == "(" ? cursor + 1 : cursor
+            while let open = enclosingOpen("(", ")", before: position) {
+                position = open
+                guard let close = matchingClose("(", ")", from: open), close >= cursor else { continue }
+                if target == "f" {
+                    var start = open
+                    while start > 0, isName(text[start - 1]) { start -= 1 }
+                    if start < open { return (start..<open + 1, close..<close + 1) }
+                } else {
+                    var end = open + 1
+                    while end < close, text[end] != " ", text[end] != "\n" { end += 1 }
+                    if end > open + 1, end < close, text[end] == " " { return (open..<end + 1, close..<close + 1) }
+                }
+            }
+            return nil
         default:
             let pairs: [Character: (Character, Character)] = ["(": ("(", ")"), ")": ("(", ")"), "[": ("[", "]"), "]": ("[", "]"), "{": ("{", "}"), "}": ("{", "}"), "<": ("<", ">"), ">": ("<", ">")]
             guard let (open, close) = pairs[target], let (range, _) = bracketObject(inner: false, open: open, close: close, count: count) else { return nil }
@@ -2858,9 +2904,11 @@ struct VimEngine {
             (open, close) = (open.lowerBound..<inner, end..<close.upperBound)
         }
         checkpoint(at: open.lowerBound)
+        let opening = Array(replacement?.open ?? "")
         text.replaceSubrange(close, with: Array(replacement?.close ?? ""))
-        text.replaceSubrange(open, with: Array(replacement?.open ?? ""))
-        cursor = open.lowerBound
+        text.replaceSubrange(open, with: opening)
+        // embrace (dsf, ds⌃F) keeps the cursor on its character; vim-surround goes to the start.
+        cursor = "f\u{6}".contains(target) && replacement == nil ? max(cursor - open.count + opening.count, open.lowerBound) : open.lowerBound
         clampCursor()
     }
 

@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43; C24 and C30 partly) | 5 | 2 | 21 |
+| Vim features (C16–C43; C24 and C30 partly) | 6 | 2 | 20 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 23 | 7 | 62 |
+| **Total** | 24 | 7 | 61 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -229,7 +229,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | Feature | State | Note | Size |
 |---|---|---|---|
 | Surround: `ys` `yss` `cs` `ds`, visual `S`, tags (`cst<b>`, `ysiw<em>`), `.` | Built | evil-surround's spacing: an opening bracket adds spaces | — |
-| Surround a function call, `ysiwf` | Not built | evil-surround/embrace `f` asks for a name: `foo(x)` | S |
+| Surround a function call, `ysiwf` | Built | Also `ysiw⌃F` for `(foo x)`, `dsf`, `ds⌃F` and `csf`, as embrace in Doom | — |
 | `i(` `i[` `i{` `ib` `iB` `i<` `it` and `a…`, counts | Built | Cross lines; seek forward on the line as vim 9 does | — |
 | `i"` `i'` `` i` `` and `a…` | Built | One line only, as vim; escaped quotes skipped | — |
 | `iq` / `aq`, any quote (Doom) | Built | The smallest quoted text of any kind, as Doom's anyblock picks it | — |

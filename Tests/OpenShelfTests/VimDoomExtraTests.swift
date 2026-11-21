@@ -14,4 +14,11 @@ struct VimDoomExtraTests {
         let engine = VimEngineTests.run("x\n  |a\ny\n  b\nz", "diijj.")
         #expect(engine.string == "x\n\ny\n\nz")
     }
+
+    /// "." types the same name again, as vim-surround with repeat.vim does. evil in
+    /// `emacs --batch` asks again and gets no name ("(b)"); left as vim's, a known difference.
+    @Test func functionSurroundRepeatsWithItsName() {
+        let engine = VimEngineTests.run("|a b", "ysiwffoo<CR>fb.")
+        #expect(engine.string == "foo(a) foo(b)")
+    }
 }
