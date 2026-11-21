@@ -193,4 +193,83 @@ struct VimDoomTextObjectTests {
     func argument(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// iu / au, Doom's URL object (C23).
+    @Test(arguments: [
+        ("see https://ex|ample.com/a/b?x=1#top now", "diu", "see https://|#top now"),
+        ("see https://ex|ample.com/a/b?x=1#top now", "dau", "see | now"),
+        ("see https://example.com/a|/b.", "diu", "see https://|."),
+        ("see https://example.com/a|/b.", "dau", "see |."),
+        ("(https://ex|ample.com/x)", "diu", "(https://|)"),
+        ("(https://ex|ample.com/x)", "dau", "(|)"),
+        ("go to www.ex|ample.com/p, ok", "diu", "go to www.ex|ample.com/p, ok"),
+        ("go to www.ex|ample.com/p, ok", "dau", "go to www.ex|ample.com/p, ok"),
+        ("\"http://a.b/c|\"", "diu", "\"http://|\""),
+        ("\"http://a.b/c|\"", "dau", "\"|\""),
+        ("x ftp://h|ost/f y", "diu", "x ftp://| y"),
+        ("x ftp://h|ost/f y", "dau", "x | y"),
+        ("mailto:me@ex|ample.com", "diu", "mailto:me@ex|ample.com"),
+        ("mailto:me@ex|ample.com", "dau", "|"),
+        ("no url he|re", "diu", "no url he|re"),
+        ("no url he|re", "dau", "no url he|re"),
+        ("|https://a.b/c d", "diu", "https://| d"),
+        ("|https://a.b/c d", "dau", "| d"),
+        ("a <https://x|.y/z> b", "diu", "a <https://|> b"),
+        ("a <https://x|.y/z> b", "dau", "a <|> b"),
+        ("url: https://ex|ample.com/a#frag", "diu", "url: https://|#frag"),
+        ("url: https://ex|ample.com/a#frag", "dau", "url:| "),
+        ("file:///Us|ers/x.txt", "diu", "file:/|/"),
+        ("file:///Us|ers/x.txt", "dau", "|"),
+        ("https://a.b/p?q=1&r=|2 x", "diu", "https://|?q=1&r=2 x"),
+        ("https://a.b/p?q=1&r=|2 x", "dau", "| x"),
+        ("see https://ex|ample.com/a now", "ciuX<Esc>", "see https://|X now"),
+        ("see https://ex|ample.com/a now", "viud", "see https://| now"),
+        ("see https://ex|ample.com/a now", "vaud", "see | now"),
+        ("see https://a.b/c| now", "diu", "see https://| now"),
+        ("x https://a.b/c, |y", "dau", "x https://a.b/c, |y"),
+        ("x (https://a.b/c)| y", "dau", "x (https://a.b/c)| y"),
+        ("see https://a.b/c|; x", "dau", "see |; x"),
+        ("x https://a.b/c;| y", "dau", "x | y"),
+        ("see https://a.b/c.| now", "dau", "see | now"),
+    ])
+    func url(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
+
+    /// ix / ax, exato's XML attribute (C23).
+    @Test(arguments: [
+        ("<a hr|ef=\"x.html\" class=\"b\">", "dix", "<a | class=\"b\">"),
+        ("<a hr|ef=\"x.html\" class=\"b\">", "dax", "<a| class=\"b\">"),
+        ("<a href=\"x.h|tml\" class=\"b\">", "dix", "<a | class=\"b\">"),
+        ("<a href=\"x.h|tml\" class=\"b\">", "dax", "<a| class=\"b\">"),
+        ("<a href=\"x.html\" cl|ass=\"b\">", "dix", "<a href=\"x.html\" |>"),
+        ("<a href=\"x.html\" cl|ass=\"b\">", "dax", "<a href=\"x.html\"|>"),
+        ("<a hr|ef=x class=b>", "dix", "<a | class=b>"),
+        ("<a hr|ef=x class=b>", "dax", "<a| class=b>"),
+        ("<a href=x|y class=b>", "dix", "<a | class=b>"),
+        ("<a href=x|y class=b>", "dax", "<a| class=b>"),
+        ("<a |href=\"x\">", "dix", "<a |>"),
+        ("<a |href=\"x\">", "dax", "<a|>"),
+        ("<a| href=\"x\">", "dix", "<a |>"),
+        ("<a| href=\"x\">", "dax", "<a|>"),
+        ("<div id=\"a\">te|xt</div>", "dix", "<div id=\"a\">te|xt</div>"),
+        ("<div id=\"a\">te|xt</div>", "dax", "<div id=\"a\">te|xt</div>"),
+        ("<input dis|abled value=\"v\">", "dix", "<input disabled |>"),
+        ("<input dis|abled value=\"v\">", "dax", "<input disabled|>"),
+        ("<a\n  hr|ef=\"x\">", "dix", "<a\n  |>"),
+        ("<a\n  hr|ef=\"x\">", "dax", "<a\n |>"),
+        ("<img src=\"a b|.png\" alt=\"c\">", "dix", "<img | alt=\"c\">"),
+        ("<img src=\"a b|.png\" alt=\"c\">", "dax", "<img| alt=\"c\">"),
+        ("no| attrs", "dix", "no| attrs"),
+        ("no| attrs", "dax", "no| attrs"),
+        ("<a data-x|=\"1\">", "dix", "<a |>"),
+        ("<a data-x|=\"1\">", "dax", "<a|>"),
+        ("<a href=\"x.h|tml\" class=\"b\">", "cixX<Esc>", "<a |X class=\"b\">"),
+        ("<a href=\"x.h|tml\" class=\"b\">", "vaxd", "<a| class=\"b\">"),
+        ("<a| b=1 c=\"2\">", "dix", "<a b=1 |>"),
+        ("<a |b=1 c=\"2\">", "dix", "<a b=1 |>"),
+    ])
+    func xml(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

@@ -530,7 +530,7 @@ In his Doom setup:
 | C20 | `ig` / `ag`: the whole text (Doom) — **built** | S | — |
 | C21 | `if` / `af`: the function; for Clojure the top-level form (Doom defun) | M | A rule per file type |
 | C22 | `ic` / `ac`: a comment (evil-nerd-commenter) | S | A comment string per file type |
-| C23 | `iu` URL and `ix` XML attribute (exato) | S each | — |
+| C23 | `iu` URL and `ix` XML attribute (exato) — **built** | S each | — |
 | C24 | `iB` / `aB` as the nearest block of any kind, as Doom's anyblock (today `B` is `{ }`, as in vim) | S | David's choice: Doom's meaning or vim's |
 | C25 | Comment toggling: `gcc`, `gc{motion}`, visual `gc` (evil-nerd-commenter) | S-M | A comment string per file type (`;;` for Clojure) |
 | C26 | evil-snipe: `s` / `S` two-character find, repeated with `;` `,` | M | David's choice: today `s` is vim's substitute |

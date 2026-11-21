@@ -1140,7 +1140,7 @@ struct VimEngine {
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
             guard index < keys.count else { return .incomplete }
-            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikja".contains(kind) else { return .invalid }
+            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikjaux".contains(kind) else { return .invalid }
             index += 1
             return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
@@ -2121,12 +2121,116 @@ struct VimEngine {
         // Doom's ig / ag (+evil:whole-buffer-txtobj): all the text, as characters.
         case "g": return (0..<text.count, false)
         case "a": return argumentObject(inner: inner, count: count).map { ($0, false) }
+        case "u": return urlObject(inner: inner).map { ($0, false) }
+        case "x": return xmlAttributeObject(inner: inner).map { ($0, false) }
         case "i", "k", "j": return indentObject(inner: inner, kind).map { ($0, true) }
         default: return nil
         }
     }
 
     // MARK: - Doom's text objects
+
+    /// Doom's iu / au (+evil:inner-url-txtobj, Emacs's url thing): au is the URL under the
+    /// cursor; iu leaves out its scheme and "://" and anything from its last ? or #. A URL
+    /// needs a scheme ("www.example.com" alone is not one), stops at blanks and
+    /// "'<>[]^`{}, and drops a last . , ; (unless the cursor is just after them) and an
+    /// unmatched ) as Emacs does.
+    private func urlObject(inner: Bool) -> Range<Int>? {
+        let stops: Set<Character> = ["\"", "'", "<", ">", "[", "]", "^", "`", "{", "}"]
+        func isURLCharacter(_ i: Int) -> Bool { i >= 0 && i < text.count && !text[i].isWhitespace && !stops.contains(text[i]) }
+        // As Emacs's things, the cursor may also sit just after the URL.
+        let at = isURLCharacter(cursor) ? cursor : cursor - 1
+        guard isURLCharacter(at) else { return nil }
+        var low = at, high = at + 1
+        while isURLCharacter(low - 1) { low -= 1 }
+        while isURLCharacter(high) { high += 1 }
+        let token = Array(text[low..<high])
+        // The scheme: letters (then letters, digits, + . -) and ":", before "//" or a known "mailto:"-style name.
+        let bare: Set<String> = ["mailto", "tel", "sms", "news", "urn", "data", "about", "magnet", "geo"]
+        var start: Int?
+        for i in token.indices where token[i].isASCII && token[i].isLetter && (i == 0 || !(token[i - 1].isLetter || token[i - 1].isNumber || "+.-".contains(token[i - 1]))) {
+            var j = i
+            while j < token.count, token[j].isASCII, token[j].isLetter || token[j].isNumber || "+.-".contains(token[j]) { j += 1 }
+            guard j < token.count, token[j] == ":" else { continue }
+            let slashes = j + 2 < token.count && token[j + 1] == "/" && token[j + 2] == "/"
+            if slashes || bare.contains(String(token[i..<j]).lowercased()) {
+                start = low + i
+                break
+            }
+        }
+        guard let start, start <= at else { return nil }
+        var end = high
+        while end > start {
+            let last = text[end - 1]
+            // Just after the URL, Emacs keeps its last . , or ;.
+            if ".,;".contains(last), at == cursor {
+                end -= 1
+            } else if last == ")", !text[start..<end].contains("(") {
+                end -= 1
+            } else {
+                break
+            }
+        }
+        // On the character just after the URL counts; past a dropped ")" does not.
+        guard at < end || (at == end && at == cursor) else { return nil }
+        if !inner { return start..<end }
+        guard let scheme = (start..<max(start, end - 2)).first(where: { text[$0] == ":" && text[$0 + 1] == "/" && text[$0 + 2] == "/" }) else { return nil }
+        let innerEnd = (scheme + 3..<end).last(where: { text[$0] == "?" || text[$0] == "#" }) ?? end
+        return (scheme + 3)..<max(scheme + 3, innerEnd)
+    }
+
+    /// Doom's ix / ax (exato): an XML attribute, `name="value"` or `name=value`; ax adds the
+    /// space before it. A port of exato.el: the "=" is found from the value's string or the
+    /// word under the cursor, else the next "=" before the tag's ">"; strings are "…" only.
+    private func xmlAttributeObject(inner: Bool) -> Range<Int>? {
+        let n = text.count
+        // The "…" strings, read from the top with backslash escapes.
+        var strings: [(Int, Int)] = []
+        var open: Int?
+        var i = 0
+        while i < n {
+            if text[i] == "\\" { i += 2; continue }
+            if text[i] == "\"" {
+                if let start = open { strings.append((start, i)); open = nil } else { open = i }
+            }
+            i += 1
+        }
+        /// bounds-of-evil-string-at-point here or one on: the string's quotes.
+        func string(at p: Int) -> (Int, Int)? {
+            strings.first { $0.0 < p && p <= $0.1 } ?? strings.first { $0.0 < p + 1 && p + 1 <= $0.1 }
+        }
+        func alpha(_ p: Int) -> Bool { p >= 0 && p < n && text[p].isLetter }
+        var delimiter: Int?
+        if let (start, _) = string(at: cursor) {
+            if start > 0, text[start - 1] == "=" { delimiter = start - 1 }
+        } else if alpha(cursor) {
+            var p = cursor
+            while alpha(p - 1) { p -= 1 }
+            if p > 0, text[p - 1] == "=" { delimiter = p - 1 }
+        }
+        if delimiter == nil {
+            var p = cursor
+            if p < n, text[p] == " " { while p < n, " \n\t".contains(text[p]) { p += 1 } }
+            let close = (p..<n).first { text[$0] == ">" } ?? n
+            let quoted = (p..<max(p, close - 1)).first { text[$0] == "=" && text[$0 + 1] == "\"" }
+            delimiter = quoted ?? (p..<close).first { text[$0] == "=" }
+        }
+        guard let delimiter else { return nil }
+        var start = delimiter
+        while start > 0, text[start - 1] != " " { start -= 1 }
+        let finish: Int
+        if delimiter + 1 < n, text[delimiter + 1] == "\"" {
+            guard let (_, close) = string(at: delimiter + 1) else { return nil }
+            finish = close
+        } else if alpha(delimiter + 1) {
+            var p = delimiter + 1
+            while alpha(p + 1) { p += 1 }
+            finish = p
+        } else {
+            return nil
+        }
+        return (inner ? start : max(start - 1, 0))..<(finish + 1)
+    }
 
     /// Doom's ia / aa (evil-args): one argument between ( [ { and , or ; and the closer.
     /// ia is the argument; aa adds the delimiter and one space after it, or for the last
