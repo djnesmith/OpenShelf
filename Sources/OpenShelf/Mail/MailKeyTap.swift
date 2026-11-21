@@ -401,6 +401,8 @@ enum MailKeyActions {
         case .archiveThenPrevious:
             if conversationAction(archive: true) { return }
             performVerified("Archive", under: "Message") { moveSelection(by: -1) }
+        case .clearReminder:
+            clearReminderOnly()
         case .snooze:
             MailHelpers.shared.showPrompt()
         case .file:
@@ -792,6 +794,43 @@ enum MailKeyActions {
         var position = CGPoint.zero, size = CGSize.zero
         guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position), AXValueGetValue(sizeValue as! AXValue, .cgSize, &size) else { return nil }
         return CGRect(origin: position, size: size)
+    }
+
+    /// ⇧B: Message › Remind Me › Clear Reminder on the selection, wherever Mail has it on
+    /// (also a pending snooze: the key is explicit). Nothing else is pressed. In the viewer
+    /// the list gets the keyboard first, as for Archive. Checked by the item going off or
+    /// the selected rows leaving (a fired reminder in an inbox), up to 1.5 s.
+    static func clearReminderOnly() {
+        guard let item = MailMenu.find(MailMenu.clearReminder, in: MailMenu.menuBar() ?? []), item.isEnabled else {
+            KeysLog.note("⇧B: Clear Reminder absent or off")
+            ToastController.shared.show(Toast(systemImage: "bell.slash", title: "No reminder to clear",
+                                              subtitle: "Mail's Clear Reminder is off for this"), for: .seconds(3))
+            return
+        }
+        guard let mail = MailMenu.running else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute).flatMap { MailKeys.isMainViewer(AXDialogNode(element: $0)) ? $0 : nil }
+        Task { @MainActor in
+            let rowsBefore = viewer.flatMap(AXSelectableList.inViewer)?.rows.count
+            if let list = viewer.flatMap(AXSelectableList.inViewer) {
+                AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            let pressed = item.press()
+            for _ in 0..<6 {
+                try? await Task.sleep(for: .milliseconds(250))
+                let off = !(MailMenu.find(MailMenu.clearReminder, in: MailMenu.menuBar() ?? [])?.isEnabled ?? false)
+                let rowsNow = viewer.flatMap(AXSelectableList.inViewer)?.rows.count
+                if MailKeys.reminderCleared(itemOff: off, rowsBefore: rowsBefore, rowsNow: rowsNow) {
+                    KeysLog.note("⇧B: Clear Reminder \(pressed ? "pressed" : "didn't respond"); cleared (item off \(off), rows \(rowsBefore ?? 0) → \(rowsNow ?? 0))")
+                    return
+                }
+            }
+            KeysLog.note("⇧B: Clear Reminder \(pressed ? "pressed" : "didn't respond"); no change seen")
+            ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Not sure the reminder cleared",
+                                              subtitle: "Mail still offers Clear Reminder"), for: .seconds(4))
+        }
     }
 
     /// After `c`: once the new message's window is in front (up to 2 s), keys.log says

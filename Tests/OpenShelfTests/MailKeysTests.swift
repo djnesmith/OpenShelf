@@ -865,4 +865,20 @@ struct MailKeysTests {
         #expect(untouched.getIntegerValueField(.keyboardEventKeycode) == 8)
         #expect(!untouched.flags.contains(.maskCommand))
     }
+
+    /// ⇧B clears the reminder only (David: "can there be a clear reminder hotkey?"; "shift b
+    /// sounds good"), in the list and on a message of a conversation or in its window.
+    @Test func shiftBClearsTheReminder() {
+        #expect(MailKeys.clearReminderKey == "B")
+        #expect(MailKeys.outcome(for: "B", pending: nil) == .act(.clearReminder))
+        #expect(MailKeys.actsOnOneMessage(.clearReminder))
+        // Free in the prefixes: g B and * B stay Mail's.
+        #expect(MailKeys.outcome(for: "B", pending: "g") == .pass)
+        #expect(MailKeys.outcome(for: "B", pending: "*") == .pass)
+        #expect(MailKeys.help.contains { $0.0 == "⇧B" && $0.1.contains("reminder") })
+        #expect(MailKeys.reminderCleared(itemOff: true, rowsBefore: nil, rowsNow: nil))
+        #expect(MailKeys.reminderCleared(itemOff: false, rowsBefore: 10, rowsNow: 9))
+        #expect(!MailKeys.reminderCleared(itemOff: false, rowsBefore: 10, rowsNow: 10))
+        #expect(!MailKeys.reminderCleared(itemOff: false, rowsBefore: nil, rowsNow: nil))
+    }
 }

@@ -19,7 +19,13 @@ enum MailKeys {
         case toggleRead
         /// `g g` and `G`: the first or last message in the list.
         case firstMessage, lastMessage
+        /// Message › Remind Me › Clear Reminder on the selection, wherever Mail has it on
+        /// (David, 2026-11-21: "can there be a clear reminder hotkey?"). Nothing else.
+        case clearReminder
     }
+
+    /// The clear-reminder key, in one place so it is cheap to change.
+    static let clearReminderKey: Character = "B"
 
     /// What a key press means, given a pending prefix.
     enum Outcome: Equatable, Sendable {
@@ -51,6 +57,7 @@ enum MailKeys {
         // David, 2026-11-20 evening: "shouldn't u be undo?" (vim); back to the list is Esc now.
         "u": .menu("Edit", "Undo"),
         "G": .lastMessage,
+        clearReminderKey: .clearReminder,
     ]
 
     static let escape: Character = "\u{1b}"
@@ -188,7 +195,7 @@ enum MailKeys {
     static func actsOnOneMessage(_ action: Action) -> Bool {
         switch action {
         case .menu(let top, let title): top == "Message" && title != "Open Message" || (top == "Edit" && title == "Delete")
-        case .snooze, .file, .archiveThenPrevious, .showKeys, .toggleRead: true
+        case .snooze, .file, .archiveThenPrevious, .showKeys, .toggleRead, .clearReminder: true
         case .favorite, .nextMessage, .previousMessage, .clearSelection, .firstMessage, .lastMessage: false
         }
     }
@@ -537,6 +544,14 @@ enum MailKeys {
         return walk(window, depth: 0)
     }
 
+    /// ⇧B's check: Clear Reminder went off, or rows left the list (a fired reminder's row
+    /// leaves an inbox, and Mail may select a next row that has a reminder of its own).
+    static func reminderCleared(itemOff: Bool, rowsBefore: Int?, rowsNow: Int?) -> Bool {
+        if itemOff { return true }
+        guard let rowsBefore, let rowsNow else { return false }
+        return rowsNow < rowsBefore
+    }
+
     /// How a command's effect shows in Mail.
     enum Verification: Equatable { case rowsLeave, flag, read, none }
 
@@ -660,7 +675,7 @@ enum MailKeys {
         ("e  or  ]", "archive (in an inbox, clears a fired reminder)"), ("[", "archive, then the message above"), ("x", "move to Trash (in an inbox, clears a fired reminder)"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),
-("⇧U", "mark read / unread (toggles)"), ("u  or  z", "undo"), ("c", "new message"),
+("⇧U", "mark read / unread (toggles)"), ("⇧B", "clear the reminder"), ("u  or  z", "undo"), ("c", "new message"),
         ("* a", "select all"), ("* n", "select none"),
         ("Esc", "close a message window; else back to the list; in the list, select none (several selected)"), ("g g  /  G", "first / last message"), ("?", "this list"),
     ]
