@@ -440,6 +440,9 @@ enum MailKeys {
     struct ListSnapshot: Equatable {
         var rows: Int
         var selected: Set<String>
+        /// Selected rows as the list shows them (a thread's row holds several messages, and
+        /// one Message-ID can show in two rows: the same mail to two accounts).
+        var selectedRows: Int = 0
         var flagged: [String: Bool] = [:]
         var read: [String: Bool] = [:]
     }
@@ -479,13 +482,24 @@ enum MailKeys {
     /// list can no longer be trashed from it; Clear Reminder second, only while Mail still
     /// selects nothing but messages selected before the Delete.
     static func mayClearAfterDelete(_ before: ListSnapshot, _ now: ListSnapshot) -> Bool {
+        stillTheSameRows(before, now)
+    }
+
+    /// Mail still selects only rows selected before: the Message-IDs are a subset, and the
+    /// selected rows are exactly those that didn't leave. Same Message-IDs alone isn't enough:
+    /// after one copy of a mail left, Mail could select its twin from another account.
+    static func stillTheSameRows(_ before: ListSnapshot, _ now: ListSnapshot) -> Bool {
         !now.selected.isEmpty && now.selected.isSubset(of: before.selected)
+            && now.selectedRows == before.selectedRows - (before.rows - now.rows)
     }
 
     /// What to do after Clear Reminder, from the list before and after it.
-    static func afterClearingReminder(_ before: ListSnapshot, _ after: ListSnapshot, selectedRows: Int) -> AfterClear {
-        if !after.selected.isEmpty, after.selected.isSubset(of: before.selected) { return .archive }
-        if selectedRows > 0, before.selected.isDisjoint(with: after.selected), before.rows - after.rows >= selectedRows { return .done }
+    /// `clearStillOn`: Clear Reminder is still on for the selection, so Mail hasn't finished
+    /// clearing (or a reminder is left): never archive then, as Mail may yet move the
+    /// selection onto the next message.
+    static func afterClearingReminder(_ before: ListSnapshot, _ after: ListSnapshot, clearStillOn: Bool) -> AfterClear {
+        if before.selectedRows > 0, before.selected.isDisjoint(with: after.selected), before.rows - after.rows >= before.selectedRows { return .done }
+        if !clearStillOn, stillTheSameRows(before, after) { return .archive }
         return .stop
     }
 
@@ -534,6 +548,12 @@ enum MailKeys {
         default: .none
         }
     }
+
+    /// Whether a command that showed no change may be tried again on the toolbar button.
+    /// Never Delete (2026-11-21): a message moved to Trash can stay in the list (a fired
+    /// reminder keeps it in the inbox), and a second Delete on it would erase it. keys.log
+    /// had every Delete done on the first route (9 of 9).
+    static func mayRetryOnToolbar(_ title: String) -> Bool { title != "Delete" }
 
     /// The viewer's toolbar button for a command, where it has one.
     static func toolbarLabel(for title: String) -> String? {

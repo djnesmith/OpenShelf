@@ -759,26 +759,39 @@ struct MailKeysTests {
     }
 
     @Test func afterClearReminderArchivesOnlyWhatWasSelected() {
-        let before = MailKeys.ListSnapshot(rows: 10, selected: ["a", "b", "c"])
-        // Every selected row left (Mail moved on to the next message): done.
-        #expect(MailKeys.afterClearingReminder(before, .init(rows: 8, selected: ["z"]), selectedRows: 2) == .done)
-        #expect(MailKeys.afterClearingReminder(before, .init(rows: 8, selected: []), selectedRows: 2) == .done)
-        // Nothing left, or some left and the rest still selected: archive those.
-        #expect(MailKeys.afterClearingReminder(before, before, selectedRows: 2) == .archive)
-        #expect(MailKeys.afterClearingReminder(before, .init(rows: 9, selected: ["c"]), selectedRows: 2) == .archive)
+        typealias S = MailKeys.ListSnapshot
+        let before = S(rows: 10, selected: ["a", "b", "c"], selectedRows: 2)
+        // Every selected row left (Mail moved on to the next message): done, even with
+        // Clear Reminder still on for that next one.
+        #expect(MailKeys.afterClearingReminder(before, S(rows: 8, selected: ["z"], selectedRows: 1), clearStillOn: true) == .done)
+        #expect(MailKeys.afterClearingReminder(before, S(rows: 8, selected: [], selectedRows: 0), clearStillOn: false) == .done)
+        // Nothing left, or one row left and the other still selected, and Mail is done
+        // clearing: archive those.
+        #expect(MailKeys.afterClearingReminder(before, before, clearStillOn: false) == .archive)
+        #expect(MailKeys.afterClearingReminder(before, S(rows: 9, selected: ["c"], selectedRows: 1), clearStillOn: false) == .archive)
+        // Clear Reminder still on: Mail may not have caught up yet; never archive.
+        #expect(MailKeys.afterClearingReminder(before, before, clearStillOn: true) == .stop)
         // The selection moved while selected rows remain, or took in another message: stop.
-        #expect(MailKeys.afterClearingReminder(before, .init(rows: 9, selected: ["z"]), selectedRows: 2) == .stop)
-        #expect(MailKeys.afterClearingReminder(before, .init(rows: 9, selected: ["c", "z"]), selectedRows: 2) == .stop)
-        #expect(MailKeys.afterClearingReminder(before, .init(rows: 10, selected: []), selectedRows: 2) == .stop)
+        #expect(MailKeys.afterClearingReminder(before, S(rows: 9, selected: ["z"], selectedRows: 1), clearStillOn: false) == .stop)
+        #expect(MailKeys.afterClearingReminder(before, S(rows: 9, selected: ["c", "z"], selectedRows: 2), clearStillOn: false) == .stop)
+        #expect(MailKeys.afterClearingReminder(before, S(rows: 10, selected: [], selectedRows: 0), clearStillOn: false) == .stop)
+        // The same mail in two accounts: one copy left and Mail selected its twin (same
+        // Message-ID, one row selected where none should be): stop, never archive the twin.
+        let one = S(rows: 10, selected: ["a"], selectedRows: 1)
+        #expect(MailKeys.afterClearingReminder(one, S(rows: 9, selected: ["a"], selectedRows: 1), clearStillOn: false) == .stop)
     }
 
     @Test func xClearsTheReminderOnlyOnTheMessagesItDeleted() {
-        let before = MailKeys.ListSnapshot(rows: 10, selected: ["a", "b"])
+        typealias S = MailKeys.ListSnapshot
+        let before = S(rows: 10, selected: ["a", "b"], selectedRows: 2)
         #expect(MailKeys.mayClearAfterDelete(before, before))
-        #expect(MailKeys.mayClearAfterDelete(before, .init(rows: 9, selected: ["b"])))
-        #expect(!MailKeys.mayClearAfterDelete(before, .init(rows: 9, selected: ["z"])))
-        #expect(!MailKeys.mayClearAfterDelete(before, .init(rows: 9, selected: ["b", "z"])))
-        #expect(!MailKeys.mayClearAfterDelete(before, .init(rows: 8, selected: [])))
+        #expect(MailKeys.mayClearAfterDelete(before, S(rows: 9, selected: ["b"], selectedRows: 1)))
+        #expect(!MailKeys.mayClearAfterDelete(before, S(rows: 9, selected: ["z"], selectedRows: 1)))
+        #expect(!MailKeys.mayClearAfterDelete(before, S(rows: 9, selected: ["b", "z"], selectedRows: 2)))
+        #expect(!MailKeys.mayClearAfterDelete(before, S(rows: 8, selected: [], selectedRows: 0)))
+        // The twin from another account selected after the first copy left.
+        let one = S(rows: 10, selected: ["a"], selectedRows: 1)
+        #expect(!MailKeys.mayClearAfterDelete(one, S(rows: 9, selected: ["a"], selectedRows: 1)))
     }
 
     @Test func afterASnoozeTheNextMessage() {
@@ -814,5 +827,13 @@ struct MailKeysTests {
         // No To anywhere (only the body and Subject): none, nothing focused.
         let none = Node("AXWindow", [Node("AXTextField", label: "Subject:"), Node("AXWebArea", [Node("AXStaticText", text: "To:"), Node("AXTextArea")])])
         #expect(MailKeys.toField(in: none) == nil)
+    }
+
+    @Test func deleteIsNeverPressedTwice() {
+        #expect(!MailKeys.mayRetryOnToolbar("Delete"))
+        #expect(MailKeys.mayRetryOnToolbar("Archive"))
+        #expect(MailKeys.mayRetryOnToolbar("Move to Junk"))
+        // With no toolbar retry, an unchanged Delete gives up after its one press.
+        #expect(MailKeys.nextActionStep(tried: [.listThenMenu], last: .unchanged, toolbarAvailable: MailKeys.mayRetryOnToolbar("Delete")) == .gaveUp)
     }
 }

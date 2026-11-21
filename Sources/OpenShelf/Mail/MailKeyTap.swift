@@ -492,9 +492,12 @@ enum MailKeyActions {
             let originalBefore = before
             var tried: [MailKeys.ActionRoute] = []
             var last: MailKeys.ActionOutcome?
+            var deletePressed = false
             while true {
-                let step = MailKeys.nextActionStep(tried: tried, last: last, toolbarAvailable: button != nil && !clearAfterDelete)
-                if clearAfterDelete, step == .gaveUp || { if case .unsure = step { true } else { false } }() {
+                // Delete never takes a second route: a message Delete moved to Trash can stay in
+                // the list (a fired reminder), and a second Delete there would erase it.
+                let step = MailKeys.nextActionStep(tried: tried, last: last, toolbarAvailable: button != nil && MailKeys.mayRetryOnToolbar(title))
+                if clearAfterDelete, deletePressed, step == .gaveUp || { if case .unsure = step { true } else { false } }() {
                     await clearAfterDeleting(originalBefore, in: viewer, then: afterDone)
                     return
                 }
@@ -524,7 +527,7 @@ enum MailKeyActions {
                             AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
                         }
                         try? await Task.sleep(for: .milliseconds(100))
-                        _ = press(title, under: top)
+                        deletePressed = press(title, under: top)
                     }
                     last = await waitForOutcome(from: before, in: viewer, kind, title: title)
                     KeysLog.note("\(title): \(route) \(last.map { "\($0)" } ?? "?")")
@@ -536,9 +539,12 @@ enum MailKeyActions {
     /// `x`'s second half: Delete left the reminded rows in the list, so Clear Reminder is
     /// pressed while Mail still selects only those messages; proven when they leave.
     private static func clearAfterDeleting(_ before: MailKeys.ListSnapshot, in viewer: AXUIElement, then afterDone: (() -> Void)?) async {
+        // Two readings 300 ms apart must agree, so a slow Mail isn't caught mid-move.
+        let first = await snapshot(viewer)
+        try? await Task.sleep(for: .milliseconds(300))
         let now = await snapshot(viewer)
         let item = MailMenu.find(MailMenu.clearReminder, in: MailMenu.menuBar() ?? [])
-        guard MailKeys.mayClearAfterDelete(before, now), let item, item.isEnabled else {
+        guard first == now, MailKeys.mayClearAfterDelete(before, now), let item, item.isEnabled else {
             KeysLog.note("Delete: rows stayed; Clear Reminder not pressed (selection kept \(MailKeys.mayClearAfterDelete(before, now)), item on \(item?.isEnabled ?? false))")
             ToastController.shared.show(Toast(systemImage: "exclamationmark.triangle", title: "Not sure Delete worked",
                                               subtitle: "The messages are still in the list"), for: .seconds(5))
@@ -558,20 +564,24 @@ enum MailKeyActions {
     /// Presses Clear Reminder with the list holding the keyboard (as Archive needs), then up
     /// to 1.5 s of looking at the list. Logs counts only.
     private static func clearReminder(_ item: MenuNode, in viewer: AXUIElement, before: MailKeys.ListSnapshot) async -> ClearResult {
-        let list = AXSelectableList.inViewer(viewer)
-        let selectedRows = list?.selectedRows.count ?? 0
-        if let list { AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue) }
+        if let list = AXSelectableList.inViewer(viewer) { AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue) }
         try? await Task.sleep(for: .milliseconds(100))
         let pressed = item.press()
         var after = before
-        var next = MailKeys.AfterClear.archive
-        for _ in 0..<6 {
+        var next = MailKeys.AfterClear.stop
+        for _ in 0..<8 {
             try? await Task.sleep(for: .milliseconds(250))
             after = await snapshot(viewer)
-            next = MailKeys.afterClearingReminder(before, after, selectedRows: selectedRows)
-            if next == .done { break }
+            let stillOn = MailMenu.find(MailMenu.clearReminder, in: MailMenu.menuBar() ?? [])?.isEnabled ?? true
+            next = MailKeys.afterClearingReminder(before, after, clearStillOn: stillOn)
+            if next != .stop { break }
         }
-        KeysLog.note("Clear Reminder \(pressed ? "pressed" : "didn't respond"), rows \(before.rows) → \(after.rows), \(selectedRows) selected rows: \(next)")
+        // Archive only on a list that has settled: one more reading must agree.
+        if next == .archive {
+            try? await Task.sleep(for: .milliseconds(300))
+            if await snapshot(viewer) != after { next = .stop }
+        }
+        KeysLog.note("Clear Reminder \(pressed ? "pressed" : "didn't respond"), rows \(before.rows) → \(after.rows), \(before.selectedRows) selected rows: \(next)")
         switch next {
         case .done: return .done
         case .stop: return .stop
@@ -598,10 +608,11 @@ enum MailKeyActions {
     /// The viewer's list row count and the selected messages' ids, flag and read states
     /// (Mail's AppleScript; never a subject or body).
     static func snapshot(_ viewer: AXUIElement) async -> MailKeys.ListSnapshot {
-        let rows = AXSelectableList.inViewer(viewer)?.rows.count ?? 0
+        let list = AXSelectableList.inViewer(viewer)
+        let rows = list?.rows.count ?? 0
         let source = MailScripts.selectionState
         let text = await MailScript.run("selection state", source).text ?? ""
-        var snapshot = MailKeys.ListSnapshot(rows: rows, selected: [])
+        var snapshot = MailKeys.ListSnapshot(rows: rows, selected: [], selectedRows: list?.selectedRows.count ?? 0)
         for line in text.split(separator: "\n") {
             let parts = line.split(separator: "\t").map(String.init)
             guard parts.count == 3 else { continue }

@@ -91,9 +91,10 @@ final class MailHelpers {
             ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Can't snooze", subtitle: problem), for: .seconds(4))
             return
         }
-        // Where the list was, for after the snooze (the next message) or Esc (back there).
+        // Where the list was: for Esc, as the prompt opened; for the next message, as the time
+        // is chosen (mail that arrived meanwhile has moved the rows).
         let place = MailListPlace.capture()
-        SnoozePrompt.shared.show(onChoose: { [weak self] date in self?.snooze(until: date, from: place) },
+        SnoozePrompt.shared.show(onChoose: { [weak self] date in self?.snooze(until: date, from: MailListPlace.capture() ?? place) },
                                  onCancel: { place?.restore() })
     }
 
