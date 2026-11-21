@@ -248,7 +248,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | evil-visualstar: `*` `#` on a visual selection | Built | From the cursor, as Doom: `viw#` finds the word itself first | — |
 | evil-escape `jk` | Built | | — |
 | `⌥J` / `⌥K` move lines (his `config.el`) | Built | | — |
-| evil-multiedit: visual `R`, `M-d` / `M-D` (his `config.el:738-759`) | Built | `M-d` is `⌥D`; in the regions `c` `D` `⌃N` `⌃P` Return, Esc to leave | — |
+| evil-multiedit: visual `R`, `M-d` / `M-D` (his `config.el:738-759`) | Built | `M-d` is `⌥D`; in the regions `C` `D` `⌃N` `⌃P` Return, Esc to leave, `c` as usual | — |
 | Slurp, barf, raise (`s-R` sp-raise-sexp) | Built | His keys: `⌃L` `⌃H` slurp, `⌃J` `⌃K` barf (`~/.doom.d/config.el:821-824`), `⌘⇧R` raise (`:456`); lines are not re-indented | — |
 
 ### Vim itself

@@ -879,6 +879,11 @@ struct VimDoomTextObjectTests {
         ("|foo bar foo", "viwRxx<Esc>", "foo|ar foo"),
         ("|foo bar foo", "viwR<C-n>x<Esc>", "oo bar |oo"),
         ("|foo bar foo", "viwR<Esc>x", "foo|bar foo"),
+        ("|foo bar foo", "viwRbciwX<Esc><Esc>", "|X bar X"),
+        ("|foo bar foo", "viwRbCX<Esc><Esc>", "|X bar X"),
+        ("|foo bar foo", "viwRblCX<Esc><Esc>", "|X bar X"),
+        ("|foo bar foo", "viwRCX<Esc><Esc>", "|X bar X"),
+        ("|foo bar foo", "viwRbcwX<Esc><Esc>", "|X bar X"),
     ])
     func multiedit(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)

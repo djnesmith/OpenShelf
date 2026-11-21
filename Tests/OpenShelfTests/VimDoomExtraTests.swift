@@ -334,22 +334,22 @@ struct VimDoomExtraTests {
         #expect(VimEngineTests.run("|a\nb", ":1d x<CR>\"xp").string == "b\na")
     }
 
-    /// evil-multiedit's change and ⌥D (emacs --batch hangs on its c, so these are by hand, from
-    /// iedit's rule: a change in one region is made in all of them).
+    /// evil-multiedit's C (empty the region, type) and ⌥D, by hand from iedit's rule: a change in
+    /// one region is made in all of them.
     @Test func multieditChangesEveryRegion() {
         func marked(_ start: String, _ keys: String) -> String { VimEngineTests.marked(VimEngineTests.run(start, keys)) }
-        #expect(marked("|foo bar foo baz foo", "viwRcX<Esc><Esc>") == "|X bar X baz X")
-        #expect(marked("|foo bar foo baz foo", "viwRcXY<Esc>") == "X|Y bar XY baz XY")
+        #expect(marked("|foo bar foo baz foo", "viwRCX<Esc><Esc>") == "|X bar X baz X")
+        #expect(marked("|foo bar foo baz foo", "viwRCXY<Esc>") == "X|Y bar XY baz XY")
         // ⌥D marks the word, each press the next copy; whole words only.
-        #expect(marked("|foo foobar foo", "<A-d><A-d>cX<Esc><Esc>") == "|X foobar X")
-        #expect(marked("|foo bar foo baz foo", "<A-d>cX<Esc><Esc>") == "|X bar foo baz foo")
-        #expect(marked("foo bar foo baz |foo", "<A-d><A-D>cX<Esc><Esc>") == "foo bar X baz |X")
+        #expect(marked("|foo foobar foo", "<A-d><A-d>CX<Esc><Esc>") == "|X foobar X")
+        #expect(marked("|foo bar foo baz foo", "<A-d>CX<Esc><Esc>") == "|X bar foo baz foo")
+        #expect(marked("foo bar foo baz |foo", "<A-d><A-D>CX<Esc><Esc>") == "foo bar X baz |X")
         // From visual mode words don't matter.
-        #expect(marked("|foo foobar foo", "viwRcX<Esc><Esc>") == "|X Xbar X")
+        #expect(marked("|foo foobar foo", "viwRCX<Esc><Esc>") == "|X Xbar X")
         // Return turns the region under the cursor off.
-        #expect(marked("|foo bar foo baz foo", "viwR<C-n><CR>ggcX<Esc><Esc>") == "|X bar foo baz X")
+        #expect(marked("|foo bar foo baz foo", "viwR<C-n><CR>ggCX<Esc><Esc>") == "|X bar foo baz X")
         // One undo takes the change back everywhere.
-        #expect(VimEngineTests.run("|foo bar foo", "viwRcX<Esc>u").string == "foo bar foo")
+        #expect(VimEngineTests.run("|foo bar foo", "viwRCX<Esc>u").string == "foo bar foo")
         // Esc leaves multiedit; the regions are gone.
         var engine = VimEngineTests.run("|foo bar foo", "viwR")
         #expect(engine.multiedit == [0..<3, 8..<11])
@@ -359,7 +359,7 @@ struct VimDoomExtraTests {
 
     /// Typing in insert mode goes into every region as the window passes it on (syncInsert).
     @Test func multieditMirrorsLiveTyping() {
-        var engine = VimEngineTests.run("|ab x ab", "viwRc")
+        var engine = VimEngineTests.run("|ab x ab", "viwRC")
         engine.syncInsert(text: "Q x ", cursor: 1)
         #expect(engine.string == "Q x Q")
         #expect(engine.cursor == 1)
@@ -380,5 +380,22 @@ struct VimDoomExtraTests {
         engine.visibleLines = 0...9
         _ = engine.handle(VimEngineTests.keys("9j<C-y>"))
         #expect(line(engine) == 9 && engine.scrollRequest == nil)
+    }
+
+    /// Batch 6 review: :m and :t above the first line say E14 (they crashed); :g and :norm over
+    /// more than 1,000 lines undo in one step; nested :g says E147; :norm skips blanks first;
+    /// multiedit doesn't copy half-typed dead-key text.
+    @Test func batchSixReviewEdges() {
+        for keys in [":m-2<CR>", ":m-5<CR>", ":t-3<CR>"] {
+            let engine = VimEngineTests.run("|a\nb\nc", keys)
+            #expect(engine.string == "a\nb\nc" && engine.message == "E14: Invalid address")
+        }
+        let long = (0..<1200).map { "l\($0)" }.joined(separator: "\n")
+        #expect(VimEngineTests.run("|" + long, ":%norm Ax<CR>u").string == long)
+        #expect(VimEngineTests.run("|" + long, ":g/l/s/l/L/<CR>u").string == long)
+        #expect(VimEngineTests.run("|" + long, "qaAx<Esc>jq1199@au").string == long.replacingOccurrences(of: "l0\n", with: "l0x\n"))
+        let nested = VimEngineTests.run("|a1\nb\na2\nb2", ":g/a/g/b/d<CR>")
+        #expect(nested.string == "a1\nb\na2\nb2" && nested.message == "E147: Cannot do :global recursive")
+        #expect(VimEngineTests.run("|a\nb\nc", ":%norm  x<CR>").string == "\n\n")
     }
 }

@@ -92,7 +92,7 @@ struct VimEditorWindowTests {
         #expect(VimTextView.vimKey(for: Self.key("Î", keyCode: 2, modifiers: [.option, .shift])) == .alt("D"))
         let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
         view.load("ab x ab")
-        for c in "viwRc" { view.keyDown(with: Self.key(String(c))) }
+        for c in "viwRC" { view.keyDown(with: Self.key(String(c))) }
         view.insertText("Q", replacementRange: view.selectedRange())
         #expect(view.string == "Q x Q")
         view.insertText("R", replacementRange: view.selectedRange())
@@ -100,6 +100,27 @@ struct VimEditorWindowTests {
         view.keyDown(with: Self.key("\u{1b}", keyCode: 53))
         #expect(view.engine.string == "QR x QR")
         #expect(view.layoutManager?.temporaryAttribute(.backgroundColor, atCharacterIndex: 5, effectiveRange: nil) != nil)
+    }
+
+    /// c$ in a multiedit region shortens the text; the regions follow at once, so drawing them
+    /// never reaches past the end (2026-11-21: it crashed).
+    @Test func multieditOperatorChangeKeepsRegionsInTheText() {
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        view.load("ab x ab")
+        for c in "viwRbc$" { view.keyDown(with: Self.key(String(c))) }
+        view.insertText("Q", replacementRange: view.selectedRange())
+        #expect(view.string == "Q")
+        #expect(view.engine.multiedit.allSatisfy { $0.upperBound <= view.engine.text.count })
+    }
+
+    /// A dead key's marked text isn't copied into the other regions half-typed.
+    @Test func multieditWaitsForDeadKeys() {
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        view.load("ab x ab")
+        for c in "viwRC" { view.keyDown(with: Self.key(String(c))) }
+        view.setMarkedText("´", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        view.insertText("é", replacementRange: NSRange(location: NSNotFound, length: 0))
+        #expect(view.string == "é x é")
     }
 
     /// Search matches get a background while / is typed and after the search, until :noh.

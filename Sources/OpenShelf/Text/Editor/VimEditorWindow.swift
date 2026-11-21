@@ -601,7 +601,8 @@ final class VimTextView: NSTextView {
         let shown = shownCharacters()
         let matches = engine.searchHighlights(in: shown)
         let mark = engine.exchangeHighlight
-        let regions = engine.multiedit
+        // Never draw past the text, whatever the engine holds.
+        let regions = engine.multiedit.filter { $0.upperBound <= engine.text.count }
         guard !matches.isEmpty || mark != nil || !regions.isEmpty else { return }
         // UTF-16 offsets counted once, from the first character needed.
         let needed = ([shown.lowerBound, mark?.lowerBound ?? Int.max] + regions.map(\.lowerBound)).min()!
@@ -705,7 +706,8 @@ final class VimTextView: NSTextView {
             case .line(let line, _): target = line
             case .by(let n): target = (visibleLineRange()?.upperBound ?? 0) + max(n, 0)
             }
-            let reach = min(target + Int(visible.height / 16) + 2, lines - 1)
+            let lineHeight = max(layoutManager.defaultLineHeight(for: font ?? .systemFont(ofSize: 13)), 1)
+            let reach = min(target + Int(visible.height / lineHeight) + 2, lines - 1)
             let starts = [0] + engine.text.indices.filter { engine.text[$0] == "\n" }.map { $0 + 1 }
             let end = reach + 1 < starts.count ? utf16Offset(of: starts[reach + 1]) : (string as NSString).length
             layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: end))
@@ -739,7 +741,8 @@ final class VimTextView: NSTextView {
     override func didChangeText() {
         super.didChangeText()
         // Typing in a multiedit region goes into every region as it is typed (ROADMAP C31).
-        if !isRendering, engine.mode == .insert, !engine.multiedit.isEmpty {
+        // Not while a dead key or an input method holds marked text: it would be copied half-typed.
+        if !isRendering, engine.mode == .insert, !engine.multiedit.isEmpty, !hasMarkedText() {
             engine.syncInsert(text: string, cursor: characterIndex(utf16: selectedRange().location))
             if engine.string != string {
                 isRendering = true

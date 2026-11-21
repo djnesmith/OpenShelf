@@ -64,7 +64,7 @@ struct VimEngine {
     private var textVersion = VimEngine.nextVersion()
     private static let versions = OSAllocatedUnfairLock(initialState: 0)
     private static func nextVersion() -> Int { versions.withLock { $0 += 1; return $0 } }
-    /// The line starts for `cacheVersion`'s text, shared by copies, which is safe since a
+    /// The line starts for the text of `version`, shared by copies, which is safe since a
     /// version names one text only.
     private final class LineCache: @unchecked Sendable {
         var version = -1
@@ -234,10 +234,10 @@ struct VimEngine {
     mutating func handle(_ key: VimKey) -> VimEffect? {
         guard !multiedit.isEmpty else { return handleRegular(key) }
         if mode == .normal, pending.isEmpty, let effect = multieditKey(key) { return effect.0 }
-        // Any other key runs as usual; what it changed in a region is made in all of them. In
-        // insert mode the typing is mirrored when it ends (or as typed, through syncInsert).
+        // Any other key runs as usual; what it changed in a region is made in all of them at once,
+        // so the regions always fit the text (typing the window does comes through syncInsert).
         let effect = handleRegular(key)
-        if mode != .insert, !multiedit.isEmpty { mirrorMultiedit() }
+        if !multiedit.isEmpty { mirrorMultiedit() }
         return effect
     }
 
@@ -375,8 +375,9 @@ struct VimEngine {
         mode = .normal
     }
 
-    /// Keys evil-multiedit's state has (c, D, ⌃N, ⌃P, Return, Esc); nil for the rest, which run
-    /// as usual, any change they make in a region being made in all.
+    /// Keys evil-multiedit's state has (C, D, ⌃N, ⌃P, Return, Esc); nil for the rest, which run
+    /// as usual (c is the operator, as evil-change), any change they make in a region being made
+    /// in all.
     private mutating func multieditKey(_ key: VimKey) -> (VimEffect?, Void)? {
         // The region under the cursor, or ending just before it, as iedit finds its overlay.
         let current = multiedit.firstIndex { $0.contains(cursor) } ?? multiedit.firstIndex { $0.upperBound == cursor }
@@ -396,15 +397,16 @@ struct VimEngine {
             guard let current else { return (nil, ()) }
             multiedit.remove(at: current)
             return (nil, ())
-        case .char("c"), .char("D"):
+        case .char("C"), .char("D"):
+            // C empties the region and types there; D empties it (evil-multiedit's C and D).
             guard let current else { return nil }
             let region = multiedit[current]
             checkpoint(at: region.lowerBound)
-            if key == .char("c") { insertStartText = text }
+            if key == .char("C") { insertStartText = text }
             text.removeSubrange(region)
             cursor = region.lowerBound
             mirrorMultiedit()
-            if key == .char("c") {
+            if key == .char("C") {
                 beginInsert()
             } else {
                 clampCursor()
@@ -624,6 +626,8 @@ struct VimEngine {
 
     /// The last : command, for @:.
     private var lastExCommand: String?
+    /// A :g is running its command, which may not be another :g.
+    private var inGlobal = false
 
     /// The lines the window shows (ROADMAP C39); nil means all. The window either sets them, or
     /// gives `visibleLinesSource`, asked only by the keys that need it (H M L ⌃D ⌃U ⌃E ⌃Y).
@@ -891,7 +895,7 @@ struct VimEngine {
                 target = line
             }
             let lines = parsed.lines ?? current...current
-            guard target < lineStarts.count else { return fail("E14: Invalid address") }
+            guard target >= -1, target < lineStarts.count else { return fail("E14: Invalid address") }
             if !copying, lines.contains(target), target != lines.upperBound { return fail("E134: Cannot move a range of lines into itself") }
             var all = string.components(separatedBy: "\n")
             let block = Array(all[lines])
@@ -943,7 +947,8 @@ struct VimEngine {
         if named("norm", "normal") {
             if rest.first == "!" { rest = rest.dropFirst() }
             guard rest.first == " " else { return fail("E471: Argument required") }
-            let keys = Array(rest.dropFirst()).map(Self.key(for:))
+            // Blanks before the keys are skipped, as vim's :normal does.
+            let keys = Array(rest.drop { $0 == " " || $0 == "\t" }).map(Self.key(for:))
             let lines = parsed.lines ?? current...current
             return (onLines(Array(lines)) { engine in
                 for key in keys {
@@ -980,6 +985,9 @@ struct VimEngine {
             guard !marked.isEmpty else { return fail("E486: Pattern not found: \(pattern)") }
             lastSearch = (pattern, true, false)
             if inner == "p" { return (nil, ()) }
+            guard !inGlobal else { return fail("E147: Cannot do :global recursive") }
+            inGlobal = true
+            defer { inGlobal = false }
             return (onLines(marked) { engine in
                 _ = engine.runCommandLine(":" + inner)
             }, ())
@@ -991,17 +999,16 @@ struct VimEngine {
     /// and :norm do, following each line through the changes the earlier runs make (a line
     /// deleted on the way is skipped), all in one undo step.
     private mutating func onLines(_ lines: [Int], _ body: (inout VimEngine) -> Void) -> VimEffect? {
+        oneUndoStep { engine in engine.runOnLines(lines, body) }
+    }
+
+    private mutating func runOnLines(_ lines: [Int], _ body: (inout VimEngine) -> Void) -> VimEffect? {
         var current = string.components(separatedBy: "\n")
         // Each line's id; lines the commands make get none.
         var ids: [Int?] = Array(current.indices)
-        let undoBase = undoStack.count, trimmedBefore = undoTrimmed
         let wasRepeating = isRepeating
         isRepeating = true
-        defer {
-            isRepeating = wasRepeating
-            let first = undoBase - (undoTrimmed - trimmedBefore)
-            if first >= 0, undoStack.count > first + 1 { undoStack.removeSubrange((first + 1)...) }
-        }
+        defer { isRepeating = wasRepeating }
         for id in lines {
             guard let line = ids.firstIndex(where: { $0 == id }) else { continue }
             cursor = lineStarts[line]
@@ -2876,13 +2883,12 @@ struct VimEngine {
                     return nil
                 }
                 lastMacro = ":"
-                var effect: VimEffect?
                 // One undo takes back every run, as for a macro.
-                let undoBase = undoStack.count, trimmedBefore = undoTrimmed
-                for _ in 0..<min(n, 10_000) where !failed { effect = runCommandLine(line) ?? effect }
-                let first = undoBase - (undoTrimmed - trimmedBefore)
-                if first >= 0, undoStack.count > first + 1 { undoStack.removeSubrange((first + 1)...) }
-                return effect
+                return oneUndoStep { engine in
+                    var effect: VimEffect?
+                    for _ in 0..<min(n, 10_000) where !engine.failed { effect = engine.runCommandLine(line) ?? effect }
+                    return effect
+                }
             } else if name.hasPrefix("@"), name.count == 2, let register = name.last {
                 play(register == "@" ? lastMacro : register, count: n)
             } else if name.hasPrefix("mark"), name.count == 5, let mark = name.last {
@@ -4899,16 +4905,27 @@ struct VimEngine {
         guard playDepth == 0 else { return }
         playDepth = 1
         macroBudget = Self.macroKeyLimit
-        // One undo takes back the whole macro, as in vim.
-        let undoBase = undoStack.count, trimmedBefore = undoTrimmed
+        // One undo takes back the whole macro, as in vim: one checkpoint before it, none inside.
+        let textBefore = string
+        let outer = oneUndoDepth == 0
+        if outer {
+            checkpoint()
+            oneUndoDepth += 1
+        }
         defer {
             playDepth = 0
             macroQueue = []
             pending = []
-            // What the macro changed goes on the change list once, where it left the cursor.
-            if !isRepeating, undoStack.count + undoTrimmed != undoBase + trimmedBefore { recordChange(at: cursor, undoDepth: -1) }
-            let first = undoBase - (undoTrimmed - trimmedBefore)
-            if first >= 0, undoStack.count > first + 1 { undoStack.removeSubrange((first + 1)...) }
+            if outer {
+                oneUndoDepth -= 1
+                if string == textBefore {
+                    if undoStack.last?.text == textBefore { undoStack.removeLast() }
+                } else {
+                    redoStack = []
+                    // What the macro changed goes on the change list once, where it left the cursor.
+                    if !isRepeating { recordChange(at: cursor, undoDepth: -1) }
+                }
+            }
             // Typing in the window after a macro that ended in insert mode is the person's, not the macro's.
             if mode == .insert { insertBaseline = text }
         }
@@ -5092,11 +5109,32 @@ struct VimEngine {
 
     // MARK: - Undo
 
-    /// Saves the text for undo. `position` is where the change begins,
-    /// where undo leaves the cursor, as vim does.
+    /// How deep in `oneUndoStep` the engine is; checkpoints inside are skipped.
+    private var oneUndoDepth = 0
+
+    /// Runs `body` as one undo step: one checkpoint before it (kept only if the text changed),
+    /// none inside it. Keeps any number of changes undoable at once, and fast, since the text is
+    /// saved once instead of once per change (2026-11-21: past 1,000 changes the old text was
+    /// lost).
+    private mutating func oneUndoStep<T>(at position: Int? = nil, _ body: (inout VimEngine) -> T) -> T {
+        guard oneUndoDepth == 0 else { return body(&self) }
+        let before = string
+        checkpoint(at: position)
+        oneUndoDepth += 1
+        let result = body(&self)
+        oneUndoDepth -= 1
+        if string == before {
+            if undoStack.last?.text == before { undoStack.removeLast() }
+        } else {
+            redoStack = []
+        }
+        return result
+    }
+
     /// Takes back the last checkpoint when the change it was for changed nothing, with the
-    /// change-list place it added.
+    /// change-list place it added. Inside a single undo step (`oneUndoStep`) there is none.
     private mutating func dropCheckpoint() {
+        guard oneUndoDepth == 0 else { return }
         undoStack.removeLast()
         if changeAddedAt == undoStack.count + 1 {
             changes = changesBeforeLastAdd
@@ -5105,8 +5143,12 @@ struct VimEngine {
         }
     }
 
+    /// Saves the text for undo. `position` is where the change begins,
+    /// where undo leaves the cursor, as vim does.
     private mutating func checkpoint(at position: Int? = nil) {
         if !text.isEmpty { noLines = false }
+        // Inside one undo step (a macro, @:, :g, :norm) the step's own checkpoint covers it.
+        guard oneUndoDepth == 0 else { return }
         // The change list, for g; and g, (one place per line, newest last). Changes a macro or
         // "." makes are recorded once, where they leave the cursor, which keeps them fast.
         if playDepth == 0, !isRepeating { recordChange(at: position ?? cursor, undoDepth: undoStack.count + 1) }
