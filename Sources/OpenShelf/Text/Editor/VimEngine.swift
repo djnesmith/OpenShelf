@@ -889,16 +889,17 @@ struct VimEngine {
         var changes: [(range: Range<Int>, text: String)] = []
         var k = 0
         for piece in pieces {
-            let start = starts[piece.line]
-            let line = String(text[start..<lineEnd(start)])
-            for match in regex.matches(in: line, range: NSRange(line.startIndex..., in: line)) {
-                guard let found = Range(match.range, in: line) else { continue }
-                let lower = line.distance(from: line.startIndex, to: found.lowerBound)
-                let upper = line.distance(from: line.startIndex, to: found.upperBound)
-                guard piece.columns.contains(lower) else { continue }
+            // Only the selected part is read, so a number cut by the selection's edge counts
+            // from there, as evil-numbers does (1|23 v⌃A makes 133).
+            let start = starts[piece.line] + piece.columns.lowerBound
+            let part = String(text[start..<(starts[piece.line] + piece.columns.upperBound)])
+            for match in regex.matches(in: part, range: NSRange(part.startIndex..., in: part)) {
+                guard let found = Range(match.range, in: part) else { continue }
+                let lower = part.distance(from: part.startIndex, to: found.lowerBound)
+                let upper = part.distance(from: part.startIndex, to: found.upperBound)
                 k += 1
                 let step = eachMore ? amount.multipliedReportingOverflow(by: k).partialValue : amount
-                changes.append(((start + lower)..<(start + upper), VimNumber.changed(String(line[found]), by: step)))
+                changes.append(((start + lower)..<(start + upper), VimNumber.changed(String(part[found]), by: step)))
             }
         }
         cursor = corner
@@ -1619,8 +1620,8 @@ struct VimEngine {
         case .deleteSurround, .changeSurround, .addSurround, .align: true
         case .operate(let op, _): op != .yank && op != .exchange
         case .simple(let name):
-            ["x", "X", "s", "S", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement"].contains(name)
-                || (name.hasPrefix("line") && name != "liney") || (name.hasPrefix("r") && name.count == 2)
+            ["x", "X", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement"].contains(name)
+                || (name.hasPrefix("line") && name != "liney" && name != "lineX") || (name.hasPrefix("r") && name.count == 2)
         }
     }
 
@@ -1830,8 +1831,6 @@ struct VimEngine {
         case "escape": break
         case "x": operate(.delete, motion: .right, count: n)
         case "X": operate(.delete, motion: .left, count: n)
-        case "s": operate(.change, motion: .right, count: n)
-        case "S": runLine(.change, count: n)
         case "D": operate(.delete, motion: .lineEnd, count: n)
         case "C": operate(.change, motion: .lineEnd, count: n)
         case "Y": operate(.yank, motion: .lineEnd, count: n)
@@ -2117,6 +2116,9 @@ struct VimEngine {
                 if matches(at) {
                     remaining -= 1
                     if remaining == 0 { found = at; break }
+                    // The next of a count starts after this match, as re-search-forward's count does.
+                    at += length
+                    continue
                 }
                 at += 1
             }
@@ -2128,6 +2130,8 @@ struct VimEngine {
                 if matches(at) {
                     remaining -= 1
                     if remaining == 0 { found = at; break }
+                    at -= length
+                    continue
                 }
                 at -= 1
             }
@@ -2648,6 +2652,10 @@ struct VimEngine {
         var b = cursor, e = cursor
         while counts(b - 1) { b -= 1 }
         while counts(e + 1) { e += 1 }
+        // Blanks after the last comment (the next line's indentation) are not part of it.
+        if let last = (lineIndex(b)...lineIndex(e)).last(where: { commentStarts[$0].map { $0 <= e } ?? false }), lineIndex(e) > last {
+            e = lineEnd(starts[last])
+        }
         // A blank last line is left out.
         let lastStart = lineStart(e)
         if text[lastStart..<lineEnd(e)].allSatisfy({ $0 == " " || $0 == "\t" }) { e = lastStart - 1 }

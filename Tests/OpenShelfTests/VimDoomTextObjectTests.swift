@@ -407,6 +407,13 @@ struct VimDoomTextObjectTests {
         ("(a)\n|(b)", "dic", "(a)\n|(b)"),
         ("(a)\n;;   x|y\n;; z\n(b)", "dic", "(a)\n;; | xy\n;; \n(b)"),
         ("(a)\n;; x|y\n;;   zz\n(b)", "dic", "(a)\n;;| \n;; \n(b)"),
+        ("(a) ;; h|i\n  (b)\n", "dac", "(a)| \n  (b)\n"),
+        ("(a)\n  ;; o|ne\n  (b)", "dac", "(a)\n | \n  (b)"),
+        (";; o|ne\n;; two\n  (code)", "dac", "  (c|ode)"),
+        ("(a) ;; h|i\n  (b)\n", "cacX<Esc>", "(a) |X\n  (b)\n"),
+        ("(a) ;; h|i\n  (b)\n", "dic", "(a) ;;| \n  (b)\n"),
+        (";; o|ne\n;; two\n  (code)", "dic", ";;| \n;; \n  (code)"),
+        ("(a)\n  ;; o|ne\n  (b)", "vacd", "(a)\n | \n  (b)"),
     ])
     func commentObject(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
@@ -427,6 +434,10 @@ struct VimDoomTextObjectTests {
         ("|5\n5\n5", "VG3<C-a>", "|8\n8\n8"),
         ("x |1 1 1", "v$g<C-a>", "x |2 3 4"),
         ("|0\n0\n0", "VGg<C-a>gvg<C-a>", "|2\n4\n6"),
+        ("1|23", "v<C-a>", "1|33"),
+        ("|123 456", "lvw<C-a>", "1|24 556"),
+        ("|123 456", "lvwg<C-a>", "1|24 656"),
+        ("|x-5 y", "v$<C-a>", "|x-4 y"),
     ])
     func visualNumbers(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
@@ -562,6 +573,9 @@ struct VimDoomTextObjectTests {
         ("a,b,|c", "F,", "a,b|,c"),
         ("|a,b,c", "fz", "|a,b,c"),
         ("|a,b,c", "f,;", "a,b|,c"),
+        ("|xaaaa", "2saa", "xaa|aa"),
+        ("aaaa|x", "2Saa", "|aaaax"),
+        ("|xaaaaaa", "saa;", "xa|aaaaa"),
     ])
     func snipe(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)

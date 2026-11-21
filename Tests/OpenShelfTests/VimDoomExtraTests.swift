@@ -104,4 +104,9 @@ struct VimDoomExtraTests {
     func snipeRepeatKeys(start: String, keys: String, expected: String) {
         #expect(VimEngineTests.marked(VimEngineTests.run(start, keys)) == expected)
     }
+
+    /// gxx is no change for ".", as gx{motion} isn't: "." still repeats the change before it.
+    @Test func exchangeDoesNotReplaceTheLastChange() {
+        #expect(VimEngineTests.run("|ab\ncd\nef", "xgxxj.").string == "b\nd\nef")
+    }
 }
