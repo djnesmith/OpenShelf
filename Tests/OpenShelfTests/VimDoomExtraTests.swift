@@ -161,14 +161,41 @@ struct VimDoomExtraTests {
         #expect(engine.string == original)
     }
 
-    @Test func reindentLeavesTextThatChangedOrLostLines() {
+    @Test func reindentLeavesTextThatChanged() {
         var engine = VimEngine("a\nb")
         engine.applyReindent("  a\n  b", lines: 0...1, original: "a\nX")
         #expect(engine.string == "a\nb")
+        #expect(engine.message == "=: the text changed while formatting; nothing was re-indented")
+        // A line the formatter's result has no match for keeps its indentation.
         engine.applyReindent("  a b", lines: 0...1, original: "a\nb")
         #expect(engine.string == "a\nb")
-        #expect(engine.message?.contains("changed the lines") == true)
-        engine.applyReindent("a\n\t\n", lines: 0...1, original: "a\nb")
-        #expect(engine.string == "a\nb")
+    }
+
+    /// cljfmt drops runs of blank lines (2026-11-21, review: = refused such text); lines are
+    /// matched by their text, so the rest still take their indentation.
+    @Test func reindentMatchesLinesWhenTheFormatterDropsBlankLines() {
+        let original = "(defn f [x]\nx)\n\n\n(g\ny)\n"
+        let formatted = "(defn f [x]\n  x)\n\n(g\n y)\n"
+        var engine = VimEngine(original)
+        engine.applyReindent(formatted, lines: 0...6, original: original)
+        #expect(engine.string == "(defn f [x]\n  x)\n\n\n(g\n y)\n")
+    }
+
+    /// Slurp, barf and raise on broken or tricky Lisp (2026-11-21 review: a stray ")" made slurp
+    /// loop forever; brackets in comments and \" characters misled the scanners). Expected
+    /// results are smartparens' in emacs --batch, clojure-mode.
+    @Test(.timeLimit(.minutes(1)), arguments: [
+        ("(fo|o) bar)", "<C-l>", "(fo|o bar))"), ("a) (b| c)", "<C-h>", "a) (b| c)"), ("(a ; (\n b| c)", "<D-R>", "|c"),
+        ("(a ; say \"hi\n (b| c) d)", "<C-l>", "(a ; say \"hi\n (b| c d))"), ("(str \\\" (b| c) d)", "<C-l>", "(str \\\" (b| c d))"),
+        ("(a \\( (b| c) d)", "<C-l>", "(a \\( (b| c d))"),
+    ])
+    func structuralEditsOnTrickyText(start: String, keys: String, expected: String) {
+        #expect(VimEngineTests.marked(VimEngineTests.run(start, keys)) == expected)
+    }
+
+    /// ⌃H and ⌃J replay in a macro (they were stored as Backspace and a line break).
+    @Test func slurpAndBarfKeysReplayInMacros() {
+        #expect(VimEngineTests.run("(a (b| c) d e)", "qa<C-h>qu@a").string == "((a b c) d e)")
+        #expect(VimEngineTests.run("(a (b| c d e) f)", "qa<C-j>qu@a").string == "(a (b c d) e f)")
     }
 }

@@ -487,7 +487,8 @@ final class VimTextView: NSTextView {
         guard let lines = engine.reindentRequest else { return }
         engine.reindentRequest = nil
         let original = engine.string
-        guard let ext = TextSniffer.codeExtension(for: original) else {
+        // Lisp text that starts with a comment is Clojure too (TextSniffer looks at the first line).
+        guard let ext = TextSniffer.codeExtension(for: original) ?? (VimEngine.commentString(for: original) == ";;" ? "clj" : nil) else {
             engine.reindentFailed("no formatter for this text")
             render()
             return

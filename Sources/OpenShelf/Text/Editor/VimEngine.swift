@@ -563,20 +563,35 @@ struct VimEngine {
     var reindentRequest: ClosedRange<Int>?
 
     /// The formatter's result for the text as it was (`original`): each line in `lines` takes
-    /// the indentation the formatter gave it, keeping its own text, in one undo step. The cursor
-    /// goes to the first line's first non-blank. Nothing changes if the text changed meanwhile or
-    /// the formatter changed the number of lines.
+    /// the indentation the formatter gave the same line, keeping its own text, in one undo step.
+    /// Lines are matched by their text with blanks ignored, in order, since a formatter may drop
+    /// blank lines (cljfmt does) or tidy spaces inside a line; a line with no match keeps its
+    /// indentation. The cursor goes to the first line's first non-blank. Nothing changes if the
+    /// text changed meanwhile.
     mutating func applyReindent(_ formatted: String, lines: ClosedRange<Int>, original: String) {
-        guard string == original else { return }
-        let old = original.components(separatedBy: "\n"), new = formatted.components(separatedBy: "\n")
-        guard old.count == new.count, lines.upperBound < old.count else {
-            message = "=: the formatter changed the lines, so nothing was re-indented"
+        guard string == original else {
+            message = "=: the text changed while formatting; nothing was re-indented"
             return
+        }
+        let old = original.components(separatedBy: "\n"), new = formatted.components(separatedBy: "\n")
+        guard lines.upperBound < old.count else { return }
+        func key(_ line: String) -> String { line.filter { !$0.isWhitespace } }
+        // Each old line's matching new line, found in order.
+        var match: [Int: Int] = [:]
+        var j = 0
+        for i in old.indices where !key(old[i]).isEmpty {
+            guard let found = (j..<new.count).first(where: { key(new[$0]) == key(old[i]) }) else { continue }
+            match[i] = found
+            j = found + 1
         }
         var result = old
         for i in lines {
             let body = old[i].drop { $0 == " " || $0 == "\t" }
-            result[i] = body.isEmpty ? "" : String(new[i].prefix { $0 == " " || $0 == "\t" }) + body
+            if body.isEmpty {
+                result[i] = ""
+            } else if let k = match[i] {
+                result[i] = String(new[k].prefix { $0 == " " || $0 == "\t" }) + body
+            }
         }
         cursor = firstNonBlank(lineStarts[lines.lowerBound])
         let joined = result.joined(separator: "\n")
@@ -639,7 +654,7 @@ struct VimEngine {
     /// The forms (smartparens' sexps) between `low` and `high`: a bracketed form, a "…"
     /// string or a word, with quote and reader prefixes (' ` ~ @ # ^) attached; blanks, commas
     /// and ; comments between them are skipped.
-    private func forms(from low: Int, to high: Int) -> [Range<Int>] {
+    private func forms(from low: Int, to high: Int, backward: Bool = false) -> [Range<Int>] {
         var result: [Range<Int>] = []
         var i = low
         while i < high {
@@ -653,15 +668,40 @@ struct VimEngine {
                 guard let end = matchingAnyClose(from: i), end < high else { return result }
                 i = end + 1
             } else if text[i] == "\"" {
-                i += 1
-                while i < high, text[i] != "\"" { i += text[i] == "\\" ? 2 : 1 }
-                i = min(i + 1, high)
+                i = min(skipLisp(i) ?? high, high)
             } else {
-                while i < high, !text[i].isWhitespace, !"()[]{}\",;".contains(text[i]) { i += 1 }
+                // A word; \x is a character, whatever x is.
+                while i < high, !text[i].isWhitespace, !"()[]{}\",;".contains(text[i]) { i += text[i] == "\\" ? 2 : 1 }
+                i = min(i, high)
+                // A stray closing bracket ends the forms reachable from before it, and the ones
+                // before it can't be reached from after (2026-11-21: it looped forever).
+                if i == start {
+                    if !backward { return result }
+                    result = []
+                    i += 1
+                    continue
+                }
             }
             result.append(start..<i)
         }
         return result
+    }
+
+    /// Past a "…" string, a ; comment (to the line's end) or a \x character at `i`, for the
+    /// bracket scanners; nil when none starts there.
+    private func skipLisp(_ i: Int) -> Int? {
+        switch text[i] {
+        case "\\": return min(i + 2, text.count)
+        case ";":
+            var j = i
+            while j < text.count, text[j] != "\n" { j += 1 }
+            return j
+        case "\"":
+            var j = i + 1
+            while j < text.count, text[j] != "\"" { j += text[j] == "\\" ? 2 : 1 }
+            return min(j + 1, text.count)
+        default: return nil
+        }
     }
 
     /// The closing bracket for the bracket at `open`, any kind counting, strings skipped.
@@ -669,9 +709,9 @@ struct VimEngine {
         var depth = 0, i = open
         while i < text.count {
             let c = text[i]
-            if c == "\"" {
-                i += 1
-                while i < text.count, text[i] != "\"" { i += text[i] == "\\" ? 2 : 1 }
+            if i > open, let next = skipLisp(i) {
+                i = next
+                continue
             } else if "([{".contains(c) {
                 depth += 1
             } else if ")]}".contains(c) {
@@ -689,11 +729,10 @@ struct VimEngine {
         if strings {
             var i = 0
             while i < text.count {
-                if text[i] == "\"" {
-                    let open = i
-                    i += 1
-                    while i < text.count, text[i] != "\"" { i += text[i] == "\\" ? 2 : 1 }
-                    if i < text.count, open < cursor, cursor <= i { return (open, i) }
+                if let next = skipLisp(i) {
+                    if text[i] == "\"", next - 1 > i, text[next - 1] == "\"", i < cursor, cursor <= next - 1 { return (i, next - 1) }
+                    i = next
+                    continue
                 }
                 i += 1
             }
@@ -701,12 +740,11 @@ struct VimEngine {
         var best: (Int, Int)?
         var i = 0
         while i < cursor {
-            if text[i] == "\"" {
-                i += 1
-                while i < text.count, text[i] != "\"" { i += text[i] == "\\" ? 2 : 1 }
-            } else if "([{".contains(text[i]), let close = matchingAnyClose(from: i), close >= cursor {
-                best = (i, close)
+            if let next = skipLisp(i) {
+                i = next
+                continue
             }
+            if "([{".contains(text[i]), let close = matchingAnyClose(from: i), close >= cursor { best = (i, close) }
             i += 1
         }
         return best
@@ -731,7 +769,7 @@ struct VimEngine {
             guard !after.isEmpty else { failed = true; return }
             (removeAt, insertAt, inserted) = (pair.close, after[min(count, after.count) - 1].upperBound, closeText)
         case "slurpBackward":
-            let before = forms(from: parentLow, to: pair.open)
+            let before = forms(from: parentLow, to: pair.open, backward: true)
             guard !before.isEmpty else { failed = true; return }
             (removeAt, insertAt, inserted) = (pair.open, before[max(before.count - count, 0)].lowerBound, openText)
         case "barfForward":
@@ -771,12 +809,11 @@ struct VimEngine {
         var best: (Int, Int)?
         var j = 0
         while j < i {
-            if text[j] == "\"" {
-                j += 1
-                while j < text.count, text[j] != "\"" { j += text[j] == "\\" ? 2 : 1 }
-            } else if "([{".contains(text[j]), let close = matchingAnyClose(from: j), close > i {
-                best = (j, close)
+            if let next = skipLisp(j) {
+                j = next
+                continue
             }
+            if "([{".contains(text[j]), let close = matchingAnyClose(from: j), close > i { best = (j, close) }
             j += 1
         }
         return best
@@ -3893,6 +3930,9 @@ struct VimEngine {
     static func character(for key: VimKey) -> Character {
         switch key {
         case .char(let c): c
+        // ⌃H and ⌃J would read back as Backspace and a line break.
+        case .ctrl("h"): "\u{F8F3}"
+        case .ctrl("j"): "\u{F8F4}"
         case .ctrl(let c): Character(UnicodeScalar((c.asciiValue ?? 64) & 0x1f))
         case .escape: "\u{1b}"
         case .enter: "\r"
@@ -3919,6 +3959,8 @@ struct VimEngine {
         case "\u{F8F0}": .alt("j")
         case "\u{F8F1}": .alt("k")
         case "\u{F8F2}": .command("R")
+        case "\u{F8F3}": .ctrl("h")
+        case "\u{F8F4}": .ctrl("j")
         default:
             if let value = character.asciiValue, value < 0x20, character != "\n", character != "\t" {
                 .ctrl(Character(UnicodeScalar(value | 0x60)))
