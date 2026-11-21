@@ -22,7 +22,7 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    Select a test message, press **b** (single keys on) or **⌃⌥S**: the cursor is already in
    the field. Type `2` (new: a number alone is minutes; also try `5h`, `3d`, `2w`, `2 months`, `1y`, `morning`, `eom`, `next month`, `month from now`, `5 hours from now`, and see the date it shows before Return), **Return**.
    *Expect:* Mail's dialog flashes and closes, "Snoozed, Until …" shows briefly (1.5 s), and the message moves to
-   "Remind Me" as Mail's own Remind Me does, then comes back two minutes later. Whatever the
+   "Remind Me" as Mail's own Remind Me does, then comes back two minutes later. New: right after, the next message is selected and j / k work at once. Press b, then Esc: the same message stays selected and the list keeps the keyboard. Whatever the
    toast says, send `~/Library/Logs/OpenShelf/snooze.log` (no message text). (#58)
 3. **Send.** In a message you are writing, **⌘↩** always sends. Reply to a test message to
    yourself and press **⇧⌘↩**.

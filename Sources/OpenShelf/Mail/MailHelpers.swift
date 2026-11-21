@@ -91,7 +91,10 @@ final class MailHelpers {
             ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Can't snooze", subtitle: problem), for: .seconds(4))
             return
         }
-        SnoozePrompt.shared.show { [weak self] date in self?.snooze(until: date) }
+        // Where the list was, for after the snooze (the next message) or Esc (back there).
+        let place = MailListPlace.capture()
+        SnoozePrompt.shared.show(onChoose: { [weak self] date in self?.snooze(until: date, from: place) },
+                                 onCancel: { place?.restore() })
     }
 
     /// Why the snooze can't run in Mail as it is now, or nil when it can.
@@ -115,7 +118,7 @@ final class MailHelpers {
 
     /// Mail's Remind Me at `date`, then Archive when that setting is on. Every run writes
     /// its steps to SnoozeLog (no message text).
-    func snooze(until date: Date) {
+    func snooze(until date: Date, from place: MailListPlace? = nil) {
         guard let mail = MailMenu.running else { return }
         mail.activate()
         Task { @MainActor in
@@ -154,6 +157,7 @@ final class MailHelpers {
                     log.append("archive: \(archive.press())")
                 }
                 tell("Snoozed", "Until " + SnoozeTime.describe(date, calendar: .current), for: MailHelpers.successToast)
+                await place?.selectNext()
             case .cancelled(let reason):
                 tell("Not snoozed", reason, for: .seconds(6))
             }
@@ -228,5 +232,79 @@ enum PreviewLog {
         guard line != last else { return }
         last = line
         SnoozeLog.append([line], to: url)
+    }
+}
+
+/// The viewer's message list as it was when the snooze prompt opened: after a snooze the
+/// list gets the keyboard on the next message (David, 2026-11-21: "after b and the snooze
+/// has been accepted the focus should go to the next message if there is one"); after Esc
+/// it goes back to where it was. Only for Mail's main viewer; a message window: nothing.
+/// Logs counts and roles only.
+@MainActor
+struct MailListPlace {
+    let app: AXUIElement
+    let viewer: AXUIElement
+    let selected: [Int]
+    let rows: Int
+    let focused: AXUIElement?
+
+    static func capture() -> MailListPlace? {
+        guard let mail = MailMenu.running else { return nil }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        guard let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute), MailKeys.isMainViewer(AXDialogNode(element: viewer)),
+              let list = AXSelectableList.inViewer(viewer) else {
+            KeysLog.note("snooze: not from the viewer's list; focus left to Mail afterwards")
+            return nil
+        }
+        return MailListPlace(app: app, viewer: viewer, selected: list.selectedRows, rows: list.rows.count,
+                             focused: AXMenuNode.element(app, kAXFocusedUIElementAttribute))
+    }
+
+    /// After the snooze: up to 1.5 s for the snoozed rows to leave, then the row that took
+    /// their place (else the one above) is selected, the list gets the keyboard, and both
+    /// are read back.
+    func selectNext() async {
+        var list = AXSelectableList.inViewer(viewer)
+        for _ in 0..<6 {
+            if let count = list?.rows.count, count <= rows - selected.count { break }
+            try? await Task.sleep(for: .milliseconds(250))
+            list = AXSelectableList.inViewer(viewer)
+        }
+        guard let list else { KeysLog.note("snooze: no message list afterwards"); return }
+        let focusRole = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) } ?? "none"
+        guard let target = MailKeys.rowAfterSnooze(selected: selected, rowsBefore: rows, rowsAfter: list.rows.count) else {
+            KeysLog.note("snooze: rows \(rows) → \(list.rows.count), focus \(focusRole); no next message")
+            return
+        }
+        AXUIElementPerformAction(viewer, kAXRaiseAction as CFString)
+        _ = list.select([target])
+        AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        try? await Task.sleep(for: .milliseconds(150))
+        let landed = list.selectedRows == [target]
+        let inList = MailKeys.isInside(AXMenuNode.element(app, kAXFocusedUIElementAttribute), list.list,
+                                      parent: { AXMenuNode.element($0, kAXParentAttribute) }, same: { CFEqual($0, $1) })
+        KeysLog.note("snooze: rows \(rows) → \(list.rows.count), focus was \(focusRole); next message selected \(landed), list has the keyboard \(inList)")
+        if !landed || !inList {
+            ToastController.shared.show(Toast(systemImage: "envelope.badge.clock", title: "Snoozed; next message not selected",
+                                              subtitle: "Click the list or press j"), for: .seconds(4))
+        }
+    }
+
+    /// Esc in the prompt: the same rows selected again if the list still has them, and the
+    /// keyboard back on what had it.
+    func restore() {
+        NSRunningApplication.runningApplications(withBundleIdentifier: MailMenu.bundleID).first?.activate()
+        let list = AXSelectableList.inViewer(viewer)
+        if let list, list.rows.count == rows, list.selectedRows != selected, selected.allSatisfy({ $0 < rows }) { _ = list.select(selected) }
+        if let focused { AXUIElementSetAttributeValue(focused, kAXFocusedAttribute as CFString, kCFBooleanTrue) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            MainActor.assumeIsolated {
+                let now = AXMenuNode.element(app, kAXFocusedUIElementAttribute)
+                let back = if let now, let focused { CFEqual(now, focused) } else { false }
+                let same = AXSelectableList.inViewer(viewer)?.selectedRows == selected
+                KeysLog.note("snooze cancelled: focus back \(back), same selection \(same)")
+            }
+        }
     }
 }

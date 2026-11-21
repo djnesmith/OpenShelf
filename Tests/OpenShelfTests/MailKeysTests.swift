@@ -778,4 +778,18 @@ struct MailKeysTests {
         #expect(!MailKeys.mayClearAfterDelete(before, .init(rows: 9, selected: ["b", "z"])))
         #expect(!MailKeys.mayClearAfterDelete(before, .init(rows: 8, selected: [])))
     }
+
+    @Test func afterASnoozeTheNextMessage() {
+        // The snoozed row left: the one that took its place; it was last: the one above.
+        #expect(MailKeys.rowAfterSnooze(selected: [3], rowsBefore: 10, rowsAfter: 9) == 3)
+        #expect(MailKeys.rowAfterSnooze(selected: [9], rowsBefore: 10, rowsAfter: 9) == 8)
+        #expect(MailKeys.rowAfterSnooze(selected: [2, 3], rowsBefore: 10, rowsAfter: 8) == 2)
+        // The rows stayed: the one below, else the one above.
+        #expect(MailKeys.rowAfterSnooze(selected: [3], rowsBefore: 10, rowsAfter: 10) == 4)
+        #expect(MailKeys.rowAfterSnooze(selected: [9], rowsBefore: 10, rowsAfter: 10) == 8)
+        // Empty list, nothing selected, the only row stayed: nothing.
+        #expect(MailKeys.rowAfterSnooze(selected: [0], rowsBefore: 1, rowsAfter: 0) == nil)
+        #expect(MailKeys.rowAfterSnooze(selected: [], rowsBefore: 5, rowsAfter: 5) == nil)
+        #expect(MailKeys.rowAfterSnooze(selected: [0], rowsBefore: 1, rowsAfter: 1) == nil)
+    }
 }

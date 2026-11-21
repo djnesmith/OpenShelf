@@ -489,6 +489,16 @@ enum MailKeys {
         return .stop
     }
 
+    /// The row to select after a snooze: the snoozed rows left, so the row that took the
+    /// first one's place, else (they were last) the one above; the rows stayed, the row
+    /// below them, else the one above. Nil for an empty list or nothing selected.
+    static func rowAfterSnooze(selected: [Int], rowsBefore: Int, rowsAfter: Int) -> Int? {
+        guard rowsAfter > 0, let first = selected.min(), let last = selected.max() else { return nil }
+        if rowsAfter <= rowsBefore - selected.count { return min(first, rowsAfter - 1) }
+        if last + 1 < rowsAfter { return last + 1 }
+        return first > 0 ? first - 1 : nil
+    }
+
     /// How a command's effect shows in Mail.
     enum Verification: Equatable { case rowsLeave, flag, read, none }
 

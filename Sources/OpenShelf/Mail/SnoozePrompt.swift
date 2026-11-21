@@ -10,14 +10,15 @@ final class SnoozePrompt: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private let field = NSTextField()
     private let understood = NSTextField(labelWithString: "")
     private var onChoose: ((Date) -> Void)?
+    private var onCancel: (() -> Void)?
     var calendar = Calendar.current
     var now: () -> Date = { .now }
 
     /// What the prompt would use now: the typed time, or nil when nothing is understood.
     var chosen: Date? { SnoozeTime.parse(field.stringValue, now: now(), calendar: calendar) }
 
-    func show(onChoose: @escaping (Date) -> Void) {
-        let panel = prepare(onChoose: onChoose)
+    func show(onChoose: @escaping (Date) -> Void, onCancel: (() -> Void)? = nil) {
+        let panel = prepare(onChoose: onChoose, onCancel: onCancel)
         panel.center()
         // A panel that takes the keyboard without making OpenShelf the active app: macOS
         // may refuse to activate an app from a key tap or hotkey, which left the field
@@ -28,8 +29,9 @@ final class SnoozePrompt: NSObject, NSTextFieldDelegate, NSWindowDelegate {
 
     /// Builds and resets the prompt without putting it on screen (tests use this alone).
     @discardableResult
-    func prepare(onChoose: @escaping (Date) -> Void) -> NSPanel {
+    func prepare(onChoose: @escaping (Date) -> Void, onCancel: (() -> Void)? = nil) -> NSPanel {
         self.onChoose = onChoose
+        self.onCancel = onCancel
         let panel = self.panel ?? makePanel()
         field.stringValue = ""
         update()
@@ -38,6 +40,7 @@ final class SnoozePrompt: NSObject, NSTextFieldDelegate, NSWindowDelegate {
 
     func close() {
         onChoose = nil
+        onCancel = nil
         panel?.orderOut(nil)
     }
 
@@ -101,7 +104,9 @@ final class SnoozePrompt: NSObject, NSTextFieldDelegate, NSWindowDelegate {
             return true
         }
         if selector == #selector(NSResponder.cancelOperation(_:)) {
+            let onCancel = onCancel
             close()
+            onCancel?()
             return true
         }
         return false

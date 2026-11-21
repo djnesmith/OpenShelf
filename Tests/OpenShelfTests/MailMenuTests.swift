@@ -262,11 +262,21 @@ struct MailMenuTests {
         #expect(prompt.promptPanel?.performKeyEquivalent(with: key) == true)
         #expect(chosen.map { SnoozeTime.describe($0, calendar: SnoozeTimeTests.calendar) }.last == "Sat, Nov 21 at 7:00 AM")
 
-        prompt.prepare { chosen.append($0) }
+        // Esc: nothing chosen, and the list goes back to where it was (onCancel), once.
+        var cancelled = 0
+        prompt.prepare(onChoose: { chosen.append($0) }, onCancel: { cancelled += 1 })
         prompt.promptField.stringValue = "tonight"
         _ = prompt.control(prompt.promptField, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
         _ = prompt.control(prompt.promptField, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        _ = prompt.control(prompt.promptField, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
         #expect(chosen.count == 2)
+        #expect(cancelled == 1)
+        // A chosen time is not a cancel.
+        prompt.prepare(onChoose: { chosen.append($0) }, onCancel: { cancelled += 1 })
+        prompt.promptField.stringValue = "tonight"
+        _ = prompt.control(prompt.promptField, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        #expect(chosen.count == 3)
+        #expect(cancelled == 1)
     }
 
     /// A key's menu item is the one in the menu itself before any same-titled item in a
