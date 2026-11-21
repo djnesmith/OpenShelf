@@ -168,6 +168,24 @@ struct MailKeysTests {
         #expect(above(window) == nil)
     }
 
+    /// A double-click binds the message window it opens only when it lands in the main
+    /// viewer's message list; a click elsewhere, another window in front or an unreadable
+    /// frame binds nothing, so e and x then act on the open message only.
+    @Test func doubleClickBindsOnlyFromTheList() {
+        let list = CGRect(x: 300, y: 100, width: 400, height: 600)   // top-left origin
+        // On a 1000-point-high primary screen, y 800 from the bottom is 200 from the top.
+        #expect(MailKeys.axPoint(fromCocoa: CGPoint(x: 350, y: 800), primaryHeight: 1000) == CGPoint(x: 350, y: 200))
+        #expect(MailKeys.bindsAfterDoubleClick(viewerInFront: true, listFrame: list, point: CGPoint(x: 350, y: 200)))
+        #expect(!MailKeys.bindsAfterDoubleClick(viewerInFront: true, listFrame: list, point: CGPoint(x: 100, y: 200)))   // the sidebar
+        #expect(!MailKeys.bindsAfterDoubleClick(viewerInFront: true, listFrame: list, point: CGPoint(x: 350, y: 50)))    // the toolbar
+        #expect(!MailKeys.bindsAfterDoubleClick(viewerInFront: false, listFrame: list, point: CGPoint(x: 350, y: 200)))
+        #expect(!MailKeys.bindsAfterDoubleClick(viewerInFront: true, listFrame: nil, point: CGPoint(x: 350, y: 200)))
+        #expect(!MailKeys.bindsAfterDoubleClick(viewerInFront: true, listFrame: .zero, point: .zero))
+        // Bound, a double-clicked window gets the same whole-conversation plan as an o window.
+        #expect(MailKeys.conversationPlan(bound: ["<a>", "<b>"], selectedRows: 1, current: ["<a>", "<b>"]) == .viaList(messages: 2))
+        #expect(MailKeys.conversationPlan(bound: nil, selectedRows: 1, current: ["<a>", "<b>"]) == .thisMessage)
+    }
+
     /// Esc and `* n` mean select none.
     @Test func escapeAndStarNSelectNone() {
         #expect(MailKeys.outcome(for: MailKeys.escape, pending: nil) == .act(.clearSelection))

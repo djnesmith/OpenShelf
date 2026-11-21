@@ -40,8 +40,9 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    bar (fixed 2026-11-20); the checkmark on Mail Single Keys is the only sign. In the message list try **j k e ?**.
    Open a message with `o`: r, a, f, s, b, v work in its window. On a **test thread** opened
    with `o`, `e` (or `x`) there does what Archive (Delete) does with that row selected in the
-   list, then the window closes; `z` in the list undoes it. A window opened by double-click,
-   or after you click another row, archives only that message. Not tried on real Mail yet.
+   list, then the window closes; `z` in the list undoes it. New: the same for a thread you open
+   by **double-clicking** its row. A window opened another way, or after you click another row,
+   archives only that message. Not tried on real Mail yet.
    Open a message with `o`, then **Esc** (or `u`): the window closes. In the reading pane, `u`
    puts you back in the list, also after clicking a folder in the sidebar or after a `g` key (new); **⌃N / ⌃P** do what `j` / `k` do, also with a message of a conversation focused in the reading pane (new; in a text field or a reply they stay Mail's next/previous line); `g g` / `G` jump to the first / last message.
    `g i` All Inboxes, `g f` Flagged, `g s` All Sent, `g t` All Trash, `g d` All Drafts, `g a` All

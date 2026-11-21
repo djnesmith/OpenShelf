@@ -15,6 +15,9 @@ final class MailKeyTap {
     private var source: CFRunLoopSource?
     private var pending: Character?
     private var pendingSince = Date.distantPast
+    /// Double-clicks while Mail is in front, so a message window opened from the list is
+    /// bound like one opened with `o`. A global mouse monitor needs no extra permission.
+    private var clickMonitor: Any?
 
     var isInstalled: Bool { tap != nil }
 
@@ -38,6 +41,11 @@ final class MailKeyTap {
             return
         }
         tap = port
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { event in
+            guard event.clickCount == 2 else { return }
+            let point = NSEvent.mouseLocation
+            MainActor.assumeIsolated { MailKeyActions.bindAfterDoubleClick(cocoaPoint: point) }
+        }
         source = CFMachPortCreateRunLoopSource(nil, port, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: port, enable: true)
@@ -45,6 +53,8 @@ final class MailKeyTap {
 
     func remove() {
         pending = nil
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        clickMonitor = nil
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tap = nil
@@ -535,9 +545,10 @@ enum MailKeyActions {
                     }
                     return
                 }
-                guard press(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit") else { return }
-                ToastController.shared.show(Toast(systemImage: archive ? "archivebox" : "trash", title: "\(archive ? "Archived" : "Trashed") the conversation",
-                                                  subtitle: "As from the list: \(count) message\(count == 1 ? "" : "s") selected there"), for: MailHelpers.successToast)
+                // Checked in the viewer afterwards (rows left, selection gone), as e and x
+                // from the list are; a press's answer alone proves nothing.
+                KeysLog.note("\(archive ? "e" : "x") via the list: \(count) message\(count == 1 ? "" : "s") selected there")
+                performVerified(archive ? "Archive" : "Delete", under: archive ? "Message" : "Edit")
             case .thisMessage:
                 actOnOpenMessage(window, archive: archive, reason: "conversation not confirmed")
             }
@@ -603,6 +614,49 @@ enum MailKeyActions {
                 }
             }
         }
+    }
+
+    /// A double-click in the viewer's message list (David, 2026-11-20: e and x on a message
+    /// opened by double-click should act on the whole conversation, as for `o`): the
+    /// selection's Message-IDs are read and bound to the message window that opens within
+    /// 2 s, exactly as `o` binds them. A double-click anywhere else binds nothing, so a
+    /// window opened from a notification or a search is never tied to the list's selection.
+    static func bindAfterDoubleClick(cocoaPoint: NSPoint, scripting: MailScripting = AppleScriptMail()) {
+        guard let mail = MailMenu.running, mail.isActive else { return }
+        let app = AXUIElementCreateApplication(mail.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.3)
+        guard let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return }
+        let isViewer = MailKeys.isMainViewer(AXDialogNode(element: viewer))
+        // The visible list: its scroll area, since the table itself is as tall as all its rows.
+        let listArea = AXSelectableList.inViewer(viewer).map { list in
+            AXMenuNode.element(list.list, kAXParentAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) == "AXScrollArea" ? $0 : nil } ?? list.list
+        }
+        let point = MailKeys.axPoint(fromCocoa: cocoaPoint, primaryHeight: NSScreen.screens.first?.frame.height ?? 0)
+        guard MailKeys.bindsAfterDoubleClick(viewerInFront: isViewer, listFrame: listArea.flatMap(frame), point: point) else { return }
+        Task { @MainActor in
+            let ids = Set(await scripting.selectedMessages().map(\.id).filter { !$0.isEmpty })
+            guard !ids.isEmpty else { KeysLog.note("double-click: no selection read; window not bound"); return }
+            for _ in 0..<20 {
+                if let window = AXMenuNode.element(app, kAXFocusedWindowAttribute), MailKeyTap.isMessageWindow(app) {
+                    if MailWindowBindings.ids(for: window) == nil { MailWindowBindings.bind(window, ids: ids) }
+                    KeysLog.note("double-click: message window bound to \(ids.count) message\(ids.count == 1 ? "" : "s")")
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            KeysLog.note("double-click: no message window opened within 2 s")
+        }
+    }
+
+    /// An element's frame in Accessibility's screen coordinates (top-left origin).
+    static func frame(_ element: AXUIElement) -> CGRect? {
+        var positionValue: CFTypeRef?, sizeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let positionValue, let sizeValue, CFGetTypeID(positionValue) == AXValueGetTypeID(), CFGetTypeID(sizeValue) == AXValueGetTypeID() else { return nil }
+        var position = CGPoint.zero, size = CGSize.zero
+        guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position), AXValueGetValue(sizeValue as! AXValue, .cgSize, &size) else { return nil }
+        return CGRect(origin: position, size: size)
     }
 
     /// `u`: a message open in its own window closes, as Esc does; in the viewer the keyboard
@@ -791,6 +845,19 @@ enum MailKeyActions {
 }
 
 extension MailKeys {
+    /// A Cocoa screen point (bottom-left origin) in Accessibility's coordinates (top-left
+    /// origin of the primary screen).
+    static func axPoint(fromCocoa point: CGPoint, primaryHeight: CGFloat) -> CGPoint {
+        CGPoint(x: point.x, y: primaryHeight - point.y)
+    }
+
+    /// Whether a double-click binds the window it opens: the main viewer in front and the
+    /// click inside its message list's visible frame. Anything unreadable binds nothing.
+    static func bindsAfterDoubleClick(viewerInFront: Bool, listFrame: CGRect?, point: CGPoint) -> Bool {
+        guard viewerInFront, let listFrame, !listFrame.isEmpty else { return false }
+        return listFrame.contains(point)
+    }
+
     /// `start` or its nearest ancestor that matches, up to 12 levels; nil if none.
     static func ancestor<T>(of start: T, parent: (T) -> T?, matching: (T) -> Bool) -> T? {
         var node: T? = start
