@@ -43,9 +43,9 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
    list, then the window closes; `z` in the list undoes it. A window opened by double-click,
    or after you click another row, archives only that message. Not tried on real Mail yet.
    Open a message with `o`, then **Esc** (or `u`): the window closes. In the reading pane, `u`
-   puts you back in the list, also after clicking a folder in the sidebar or after a `g` key (new); `g g` / `G` jump to the first / last message.
+   puts you back in the list, also after clicking a folder in the sidebar or after a `g` key (new); **⌃N / ⌃P** do what `j` / `k` do, also with a message of a conversation focused in the reading pane (new; in a text field or a reply they stay Mail's next/previous line); `g g` / `G` jump to the first / last message.
    `g i` All Inboxes, `g f` Flagged, `g s` All Sent, `g t` All Trash, `g d` All Drafts, `g a` All
-   Mail (new: your selected message's account's All Mail, else the first account with one), `g j` All Junk, `g u` Follow Up, `g l` Send Later, `g r` Remind Me (a toast says if one
+   Mail (new: your selected message's account's All Mail, else the first account with one), `g A` Archive (new; where the old `g a` went), `g j` All Junk, `g u` Follow Up, `g l` Send Later, `g r` Remind Me (a toast says if one
    isn't in Mail's Favorites, or isn't showing because it is empty).
    Then `* a` and **Esc** (or `* n`): the selection clears (or only one message stays
    selected, if Mail insists on one); Esc with one message selected, or in a sheet, does what

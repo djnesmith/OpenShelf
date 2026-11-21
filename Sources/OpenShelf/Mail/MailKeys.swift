@@ -58,8 +58,10 @@ enum MailKeys {
     static let afterG: [Character: Action] = [
         // David, 2026-11-20: g f Flagged, g s All Sent, g t All Trash (not Gmail's letters).
         "i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"), "t": .favorite("Trash"),
-        // David, 2026-11-20: "\"g a\" should be \"All Mail\"" (it was All Archive).
-        "d": .favorite("Drafts"), "a": .favorite(allMail), "g": .firstMessage,
+        // David, 2026-11-20: "\"g a\" should be \"All Mail\""; "there is no All Archive".
+        // "but g A could go to Gmail's Archive folder": the sidebar's Archive row, found
+        // as the old g a found it (keys.log 2026-11-21 00:57: "via sidebar").
+        "d": .favorite("Drafts"), "a": .favorite(allMail), "A": .favorite("Archive"), "g": .firstMessage,
         // David, 2026-11-20: g j All Junk, g u Follow Up, g l Send Later, g r Remind Me.
         "j": .favorite("Junk"), "u": .favorite("Follow Up"), "l": .favorite("Send Later"), "r": .favorite("Remind Me"),
     ]
@@ -82,6 +84,19 @@ enum MailKeys {
         case "#OK first": .first
         case "#NONE": .none
         default: .failed
+        }
+    }
+
+    /// ⌃N and ⌃P are j and k wherever j and k are taken (David, 2026-11-20: "Ctrl - n and
+    /// Ctrl - p should work wherever j / k work"). `controlOnly`: ⌃ and no other modifier.
+    /// Elsewhere (a text field, a message being written) the same rule as j and k passes
+    /// them to Mail, where they are macOS's next and previous line.
+    static func controlAlias(_ key: Character, controlOnly: Bool) -> Character? {
+        guard controlOnly else { return nil }
+        switch key {
+        case "\u{0E}": return "j"
+        case "\u{10}": return "k"
+        default: return nil
         }
     }
 
@@ -120,7 +135,10 @@ enum MailKeys {
         }
         if listRoles.contains(role) || role == "AXWebArea" { return true }
         guard inMessageViewer, !textRoles.contains(role), let action else { return false }
-        return actsOnOneMessage(action)
+        // j/k from a message of a conversation in the reading pane move the viewer's list
+        // (David, 2026-11-20: "j / k and Ctrl n / Ctrl p should work to move down and up for
+        // messages when a conversation's message is selected").
+        return actsOnOneMessage(action) || action == .nextMessage || action == .previousMessage
     }
 
     /// Whether Mail's Send counts as on: its own state; missing (no message being written)
@@ -193,7 +211,6 @@ enum MailKeys {
         case "Sent": ["All Sent", "Sent"]
         case "Trash": ["All Trash", "Trash"]
         case "Drafts": ["All Drafts", "Drafts"]
-        case "Archive": ["All Archive", "All Archives", "Archive"]
         // Mail's own titles (MailFramework.loctable JunkSpecialMailboxName; Localizable and
         // TableHeaderContextMenu for the others); these have no "All" form.
         case "Junk": ["All Junk", "Junk"]
@@ -496,9 +513,9 @@ enum MailKeys {
 
     /// The `?` list, one line a key, in the table's order.
     static let help: [(String, String)] = [
-        ("j / k", "next / previous message"), ("o", "open"), ("/", "search"),
+        ("j / k  or  ⌃N / ⌃P", "next / previous message"), ("o", "open"), ("/", "search"),
         ("g i  g f  g s  g t  g d  g a", "All Inboxes, Flagged, All Sent, All Trash, All Drafts, All Mail"),
-        ("g j  g u  g l  g r", "All Junk, Follow Up, Send Later, Remind Me"),
+        ("g A  g j  g u  g l  g r", "Archive, All Junk, Follow Up, Send Later, Remind Me"),
         ("e  or  ]", "archive"), ("[", "archive, then the message above"), ("x", "move to Trash"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),

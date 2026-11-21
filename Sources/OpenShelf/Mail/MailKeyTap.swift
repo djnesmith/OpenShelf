@@ -61,7 +61,17 @@ final class MailKeyTap {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return false
         }
-        guard type == .keyDown, let key = Self.character(of: event) else { return false }
+        guard type == .keyDown, var key = Self.character(of: event) else { return false }
+        // ⌃N and ⌃P are j and k, checked as the plain keys: a pending g or * is dropped, so
+        // ⌃N after g is not g j.
+        var checked = event
+        let controlOnly = event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn]) == .maskControl
+        if let alias = MailKeys.controlAlias(key, controlOnly: controlOnly), let plain = event.copy() {
+            plain.flags = event.flags.subtracting(.maskControl)
+            key = alias
+            checked = plain
+            pending = nil
+        }
         // One action per key down: a held Esc or u repeats, and after a close the next window
         // in front would get it (2026-11-20). Repeats right after a close are dropped.
         if key == MailKeys.escape || key == "u", event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
@@ -82,7 +92,7 @@ final class MailKeyTap {
         }
         let outcome = MailKeys.outcome(for: key, pending: pending)
         pending = nil
-        guard outcome != .pass, focusAllows(event, outcome) else { return false }
+        guard outcome != .pass, focusAllows(checked, outcome) else { return false }
         switch outcome {
         case .pass:
             return false
@@ -753,11 +763,19 @@ enum MailKeyActions {
         guard let mail = MailMenu.running else { return }
         let app = AXUIElementCreateApplication(mail.processIdentifier)
         AXUIElementSetMessagingTimeout(app, 0.5)
-        guard var list = AXMenuNode.element(app, kAXFocusedUIElementAttribute) else { return }
-        // A focused row or cell belongs to the list above it.
-        while let role = AXMenuNode.string(list, kAXRoleAttribute), !["AXTable", "AXOutline"].contains(role) {
-            guard let parent = AXMenuNode.element(list, kAXParentAttribute) else { return }
-            list = parent
+        guard let focused = AXMenuNode.element(app, kAXFocusedUIElementAttribute) else { return }
+        // A focused row or cell belongs to the list above it. Focus in the reading pane (a
+        // message of a conversation) or on the window has no list above it: the viewer's
+        // message list then (2026-11-20: j there was taken and moved nothing).
+        let list: AXUIElement
+        if let above = MailKeys.ancestor(of: focused, parent: { AXMenuNode.element($0, kAXParentAttribute) },
+                                         matching: { ["AXTable", "AXOutline"].contains(AXMenuNode.string($0, kAXRoleAttribute) ?? "") }) {
+            list = above
+        } else if let window = AXMenuNode.element(app, kAXFocusedWindowAttribute), let viewerList = AXSelectableList.inViewer(window)?.list {
+            list = viewerList
+        } else {
+            KeysLog.note("\(step > 0 ? "j" : "k"): no message list here")
+            return
         }
         var rowsValue: CFTypeRef?
         var selectedValue: CFTypeRef?
@@ -773,6 +791,17 @@ enum MailKeyActions {
 }
 
 extension MailKeys {
+    /// `start` or its nearest ancestor that matches, up to 12 levels; nil if none.
+    static func ancestor<T>(of start: T, parent: (T) -> T?, matching: (T) -> Bool) -> T? {
+        var node: T? = start
+        for _ in 0..<12 {
+            guard let current = node else { return nil }
+            if matching(current) { return current }
+            node = parent(current)
+        }
+        return nil
+    }
+
     /// The row j or k lands on: one further, stopping at the ends; the first row when
     /// none is selected.
     static func row(after current: Int?, by step: Int, count: Int) -> Int {

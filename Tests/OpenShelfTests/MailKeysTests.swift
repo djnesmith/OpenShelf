@@ -62,7 +62,12 @@ struct MailKeysTests {
             #expect(inViewer("AXGroup", action), "\(action)")
             #expect(inViewer("AXScrollArea", action), "\(action)")
         }
-        #expect(!inViewer("AXGroup", .nextMessage))
+        // j/k from a message of a conversation move the viewer's list (2026-11-20).
+        #expect(inViewer("AXGroup", .nextMessage))
+        #expect(inViewer("AXGroup", .previousMessage))
+        #expect(!inViewer("AXGroup", .firstMessage))
+        #expect(!inViewer("AXTextField", .nextMessage))
+        #expect(!inViewer("AXGroup", .nextMessage, editable: true))
         #expect(!inViewer("AXGroup", .favorite("Inbox")))
         #expect(!inViewer("AXGroup", .menu("Message", "Open Message")))
         #expect(!inViewer("AXGroup", nil))
@@ -113,6 +118,54 @@ struct MailKeysTests {
         #expect(taken)
         let passed = MailKeyTap().takes(type: .keyDown, event: event, ownPanelHasKeyboard: true, focusAllows: { _, _ in true })
         #expect(!passed)
+    }
+
+    /// ⌃N and ⌃P are j and k, checked as plain keys by the same focus rule; ⌃ with anything
+    /// else, or other ⌃ keys, are not; ⌃N after g is j, not g j. focusAllows answers no here,
+    /// so nothing reaches Mail.
+    @Test func controlNAndPAreJAndK() {
+        #expect(MailKeys.controlAlias("\u{0E}", controlOnly: true) == "j")
+        #expect(MailKeys.controlAlias("\u{10}", controlOnly: true) == "k")
+        #expect(MailKeys.controlAlias("\u{0E}", controlOnly: false) == nil)
+        #expect(MailKeys.controlAlias("\u{01}", controlOnly: true) == nil)
+        #expect(MailKeys.controlAlias("j", controlOnly: true) == nil)
+        func press(_ char: String, _ flags: CGEventFlags, on tap: MailKeyTap) -> (MailKeys.Outcome?, CGEventFlags?) {
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: 45, keyDown: true)!
+            var units = Array(char.utf16)
+            event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+            event.flags = flags
+            var seen: (MailKeys.Outcome?, CGEventFlags?) = (nil, nil)
+            let taken = tap.takes(type: .keyDown, event: event, ownPanelHasKeyboard: false, focusAllows: { checked, outcome in
+                seen = (outcome, checked.flags.intersection([.maskControl, .maskCommand, .maskAlternate, .maskShift]))
+                return false
+            })
+            #expect(!taken)
+            return seen
+        }
+        let tap = MailKeyTap()
+        let n = press("\u{0E}", .maskControl, on: tap)
+        #expect(n.0 == .act(.nextMessage))
+        #expect(n.1 == [])
+        #expect(press("\u{10}", .maskControl, on: tap).0 == .act(.previousMessage))
+        // ⌃⌥N, ⌃⇧N: not j; they reach the rule as ⌃ keys, which pass.
+        #expect(press("\u{0E}", [.maskControl, .maskAlternate], on: tap).0 == nil)
+        #expect(press("\u{0E}", [.maskControl, .maskShift], on: tap).0 == nil)
+        // g then ⌃N: the prefix is dropped, so it is j (next message), not g j (All Junk).
+        _ = press("g", [], on: tap)
+        #expect(press("\u{0E}", .maskControl, on: tap).0 == .act(.nextMessage))
+    }
+
+    /// The list j or k moves: the focused element's nearest list above it; none when
+    /// focus is in the reading pane, so the viewer's list is used then.
+    @Test func jAndKFindTheListAboveTheFocus() {
+        final class N { let role: String; let parent: N?; init(_ role: String, _ parent: N?) { self.role = role; self.parent = parent } }
+        let window = N("AXWindow", nil), list = N("AXOutline", window), row = N("AXRow", list), cell = N("AXCell", row)
+        let pane = N("AXScrollArea", window), web = N("AXWebArea", pane)
+        func above(_ start: N) -> N? { MailKeys.ancestor(of: start, parent: { $0.parent }, matching: { ["AXTable", "AXOutline"].contains($0.role) }) }
+        #expect(above(cell) === list)
+        #expect(above(list) === list)
+        #expect(above(web) == nil)
+        #expect(above(window) == nil)
     }
 
     /// Esc and `* n` mean select none.
@@ -525,15 +578,19 @@ struct MailKeysTests {
     }
 
     /// David's go-to keys (2026-11-20): g i All Inboxes, g f Flagged, g s All Sent, g t All
-    /// Trash, g d All Drafts, g a All Mail (David, 2026-11-20 evening; was All Archive); g g
+    /// Trash, g d All Drafts, g a All Mail (David, 2026-11-20 evening: "there is no All Archive"); g g
     /// stays the first message.
     @Test func goToKeys() {
         let expected: [Character: MailKeys.Action] = ["i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"),
-                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("All Mail"), "g": .firstMessage,
+                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("All Mail"), "A": .favorite("Archive"), "g": .firstMessage,
                                                       "j": .favorite("Junk"), "u": .favorite("Follow Up"), "l": .favorite("Send Later"), "r": .favorite("Remind Me")]
         for (key, action) in expected { #expect(MailKeys.outcome(for: key, pending: "g") == .act(action), "g \(key)") }
         #expect(MailKeys.outcome(for: "g", pending: nil) == .prefix("g"))
         #expect(MailKeys.help.contains { $0.0.contains("g a") && $0.1.contains("All Mail") && !$0.1.contains("All Archive") })
+        #expect(MailKeys.help.contains { $0.0.contains("g A") && $0.1.hasPrefix("Archive") })
+        // g A's mailbox is the row titled Archive, as Mail shows it (no "All Archive").
+        #expect(MailKeys.unifiedIndex(for: "Archive", in: ["All Mail", "Archive (2)"]) == 1)
+        #expect(MailKeys.unifiedTitles(for: "Archive") == ["Archive"])
     }
 
     /// g a's script answer: which All Mail it showed, none, or a failure; and the viewer's
