@@ -898,7 +898,7 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     | `l` | Label: the same mailbox picker as `v` (David: "label is just a folder") | Message › Move to: it moves the message, as `v` does (David: "yeah, it should move") |
     | `m` | Mute the conversation | Message › Mute |
     | `!` | Junk | Mark as Junk (⇧⌘J) |
-    | `Shift-i` / `Shift-u` | Mark read / unread | ⇧⌘U toggles |
+    | `Shift-u` | Read ↔ unread, a toggle (David, 2026-11-20 evening; `Shift-i` dropped) | ⇧⌘U toggles |
     | `z` | Undo (also `u`) | ⌘Z |
     | `[` / `]` | Archive, then the previous / next message | Archive moves to the next message by itself; no "previous" form |
     | `c` | New message | ⌘N |

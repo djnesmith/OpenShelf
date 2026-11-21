@@ -14,6 +14,9 @@ enum MailKeys {
         case archiveThenPrevious
         /// Esc and `* n`: select none. Only the list's selection changes, never a message.
         case clearSelection
+        /// ⇧U: read ↔ unread (David, 2026-11-20 evening: "I would rather have shift u be a
+        /// toggle between unread and read"; "we can get rid of shift i").
+        case toggleRead
         /// `g g` and `G`: the first or last message in the list.
         case firstMessage, lastMessage
     }
@@ -41,10 +44,7 @@ enum MailKeys {
         "b": .snooze, "v": .file, "l": .file,
         "m": .menu("Message", "Mute"),
         "!": .menu("Message", "Move to Junk"),
-        // Mail has one item it renames by state: "Mark as Read" on an unread message, "Mark
-        // as Unread" on a read one ("Unread" is only its nib name; keys.log 2026-11-21 01:50:
-        // "no “Unread” in Mail's Message menu", David: "marking unread or read does not work").
-        "I": .menu("Message", "Mark as Read"), "U": .menu("Message", "Mark as Unread"),
+        "U": .toggleRead,
         "z": .menu("Edit", "Undo"),
         "c": .menu("File", "New Message"),
         "?": .showKeys,
@@ -188,7 +188,7 @@ enum MailKeys {
     static func actsOnOneMessage(_ action: Action) -> Bool {
         switch action {
         case .menu(let top, let title): top == "Message" && title != "Open Message" || (top == "Edit" && title == "Delete")
-        case .snooze, .file, .archiveThenPrevious, .showKeys: true
+        case .snooze, .file, .archiveThenPrevious, .showKeys, .toggleRead: true
         case .favorite, .nextMessage, .previousMessage, .clearSelection, .firstMessage, .lastMessage: false
         }
     }
@@ -444,20 +444,11 @@ enum MailKeys {
         var read: [String: Bool] = [:]
     }
 
-    /// ⇧I and ⇧U: press the item when Mail shows it; when Mail shows only the other title the
-    /// messages are already that way, so nothing is toggled back.
-    enum ReadPlan: Equatable { case press, already, missing }
-
-    static func readPlan(present: Bool, oppositePresent: Bool) -> ReadPlan {
-        present ? .press : (oppositePresent ? .already : .missing)
-    }
-
-    static func oppositeRead(_ title: String) -> String? {
-        switch title {
-        case "Mark as Read": "Mark as Unread"
-        case "Mark as Unread": "Mark as Read"
-        default: nil
-        }
+    /// ⇧U's item. Mail has one item it renames by state: "Mark as Read" on unread mail,
+    /// "Mark as Unread" on read mail ("Unread" is only its nib name; keys.log 2026-11-21
+    /// 01:50: "no “Unread” in Mail's Message menu"). Whichever Mail shows; nil for neither.
+    static func toggleReadTitle(shows: (String) -> Bool) -> String? {
+        ["Mark as Read", "Mark as Unread"].first(where: shows)
     }
 
     /// How a command's effect shows in Mail.
@@ -577,7 +568,7 @@ enum MailKeys {
         ("e  or  ]", "archive"), ("[", "archive, then the message above"), ("x", "move to Trash"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),
-        ("⇧I / ⇧U", "mark read / unread"), ("u  or  z", "undo"), ("c", "new message"),
+("⇧U", "mark read / unread (toggles)"), ("u  or  z", "undo"), ("c", "new message"),
         ("* a", "select all"), ("* n", "select none"),
         ("Esc", "close a message window; else back to the list; in the list, select none (several selected)"), ("g g  /  G", "first / last message"), ("?", "this list"),
     ]

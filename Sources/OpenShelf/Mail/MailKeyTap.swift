@@ -364,18 +364,13 @@ enum MailKeyActions {
             if !conversationAction(archive: title == "Archive") { performVerified(title, under: top) }
         case .menu("Edit", "Undo"):
             undo()
-        case .menu("Message", let title) where MailKeys.oppositeRead(title) != nil:
+        case .toggleRead:
             let bar = MailMenu.menuBar() ?? []
-            let present = item(title, under: "Message", in: bar) != nil
-            let opposite = MailKeys.oppositeRead(title).map { item($0, under: "Message", in: bar) != nil } ?? false
-            switch MailKeys.readPlan(present: present, oppositePresent: opposite) {
-            case .already:
-                let state = title == "Mark as Read" ? "read" : "unread"
-                KeysLog.note("\(title): Mail shows only the other item; already \(state)")
-                ToastController.shared.show(Toast(systemImage: "envelope", title: "Already \(state)", subtitle: "Mail shows “\(MailKeys.oppositeRead(title)!)” for this selection"), for: .seconds(2))
-            case .press, .missing:
-                performVerified(title, under: "Message")
+            guard let title = MailKeys.toggleReadTitle(shows: { item($0, under: "Message", in: bar) != nil }) else {
+                _ = notPressed("Mark as Read", "no Mark as Read or Mark as Unread in Mail's Message menu")
+                return
             }
+            performVerified(title, under: "Message")
         case .menu(let top, let title) where verifiedTitles.contains(title):
             performVerified(title, under: top)
         case .menu(let top, let title):

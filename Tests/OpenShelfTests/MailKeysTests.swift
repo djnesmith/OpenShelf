@@ -16,8 +16,7 @@ struct MailKeysTests {
         #expect(MailKeys.outcome(for: "?", pending: nil) == .act(.showKeys))
         #expect(MailKeys.outcome(for: "j", pending: nil) == .act(.nextMessage))
         #expect(MailKeys.outcome(for: "[", pending: nil) == .act(.archiveThenPrevious))
-        #expect(MailKeys.outcome(for: "I", pending: nil) == .act(.menu("Message", "Mark as Read")))
-        #expect(MailKeys.outcome(for: "U", pending: nil) == .act(.menu("Message", "Mark as Unread")))
+        #expect(MailKeys.outcome(for: "U", pending: nil) == .act(.toggleRead))
         // Left out: n, p, # and anything else (u is back to the list since 2026-11-20).
         for key: Character in ["n", "p", "#", "q", "1", " "] {
             #expect(MailKeys.outcome(for: key, pending: nil) == .pass, "\(key)")
@@ -59,7 +58,7 @@ struct MailKeysTests {
         }
         for action in [MailKeys.Action.menu("Message", "Reply"), .menu("Message", "Reply All"), .menu("Message", "Forward"),
                        .menu("Message", "Archive"), .menu("Edit", "Delete"), .menu("Message", "Toggle Flag"), .snooze, .file,
-                       .menu("Message", "Move to Junk"), .menu("Message", "Mark as Read"), .archiveThenPrevious] {
+                       .menu("Message", "Move to Junk"), .toggleRead, .archiveThenPrevious] {
             #expect(inViewer("AXGroup", action), "\(action)")
             #expect(inViewer("AXScrollArea", action), "\(action)")
         }
@@ -223,20 +222,19 @@ struct MailKeysTests {
         #expect(MailKeys.unifiedIndex(for: "Today", in: [archive, header, today].map(name)) == 2)
     }
 
-    /// ⇧I and ⇧U: Mail's one item is "Mark as Read" on unread mail and "Mark as Unread" on
-    /// read mail. The wanted title pressed; only the other one shown: already that way,
-    /// nothing toggled; neither: the usual "did nothing" path.
-    @Test func readAndUnreadFollowMailsTitle() {
-        #expect(MailKeys.readPlan(present: true, oppositePresent: false) == .press)
-        #expect(MailKeys.readPlan(present: true, oppositePresent: true) == .press)
-        #expect(MailKeys.readPlan(present: false, oppositePresent: true) == .already)
-        #expect(MailKeys.readPlan(present: false, oppositePresent: false) == .missing)
-        #expect(MailKeys.oppositeRead("Mark as Read") == "Mark as Unread")
-        #expect(MailKeys.oppositeRead("Mark as Unread") == "Mark as Read")
-        #expect(MailKeys.oppositeRead("Toggle Flag") == nil)
+    /// ⇧U toggles: it presses whichever of Mail's two titles shows; ⇧I is gone (David,
+    /// 2026-11-20 evening).
+    @Test func shiftUTogglesReadAndUnread() {
+        #expect(MailKeys.outcome(for: "U", pending: nil) == .act(.toggleRead))
+        #expect(MailKeys.outcome(for: "I", pending: nil) == .pass)
+        #expect(MailKeys.toggleReadTitle(shows: { $0 == "Mark as Read" }) == "Mark as Read")
+        #expect(MailKeys.toggleReadTitle(shows: { $0 == "Mark as Unread" }) == "Mark as Unread")
+        #expect(MailKeys.toggleReadTitle(shows: { _ in false }) == nil)
         #expect(MailKeys.verification(for: "Mark as Unread") == .read)
-        #expect(MailKeys.verification(for: "Mark as Read") == .read)
         #expect(MailKeyActions.verifiedTitles.isSuperset(of: ["Mark as Read", "Mark as Unread"]))
+        #expect(MailKeys.actsOnOneMessage(.toggleRead))
+        #expect(MailKeys.help.contains { $0.0 == "⇧U" && $0.1.contains("toggles") })
+        #expect(!MailKeys.help.contains { $0.0.contains("⇧I") })
     }
 
     /// Esc and `* n` mean select none.
@@ -464,7 +462,7 @@ struct MailKeysTests {
         }
         for action in [MailKeys.Action.menu("Message", "Reply"), .menu("Message", "Reply All"), .menu("Message", "Forward"),
                        .menu("Message", "Archive"), .menu("Edit", "Delete"), .menu("Message", "Toggle Flag"), .snooze, .file,
-                       .menu("Message", "Mute"), .menu("Message", "Move to Junk"), .menu("Message", "Mark as Unread"), .showKeys] {
+                       .menu("Message", "Mute"), .menu("Message", "Move to Junk"), .toggleRead, .showKeys] {
             #expect(may("AXWebArea", action), "\(action)")
             #expect(may("AXGroup", action), "\(action)")
         }

@@ -70,7 +70,7 @@ and how we notice · tests with no screen · what to try by hand · size.
 
 ### E. Single-key layer (L)
 - **Gets:** the Gmail keys in the ROADMAP I5 table (j k o u e x r a f s b v l m ! z [ ] c / ?,
-  `g` and `*` prefixes, Shift-i / Shift-u), only while Mail's message list or reading pane
+  `g` and `*` prefixes, Shift-u; Shift-i dropped 2026-11-20 evening), only while Mail's message list or reading pane
   has focus.
 - **Needs:** Input Monitoring for a key tap (new permission).
 - **Drives Mail:** each key presses a menu item by title, or sends Mail's own key equivalent,
