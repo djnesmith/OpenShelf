@@ -681,4 +681,31 @@ struct VimDoomTextObjectTests {
     func structural(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// gn gN dgn cgn and . on the next match (C36), as evil does.
+    @Test(arguments: [
+        ("|foo bar foo baz foo", "/foo<CR>cgnX<Esc>", "foo bar |X baz foo"),
+        ("|foo bar foo baz foo", "/foo<CR>cgnX<Esc>.", "foo bar X baz |X"),
+        ("|foo bar foo baz foo", "/foo<CR>cgnX<Esc>..", "|X bar X baz X"),
+        ("|foo bar foo", "/foo<CR>dgn", "foo bar| "),
+        ("|foo bar foo", "/foo<CR>gnd", "foo bar| "),
+        ("foo bar |foo", "/foo<CR>gNd", "| bar foo"),
+        ("|foo bar foo", "*cgnX<Esc>", "foo bar |X"),
+        ("|a b", "dgn", "|a b"),
+        ("|foo bar foo", "/foo<CR>vgnd", "foo bar| "),
+        ("|xfoo bar foo", "/foo<CR>dgn", "x| bar foo"),
+        ("f|oo bar foo", "/foo<CR>bdgn", "foo bar| "),
+        ("foo bar fo|o", "/foo<CR>$dgN", "foo bar| "),
+        ("|foo bar foo", "/foo<CR>gn<Esc>x", "foo bar f|o"),
+        ("|Foo foo", "/foo<CR>dgn", "Foo| "),
+        ("|foo foobar foo", "*dgn", "foo foobar| "),
+        ("|foo foobar foo", "*cgnX<Esc>.", "|X foobar X"),
+        ("|a foo b foo c foo d foo", "/foo<CR>n$dgn", "a foo b foo c foo d| "),
+        ("|a foo b foo c foo d foo", "/foo<CR>nwdgn", "a foo b foo c | d foo"),
+        ("|a foo b foo c foo d foo", "/foo<CR>nbdgn", "a foo b | c foo d foo"),
+        ("|a foo b foo c foo d foo", "/foo<CR>nlldgn", "a foo b | c foo d foo"),
+    ])
+    func gn(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

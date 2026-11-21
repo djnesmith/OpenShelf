@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 17 | 0 | 11 |
+| Vim features (C16–C43) | 18 | 0 | 10 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 35 | 5 | 52 |
+| **Total** | 36 | 5 | 51 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -261,7 +261,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `=` re-indent (`==`, `=ip`) | Built | Through the Text wheel's Re-indent formatter (cljfmt for Clojure), so both agree | — |
 | `%` matching bracket | Built | | — |
 | `*` `#` `n` `N` `/` `?` | Built | No match highlighting; `:noh` not built | S |
-| `gn` / `cgn` | Not built | `dgn` says "not a command", but `cgn` deletes one character instead: a bug | S |
+| `gn` / `cgn` | Built | `cgn` then `.` changes match after match | — |
 | `f` `t` `F` `T` with `;` `,` | Built | evil-snipe's since C26 | — |
 | Marks `m{a-z}`, `'` and `` ` `` | Not built | Left out on 11-18 (short texts). `ma` falls to `a` (append): a wrong-mode trap | S |
 | Registers `"a`–`"z`, `"A` append, `"+` `"*` `"_` `"0` | Built | | — |

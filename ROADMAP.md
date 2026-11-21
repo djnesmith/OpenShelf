@@ -548,7 +548,7 @@ Plain vim:
 | C33 | `is` / `as`: a sentence | S | — |
 | C34 | `=` re-indent (`==`, `=ip`) — **built** on the Re-indent tool (C2), as David chose: the formatter runs on the whole text and `=` takes its lines' indentation | S-M | — |
 | C35 | Search highlight while searching, and `:noh` | S | — |
-| C36 | `gn` / `cgn`: the next match as an object, repeated with `.` | S | — |
+| C36 | `gn` / `cgn`: the next match as an object, repeated with `.` — **built** | S | — |
 | C37 | Marks: `m{a-z}`, `'` and `` ` `` jumps | S | — |
 | C38 | Ex commands with ranges: `:g`, `:norm`, `:sort`, `:m`, `:t`, `:d` | M-L | — |
 | C39 | Scrolling: `zz` `zt` `zb`, `H` `M` `L`, `⌃D` `⌃U` `⌃E` `⌃Y` | S | Matters once files open in the window (C14) |

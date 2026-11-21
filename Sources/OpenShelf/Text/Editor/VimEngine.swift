@@ -1354,7 +1354,7 @@ struct VimEngine {
         "m": "marks are not built", "'": "marks are not built", "`": "marks are not built",
         "z": "not built", "[": "not built", "]": "not built", "g'": "marks are not built", "g`": "marks are not built",
     ]
-    static let unbuiltAlone = ["gn", "gN", "gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g+", "gd", "gD", "g*", "g#", "g&"]
+    static let unbuiltAlone = ["gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g+", "gd", "gD", "g*", "g#", "g&"]
 
     private func unbuiltCommand(_ keys: [VimKey], from start: Int) -> String?? {
         var typed = ""
@@ -1526,6 +1526,11 @@ struct VimEngine {
             if case .char("v") = second, !inVisual {
                 index += 1
                 return .done(Command(count: nil, action: .simple("gv")))
+            }
+            // gn / gN in normal mode select the next (last) search match.
+            if case .char(let kind) = second, kind == "n" || kind == "N", !inVisual {
+                index += 1
+                return .done(Command(count: count, action: .simple(kind == "n" ? "gn" : "gN")))
             }
             // Doom's evil-numbers keys (doom+/modules/editor/evil/config.el:567-571): g= and g- add
             // and take one, as ⌃A and ⌃X; in visual mode they count up, and g+ adds one to each.
@@ -1776,6 +1781,11 @@ struct VimEngine {
             return readSnipe(keys, &index, count: 2, forward: c.isLowercase, inclusive: c == "z" || c == "Z", key: Character(c.lowercased()))
         case "g":
             guard index < keys.count else { return .incomplete }
+            // gn / gN after an operator or in visual mode: the next (last) search match as an object.
+            if textObjects, case .char(let kind) = keys[index], kind == "n" || kind == "N" {
+                index += 1
+                return .done(.textObject(inner: true, kind))
+            }
             guard case .char("g") = keys[index] else { return .invalid }
             index += 1
             return .done(.goToLine(0))
@@ -1858,6 +1868,7 @@ struct VimEngine {
         case .textObject(_, "x")?: "no attribute here"
         case .textObject(_, "c")?: "not in a comment"
         case .textObject(_, "f")?: "no function here"
+        case .textObject(_, "n")?, .textObject(_, "N")?: "no match"
         default: "nothing to do"
         }
         return "\(keys): \(reason)"
@@ -2130,6 +2141,14 @@ struct VimEngine {
             replaced = []
             replaceKeys = []
             replaceCount = min(n, 10_000)
+        case "gn", "gN":
+            guard let match = searchMatch(forward: name == "gn") else {
+                failed = true
+                return nil
+            }
+            mode = .visual
+            anchor = match.lowerBound
+            cursor = match.upperBound - 1
         case "gv":
             guard let last = lastVisual else {
                 failed = true
@@ -2897,11 +2916,29 @@ struct VimEngine {
         case "a": return argumentObject(inner: inner, count: count).map { ($0, false) }
         case "u": return urlObject(inner: inner).map { ($0, false) }
         case "c": return commentObject().map { (inner ? $0.inner : $0.outer, false) }
+        case "n", "N": return searchMatch(forward: kind == "n").map { ($0, false) }
         case "f": return defunObject().map { ($0, true) }
         case "x": return xmlAttributeObject(inner: inner).map { ($0, false) }
         case "i", "k", "j": return indentObject(inner: inner, kind).map { ($0, true) }
         default: return nil
         }
+    }
+
+    // MARK: - gn
+
+    /// gn's match (ROADMAP C36): the last search's match the cursor is on, else the next one
+    /// after the cursor (gN: the one before), wrapping as / does. Nil with no search or no
+    /// match. (evil after a jump such as gg skips one match more; that isn't copied.)
+    private func searchMatch(forward: Bool) -> Range<Int>? {
+        guard let last = lastSearch, !last.pattern.isEmpty else { return nil }
+        let length = last.pattern.count
+        // A match the cursor is on: the last one starting at or before it.
+        if let before = search(last.pattern, from: min(cursor + 1, text.count), forward: false, wholeWord: last.wholeWord),
+           before <= cursor, cursor < before + length {
+            return before..<(before + length)
+        }
+        guard let at = search(last.pattern, from: cursor, forward: forward, wholeWord: last.wholeWord) else { return nil }
+        return at..<(at + length)
     }
 
     // MARK: - Doom's text objects
