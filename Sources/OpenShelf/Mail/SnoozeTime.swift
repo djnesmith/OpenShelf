@@ -188,7 +188,8 @@ enum SnoozeTime {
 
     /// The units a typed time can name, each with every spelling (David, 2026-11-20 evening:
     /// "5 should mean 5 minutes from now", "5h and 2w should work too", "2 weeks, 5 hours,
-    /// etc... all the permutations"). `m` is minutes; months need "mo" or longer.
+    /// etc... all the permutations"). `m` is minutes; months need "mo" or longer, and "2 mon"
+    /// is 2 months (David: "2 mon is 2 months"); "mon" with no number is still Monday.
     enum Unit: CaseIterable, Sendable { case minute, hour, day, week, month, year }
 
     static let unitSpellings: [Unit: [String]] = [
@@ -196,7 +197,7 @@ enum SnoozeTime {
         .hour: ["h", "hr", "hrs", "hour", "hours"],
         .day: ["d", "day", "days"],
         .week: ["w", "wk", "wks", "week", "weeks"],
-        .month: ["mo", "mos", "month", "months"],
+        .month: ["mo", "mos", "mon", "month", "months"],
         .year: ["y", "yr", "yrs", "year", "years"],
     ]
 

@@ -86,7 +86,7 @@ struct SnoozeTimeTests {
                 }
             }
         }
-        #expect(checked == 27 * 7)
+        #expect(checked == 28 * 7)
         // m is minutes, mo is months.
         #expect(SnoozeTime.parse("5m", now: now, calendar: cal) == expected[.minute])
         #expect(SnoozeTime.parse("5mo", now: now, calendar: cal) == expected[.month])
@@ -159,7 +159,7 @@ struct SnoozeTimeTests {
 
     /// Bare day names, every spelling, any case: 7am on the next such day; today's own name
     /// is today before 7am, else a week on (David, 2026-11-20: "yeah mon tue, days of week
-    /// work"). mon is always Monday, never months; months need a number and mo, mos or month.
+    /// work"). mon alone is Monday; after a number it is months (David: "2 mon is 2 months").
     @Test func dayNamesAndMon() {
         let now = Self.wednesday(10)
         let cal = Self.calendar
@@ -182,7 +182,9 @@ struct SnoozeTimeTests {
         #expect(twoMonths != nil)
         #expect(SnoozeTime.parse("2mo", now: now, calendar: cal) == twoMonths)
         #expect(SnoozeTime.parse("2 mos", now: now, calendar: cal) == twoMonths)
-        #expect(SnoozeTime.parse("2 mon", now: now, calendar: cal) == nil)   // not understood, never 2 months
+        #expect(SnoozeTime.parse("2 mon", now: now, calendar: cal) == twoMonths)
+        #expect(SnoozeTime.parse("2mon", now: now, calendar: cal) == twoMonths)
+        #expect(SnoozeTime.parse("in 2 MON", now: now, calendar: cal) == twoMonths)
         #expect(SnoozeTime.parse("mo", now: now, calendar: cal) == nil)
     }
 
