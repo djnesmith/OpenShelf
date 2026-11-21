@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 27 | 0 | 1 |
+| Vim features (C16–C43) | 28 | 0 | 0 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 45 | 5 | 42 |
+| **Total** | 46 | 5 | 41 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -273,7 +273,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `⌃O` / `⌃I` jump list, `g;` change list, `gi` | Built | Also `''` and `` `` ``; changes a macro or `.` makes count as the key's | — |
 | `gv`, `o` in visual, `⌃V` block, `R` | Built | | — |
 | `gJ`, `gp`, `ga`, `[(` `])` | Built | `gp` is Doom's: select the last paste again; visual `gp` pastes without keeping what it replaced | — |
-| Undo `u`, redo `⌃R` | Built | A line of undo, not a tree; no `g-` `g+` | M for a tree |
+| Undo `u`, redo `⌃R` | Built | A line of undo, as David's Doom has it (undo-fu, `~/.doom.d/init.el:73`, no tree); `g-` is Doom's evil-numbers | — |
 | Macros `q` `@` `@@` | Built | Not kept between windows; `@:` built (C43) | — |
 
 Found while checking on 11-20 and since fixed: `cgn`, `=ip`, `ma` and `gcc` are built (C36, C34,
