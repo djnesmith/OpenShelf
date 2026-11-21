@@ -59,4 +59,14 @@ struct VimDoomExtraTests {
     @Test func commentIsOneUndoStep() {
         #expect(VimEngineTests.run("w\n|(a)\n(b)", "kddgcjuu").string == "w\n(a)\n(b)")
     }
+
+    @Test func visualNumbersAreOneUndoStep() {
+        #expect(VimEngineTests.run("w\n|0\n0", "kddVjg<C-a>uu").string == "w\n0\n0")
+    }
+
+    @Test func visualNumbersWithNoNumberChangeNothing() {
+        let engine = VimEngineTests.run("|a b", "v$<C-a>")
+        #expect(engine.string == "a b")
+        #expect(engine.mode == .normal)
+    }
 }

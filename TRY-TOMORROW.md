@@ -88,7 +88,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `ciu` on a link changes its host and path; `dax` in an HTML tag removes one attribute;
     `ysiw⌃F` then `inc` and Return wraps a word in `(inc …)`, `dsf` unwraps `foo(x)`;
     `ciB` inside `{:a [1 2]}` on the 2 changes `1 2` (the nearest block, as in Doom);
-    `gcc` comments a Clojure line with `;; `, `gcip` a paragraph, again to uncomment. (#53)
+    `gcc` comments a Clojure line with `;; `, `gcip` a paragraph, again to uncomment;
+    `VG` then `g⌃A` on lines of `0` numbers them 1, 2, 3; `viw*` finds the next copy of a selection. (#53)
 
 ## Needs your decision
 

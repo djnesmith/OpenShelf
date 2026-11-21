@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43; C30 partly) | 9 | 1 | 18 |
+| Vim features (C16–C43) | 11 | 0 | 17 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 27 | 6 | 59 |
+| **Total** | 29 | 5 | 58 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -244,8 +244,8 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | evil-snipe: `s`/`S` two-character find, `;` `,` | Not built | The engine's `s` is vim's substitute, as plain vim | M |
 | evil-exchange `gx` / `gX` | Not built | Swap two text spans | S-M |
 | evil-lion `gl` / `gL` align | Not built | The Text wheel's Align Table covers some of it | M |
-| evil-numbers `⌃A` `⌃X` | Built | `g⌃A` (visual, increasing) not built: S | — |
-| evil-visualstar: `*` `#` on a visual selection | Partly | `v*` does not search for the selection | S |
+| evil-numbers `⌃A` `⌃X` | Built | Visual `⌃A` and `g⌃A` (increasing) too | — |
+| evil-visualstar: `*` `#` on a visual selection | Built | From the cursor, as Doom: `viw#` finds the word itself first | — |
 | evil-escape `jk` | Built | | — |
 | `⌥J` / `⌥K` move lines (his `config.el`) | Built | | — |
 | evil-multiedit: visual `R`, `M-d` / `M-D` (his `config.el:738-759`) | Not built | Edit every match at once | L |

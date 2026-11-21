@@ -536,8 +536,8 @@ In his Doom setup:
 | C26 | evil-snipe: `s` / `S` two-character find, repeated with `;` `,` | M | David's choice: today `s` is vim's substitute |
 | C27 | evil-exchange: `gx{motion}` twice swaps the two spans; `gX` cancels | S-M | — |
 | C28 | evil-lion: `gl{motion}{char}` / `gL` align on a character | M | — |
-| C29 | `g⌃A` / `g⌃X` in visual mode: numbers that count up line by line (evil-numbers) | S | — |
-| C30 | Visual `*` / `#`: search for the selected text (evil-visualstar) | S | — |
+| C29 | `g⌃A` / `g⌃X` in visual mode: numbers that count up line by line (evil-numbers) — **built**, with visual `⌃A` / `⌃X` | S | — |
+| C30 | Visual `*` / `#`: search for the selected text (evil-visualstar) — **built** | S | — |
 | C31 | evil-multiedit: visual `R`, `M-d` / `M-D` edit every match at once (his `config.el:738-759`) | L | — |
 | C32 | Slurp, barf and raise for Lisp forms (smartparens; his `s-R` raise) | M | Key choices: smartparens has no vim keys in his setup |
 

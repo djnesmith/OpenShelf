@@ -725,6 +725,51 @@ struct VimEngine {
         wantedColumn = nil
     }
 
+    /// ⌃A / ⌃X and g⌃A / g⌃X in visual mode (evil-numbers, ROADMAP C29): every number that
+    /// starts in the selection gets `amount`, or with `eachMore` the k-th gets k × `amount`.
+    /// One undo step; the cursor goes to the selection's start in normal mode.
+    private mutating func addToNumbersInSelection(_ amount: Int, eachMore: Bool) {
+        let starts = lineStarts
+        // Each line's piece of the selection, as columns.
+        var pieces: [(line: Int, columns: Range<Int>)] = []
+        if let rows = blockSelection {
+            for row in rows { pieces.append((lineIndex(row.lowerBound), (row.lowerBound - lineStart(row.lowerBound))..<(row.upperBound - lineStart(row.lowerBound)))) }
+        } else if let range = selection {
+            for line in lineIndex(range.lowerBound)...lineIndex(max(range.upperBound - 1, range.lowerBound)) {
+                let start = starts[line], end = lineEnd(start)
+                let low = max(range.lowerBound, start) - start, high = min(range.upperBound, end) - start
+                pieces.append((line, low..<max(low, high)))
+            }
+        }
+        let corner = mode == .visualBlock ? blockCorner() : (selection?.lowerBound ?? cursor)
+        mode = .normal
+        let regex = try! NSRegularExpression(pattern: "0[xX][0-9a-fA-F]+|0[bB][01]+|-?[0-9]+")
+        var changes: [(range: Range<Int>, text: String)] = []
+        var k = 0
+        for piece in pieces {
+            let start = starts[piece.line]
+            let line = String(text[start..<lineEnd(start)])
+            for match in regex.matches(in: line, range: NSRange(line.startIndex..., in: line)) {
+                guard let found = Range(match.range, in: line) else { continue }
+                let lower = line.distance(from: line.startIndex, to: found.lowerBound)
+                let upper = line.distance(from: line.startIndex, to: found.upperBound)
+                guard piece.columns.contains(lower) else { continue }
+                k += 1
+                let step = eachMore ? amount.multipliedReportingOverflow(by: k).partialValue : amount
+                changes.append(((start + lower)..<(start + upper), VimNumber.changed(String(line[found]), by: step)))
+            }
+        }
+        cursor = corner
+        guard !changes.isEmpty else {
+            failed = true
+            clampCursor()
+            return
+        }
+        checkpoint(at: corner)
+        for change in changes.reversed() { text.replaceSubrange(change.range, with: Array(change.text)) }
+        clampCursor()
+    }
+
     // MARK: - Substitute
 
     /// Runs `:s` (ROADMAP C12): each line of the range has its first match (every match with
@@ -916,6 +961,8 @@ struct VimEngine {
             typed.append(c)
         }
         guard let first = typed.first else { return nil }
+        // "g" or "z" alone waits for its next key; "g⌃A" (a ⌃ key next) is left to the parser.
+        if typed == "g" || typed == "z", keys.count > start + typed.count { return nil }
         if typed == "g" || typed == "z" && !inVisual { return .some(nil) }
         if Self.unbuiltAlone.contains(where: { typed.hasPrefix($0) }), !inVisual || typed.hasPrefix("gJ") {
             return .some("not built")
@@ -975,6 +1022,8 @@ struct VimEngine {
             case "[", "c": return .done(Command(count: nil, action: .simple("escape")))
             case "v": return .done(Command(count: nil, action: .simple("block")))
             case "a" where !inVisual: return .done(Command(count: count, action: .simple("increment")))
+            // In visual mode, evil-numbers: every number in the selection.
+            case "a" where inVisual, "x" where inVisual: return .done(Command(count: count, action: .simple(c == "a" ? "visualIncrement" : "visualDecrement")))
             case "x" where !inVisual: return .done(Command(count: count, action: .simple("decrement")))
             default: return .invalid
             }
@@ -1034,6 +1083,11 @@ struct VimEngine {
             if case .char("v") = second, !inVisual {
                 index += 1
                 return .done(Command(count: nil, action: .simple("gv")))
+            }
+            // g⌃A / g⌃X in visual mode: numbers that count up, one step more each (evil-numbers).
+            if inVisual, second == .ctrl("a") || second == .ctrl("x") {
+                index += 1
+                return .done(Command(count: count, action: .simple(second == .ctrl("a") ? "visualIncrementEach" : "visualDecrementEach")))
             }
             if case .char(let g) = second, ["~", "u", "U", "q"].contains(g) {
                 index += 1
@@ -1399,6 +1453,14 @@ struct VimEngine {
                 cursor = range.upperBound - 1
             }
             return nil
+        case .motion(.searchWord(let forward)) where inVisual && mode != .visualBlock:
+            // evil-visualstar: search for the selected text from the cursor, the selection's
+            // moving end, so viw# finds the word itself first, as in Doom.
+            guard let range = selection, !range.isEmpty else { return nil }
+            lastSearch = (String(text[range]), forward, false)
+            mode = .normal
+            _ = runMotion(.searchNext(reverse: false), count: command.count ?? 1)
+            return nil
         case .motion(let motion):
             guard let motion = resolved(motion, count: command.count) else {
                 failed = true
@@ -1496,6 +1558,9 @@ struct VimEngine {
                 cursor = min(lineStart(cursor) + anchorColumn, lineEnd(cursor))
             case "moveDown", "moveUp":
                 moveLines(down: name == "moveDown", count: n)
+                return nil
+            case "visualIncrement", "visualDecrement", "visualIncrementEach", "visualDecrementEach":
+                addToNumbersInSelection(name.contains("Increment") ? n : -n, eachMore: name.hasSuffix("Each"))
                 return nil
             case "blockI", "blockA":
                 startBlockInsert(append: name == "blockA")

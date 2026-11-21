@@ -411,4 +411,47 @@ struct VimDoomTextObjectTests {
     func commentObject(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// visual ⌃A ⌃X and g⌃A g⌃X, evil-numbers (C29).
+    @Test(arguments: [
+        ("|0\n0\n0", "VGg<C-a>", "|1\n2\n3"),
+        ("|1\n1\n1", "VG2g<C-a>", "|3\n5\n7"),
+        ("|x 5\nx 5\nx 5", "VGg<C-x>", "|x 4\nx 3\nx 2"),
+        ("|0\nnone\n0", "VGg<C-a>", "|1\nnone\n2"),
+        ("|a1 b1\na1 b1", "VGg<C-a>", "|a2 b3\na4 b5"),
+        ("|0 0\n0 0", "vjg<C-a>", "|1 2\n3 0"),
+        ("|0\n0\n0", "VG<C-a>", "|1\n1\n1"),
+        ("|0x0f\n0x0f", "VGg<C-a>", "|0x10\n0x11"),
+        ("|-1\n-1\n-1", "VGg<C-a>", "|0\n1\n2"),
+        ("|007\n007", "VGg<C-a>", "|008\n009"),
+        ("|5\n5\n5", "VG3<C-a>", "|8\n8\n8"),
+        ("x |1 1 1", "v$g<C-a>", "x |2 3 4"),
+        ("|0\n0\n0", "VGg<C-a>gvg<C-a>", "|2\n4\n6"),
+    ])
+    func visualNumbers(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
+
+    /// visual * and #, evil-visualstar (C30).
+    @Test(arguments: [
+        ("|foo bar foo.bar foo", "viw*", "foo bar |foo.bar foo"),
+        ("|foo bar foo.bar foo", "vee*", "|foo bar foo.bar foo"),
+        ("foo bar foo.bar |foo", "viw#", "foo bar foo.bar |foo"),
+        ("|a.b x a.b", "v2l*", "a.b x |a.b"),
+        ("|ab abc ab", "viw*", "ab |abc ab"),
+        ("|ab abc ab", "viw*n", "ab abc |ab"),
+        ("|Foo foo FOO", "viw*", "|Foo foo FOO"),
+        ("|a\nb a\nb", "vj*", "a\nb |a\nb"),
+        ("|ab x ab", "viw*N", "|ab x ab"),
+        ("|a*b c a*b", "v2l*", "a*b c |a*b"),
+        ("foo bar foo.bar |foo", "viw#n", "foo bar |foo.bar foo"),
+        ("foo bar foo.bar |foo", "viwo#", "foo bar |foo.bar foo"),
+        ("foo x |foo y", "viw#", "foo x |foo y"),
+        ("|foo x foo y", "viw#", "|foo x foo y"),
+        ("foo x f|oo y", "viw#", "foo x |foo y"),
+        ("foo x foo |foo", "viw*", "|foo x foo foo"),
+    ])
+    func visualStar(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }
