@@ -63,6 +63,8 @@ enum MailKeys {
         // as the old g a found it (keys.log 2026-11-21 00:57: "via sidebar").
         "d": .favorite("Drafts"), "a": .favorite(allMail), "A": .favorite("Archive"), "g": .firstMessage,
         // David, 2026-11-20: g j All Junk, g u Follow Up, g l Send Later, g r Remind Me.
+        // "g T should go to Today" (David, 2026-11-20 evening): Mail's Today smart mailbox.
+        "T": .favorite("Today"),
         "j": .favorite("Junk"), "u": .favorite("Follow Up"), "l": .favorite("Send Later"), "r": .favorite("Remind Me"),
     ]
 
@@ -515,7 +517,7 @@ enum MailKeys {
     static let help: [(String, String)] = [
         ("j / k  or  ⌃N / ⌃P", "next / previous message"), ("o", "open"), ("/", "search"),
         ("g i  g f  g s  g t  g d  g a", "All Inboxes, Flagged, All Sent, All Trash, All Drafts, All Mail"),
-        ("g A  g j  g u  g l  g r", "Archive, All Junk, Follow Up, Send Later, Remind Me"),
+        ("g A  g T  g j  g u  g l  g r", "Archive, Today, All Junk, Follow Up, Send Later, Remind Me"),
         ("e  or  ]", "archive"), ("[", "archive, then the message above"), ("x", "move to Trash"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),
         ("v  or  l", "move to a mailbox"), ("m", "mute"), ("!", "junk"),

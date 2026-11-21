@@ -582,7 +582,7 @@ struct MailKeysTests {
     /// stays the first message.
     @Test func goToKeys() {
         let expected: [Character: MailKeys.Action] = ["i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"),
-                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("All Mail"), "A": .favorite("Archive"), "g": .firstMessage,
+                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("All Mail"), "A": .favorite("Archive"), "T": .favorite("Today"), "g": .firstMessage,
                                                       "j": .favorite("Junk"), "u": .favorite("Follow Up"), "l": .favorite("Send Later"), "r": .favorite("Remind Me")]
         for (key, action) in expected { #expect(MailKeys.outcome(for: key, pending: "g") == .act(action), "g \(key)") }
         #expect(MailKeys.outcome(for: "g", pending: nil) == .prefix("g"))
@@ -591,6 +591,10 @@ struct MailKeysTests {
         // g A's mailbox is the row titled Archive, as Mail shows it (no "All Archive").
         #expect(MailKeys.unifiedIndex(for: "Archive", in: ["All Mail", "Archive (2)"]) == 1)
         #expect(MailKeys.unifiedTitles(for: "Archive") == ["Archive"])
+        // g T: Today, found by its title like the others; g t stays All Trash.
+        #expect(MailKeys.help.contains { $0.0.contains("g T") && $0.1.contains("Today") })
+        #expect(MailKeys.unifiedIndex(for: "Today", in: ["All Inboxes", "Today (4)"]) == 1)
+        #expect(MailKeys.outcome(for: "t", pending: "g") == .act(.favorite("Trash")))
     }
 
     /// g a's script answer: which All Mail it showed, none, or a failure; and the viewer's
