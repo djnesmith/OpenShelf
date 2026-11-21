@@ -134,7 +134,7 @@ struct VimDoomTextObjectTests {
         ("x\n  a|\n  b\ny", "d2ii", "x\n|\ny"),
         ("x\n  a|\n\n  b\ny", "dai", "x\n|\ny"),
         ("x\n  a|\n  b\n\ny", "dai", "x\n|\ny"),
-        ("x\n\tb|\n    c\ny", "gUii", "x\n|\tB\n    c\ny"),
+        ("x\n\tb|\n    c\ny", "gUii", "x\n|\tB\n    C\ny"),
         ("x\n    b|\n\tc\ny", "gUii", "x\n|    B\n\tC\ny"),
         ("x\n  \tb|\n\tc\ny", "gUii", "x\n|  \tB\n\tC\ny"),
     ])

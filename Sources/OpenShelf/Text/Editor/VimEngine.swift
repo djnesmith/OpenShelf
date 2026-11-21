@@ -2356,7 +2356,8 @@ struct VimEngine {
         func line(_ i: Int) -> Int { min(i, lines.count - 1) }
         func blank(_ i: Int) -> Bool { lines[line(i)].allSatisfy { $0 == " " || $0 == "\t" } }
         func indent(_ i: Int) -> Int {
-            lines[line(i)].prefix { $0 == " " || $0 == "\t" }.reduce(0) { $1 == "\t" ? ($0 / 8 + 1) * 8 : $0 + 1 }
+            // Doom's tab-width is 4.
+            lines[line(i)].prefix { $0 == " " || $0 == "\t" }.reduce(0) { $1 == "\t" ? ($0 / 4 + 1) * 4 : $0 + 1 }
         }
         /// evil-indent-plus--seek: from `start`, while `holds`, by whole lines. `before`: the
         /// last line where it holds, else the first where it fails.
