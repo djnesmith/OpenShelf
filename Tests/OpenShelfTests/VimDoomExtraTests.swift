@@ -130,4 +130,11 @@ struct VimDoomExtraTests {
     func wordOnTheEmptyLastLine(start: String, keys: String, expected: String) {
         #expect(VimEngineTests.marked(VimEngineTests.run(start, keys)) == expected)
     }
+
+    /// dif's text where Doom's cursor column depends on the major mode (checked in emacs --batch:
+    /// python-mode and js-mode leave the cursor at the line's start there).
+    @Test func defunTextInOtherModes() {
+        #expect(VimEngineTests.run("class A:\n    def f(self):\n        |a\n    def g(self):\n        b", "dif").string == "class A:\n    def g(self):\n        b")
+        #expect(VimEngineTests.run("function f() {\n  |a;\n}\nfunction g() {}", "dif").string == "function g() {}")
+    }
 }

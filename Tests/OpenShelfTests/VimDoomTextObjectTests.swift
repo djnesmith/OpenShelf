@@ -580,4 +580,33 @@ struct VimDoomTextObjectTests {
     func snipe(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// if / af, Doom's defun object, in the mode the text is guessed to be (C21).
+    @Test(arguments: [
+        ("(ns a)\n\n(defn f [x]\n  (let [y| 1]\n    y))\n\n(def b 2)", "dif", "(ns a)\n\n(def b 2|)"),
+        ("(ns a)\n\n(defn f [x]\n  (let [y| 1]\n    y))\n\n(def b 2)", "daf", "(ns a)\n\n(def b 2|)"),
+        ("(ns a)\n\n(defn f [x]\n  (let [y| 1]\n    y))\n\n(def b 2)", "cifX<Esc>", "(ns a)\n\n|X\n(def b 2)"),
+        ("(ns a)\n\n(defn f [x]\n  (let [y| 1]\n    y))\n\n(def b 2)", "vifd", "(ns a)\n\n|(def b 2)"),
+        ("(a)\n|\n(b)", "dif", "|(b)"),
+        ("(a)\n\n|(b)\n", "daf", "(a)\n\n|"),
+        ("(a) (b|)", "dif", "|"),
+        ("(defn f []\n  1)\n|;; c\n(g)", "dif", "|;; c\n(g)"),
+        ("def f():\n    |a\n\ndef g():\n    b", "dif", "def |g():\n    b"),
+        ("function f() {\n  |a;\n}\n\nfunction g() {}", "dif", "fu|nction g() {}"),
+        ("|(a)\n(b)", "dif", "|(b)"),
+        ("(a\n|)", "daf", "|"),
+        ("(a)\n(b|\n c)\n(d)", "dif", "(a)\n|(d)"),
+        ("(a)\n(b|\n c)\n\n\n(d)", "dif", "(a)\n|\n(d)"),
+        ("(a)\n(b|\n c)\n;; x\n(d)", "dif", "(a)\n|;; x\n(d)"),
+        ("(a)\n(b|\n c) ; t\n(d)", "dif", "(a)\n|(d)"),
+        ("|\n\n(a)", "dif", "|\n\n(a)"),
+        ("x\n(a|)\n", "dif", "x\n|"),
+        ("def f():\n    a\n\n\ndef g():\n    |b\n    c\n\nx = 1", "dif", "def f():\n    a\n\n\nx = |1"),
+        ("var x = 1;\nfunction f() {\n  |a;\n}", "dif", "va|r x = 1;"),
+        ("(a)\n\nx\n|y", "dif", "(a)\n\nx\n|y"),
+        ("(a)\nx\n|y", "dif", "(a)\nx\n|y"),
+    ])
+    func defun(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

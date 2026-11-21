@@ -528,7 +528,7 @@ In his Doom setup:
 | C18 | `ia` / `aa`: one argument, with its comma (evil-args) — **built**; only `,` and `;` split, as in his Doom (`evil-args-delimiters`), so not Clojure's spaces | M | — |
 | C19 | `ii` / `ai` (and `ij` `ik`): lines at the cursor's indent or deeper (evil-indent-plus) — **built** | S | — |
 | C20 | `ig` / `ag`: the whole text (Doom) — **built** | S | — |
-| C21 | `if` / `af`: the function; for Clojure the top-level form (Doom defun) | M | A rule per file type |
+| C21 | `if` / `af`: the function; for Clojure the top-level form (Doom defun) — **built** | M | — |
 | C22 | `ic` / `ac`: a comment (evil-nerd-commenter) — **built** | S | — |
 | C23 | `iu` URL and `ix` XML attribute (exato) — **built** | S each | — |
 | C24 | `iB` / `aB` as the nearest block of any kind, as Doom's anyblock — **built** (David, 2026-11-21: "do it my doom emacs way"); `i{` stays `{ }` | S | — |

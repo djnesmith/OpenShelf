@@ -1497,7 +1497,7 @@ struct VimEngine {
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
             guard index < keys.count else { return .incomplete }
-            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikjauxc".contains(kind) else { return .invalid }
+            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikjauxcf".contains(kind) else { return .invalid }
             index += 1
             return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
@@ -1595,6 +1595,7 @@ struct VimEngine {
         case .textObject(_, "u")?: "no URL here"
         case .textObject(_, "x")?: "no attribute here"
         case .textObject(_, "c")?: "not in a comment"
+        case .textObject(_, "f")?: "no function here"
         default: "nothing to do"
         }
         return "\(keys): \(reason)"
@@ -2262,9 +2263,16 @@ struct VimEngine {
             }
             if linewise {
                 guard !range.isEmpty else { return }
+                let column = lineIndex(cursor) == range.lowerBound ? 0 : cursor - lineStart(cursor)
                 applyLines(op, range.lowerBound, range.upperBound - 1)
                 // yap and yip go to the block's first line, at its start.
                 if op == .yank { cursor = lineStarts[range.lowerBound] }
+                // Doom's dif keeps the cursor's column (evil-start-of-line is off), but from the
+                // function's first line it goes to the line's start.
+                if op == .delete, kind == "f", mode == .normal {
+                    let start = lineStart(cursor)
+                    cursor = start + min(column, max(lineEnd(start) - start - 1, 0))
+                }
             } else if op == .indent || op == .outdent {
                 applyLines(op, lineIndex(range.lowerBound), lineIndex(max(range.upperBound - 1, range.lowerBound)))
             } else if !range.isEmpty || op == .change || op == .yank {
@@ -2612,6 +2620,7 @@ struct VimEngine {
         case "a": return argumentObject(inner: inner, count: count).map { ($0, false) }
         case "u": return urlObject(inner: inner).map { ($0, false) }
         case "c": return commentObject().map { (inner ? $0.inner : $0.outer, false) }
+        case "f": return defunObject().map { ($0, true) }
         case "x": return xmlAttributeObject(inner: inner).map { ($0, false) }
         case "i", "k", "j": return indentObject(inner: inner, kind).map { ($0, true) }
         default: return nil
@@ -2619,6 +2628,47 @@ struct VimEngine {
     }
 
     // MARK: - Doom's text objects
+
+    /// Doom's if / af (+evil:defun-txtobj, Emacs's defun thing), as whole lines: the
+    /// function around the cursor and one blank line after it. Doom asks the major mode; the
+    /// window has none, so for Lisp text (as gc guesses it) a function is a top-level form, a
+    /// bracket at a line's start, from the nearest one at or above the cursor's line to its
+    /// closing bracket. Other text: the nearest line above the cursor, less indented, that
+    /// ends in ":" or "{", through the more indented lines after it and a closing bracket at
+    /// its own indentation.
+    private func defunObject() -> Range<Int>? {
+        let lines = string.components(separatedBy: "\n")
+        let starts = lineStarts
+        let here = lineIndex(cursor)
+        func blank(_ i: Int) -> Bool { lines[i].allSatisfy { $0 == " " || $0 == "\t" } }
+        func indent(_ i: Int) -> Int { lines[i].prefix { $0 == " " || $0 == "\t" }.count }
+        var first: Int, last: Int
+        if Self.commentString(for: string) == ";;" || lines.contains(where: { $0.hasPrefix("(") }) {
+            guard let top = (0...here).last(where: { lines[$0].first.map { "([{".contains($0) } ?? false }) else { return nil }
+            let open = text[starts[top]]
+            let close: Character = open == "(" ? ")" : open == "[" ? "]" : "}"
+            guard let end = matchingClose(open, close, from: starts[top]) else { return nil }
+            (first, last) = (top, lineIndex(end))
+        } else {
+            let base = blank(here) ? Int.max : indent(here)
+            guard let top = (0...here).last(where: { i in
+                !blank(i) && (i == here ? true : indent(i) < base) && ["{", ":"].contains(lines[i].trimmingCharacters(in: .whitespaces).last ?? " ")
+            }) else { return nil }
+            first = top
+            last = top
+            while last + 1 < lines.count, blank(last + 1) || indent(last + 1) > indent(top) || (indent(last + 1) == indent(top) && lines[last + 1].trimmingCharacters(in: .whitespaces).first.map { ")]}".contains($0) } == true) {
+                last += 1
+                if indent(last) == indent(top), !blank(last) { break }
+            }
+            // Blank lines at the end are not the function's; one is added below.
+            while last > first, blank(last) { last -= 1 }
+        }
+        guard here <= last + 1 else { return nil }
+        // One blank line after, but not the empty end after a final line break (no line to Emacs).
+        let realLines = text.last == "\n" ? lines.count - 1 : lines.count
+        if last + 1 < realLines, blank(last + 1) { last += 1 }
+        return first..<(last + 1)
+    }
 
     /// A comment for Doom's ic / ac (evil-nerd-commenter): its lines; the inner text of a
     /// one-line comment (from its first word to the line's end); the columns of the block a

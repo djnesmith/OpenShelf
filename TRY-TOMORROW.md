@@ -92,7 +92,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `VG` then `g⌃A` on lines of `0` numbers them 1, 2, 3; `viw*` finds the next copy of a selection;
     `glip=` lines up the `=` signs of a paragraph;
     `gxiw` on one word, then `gxiw` on another, swaps them;
-    `s` then two letters jumps to them on the line, `s` again to the next (vim's `s` is now `cl`). (#53)
+    `s` then two letters jumps to them on the line, `s` again to the next (vim's `s` is now `cl`);
+    `yif` copies the Clojure form the cursor is in. (#53)
 
 ## Needs your decision
 

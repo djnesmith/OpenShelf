@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 14 | 0 | 14 |
+| Vim features (C16–C43) | 15 | 0 | 13 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 32 | 5 | 55 |
+| **Total** | 33 | 5 | 54 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -236,7 +236,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `ia` / `aa`, argument (evil-args) | Built | Only `,` and `;` split, as in evil-args, so a Clojure form is one argument | — |
 | `ii` / `ai`, indent level (evil-indent-plus; also `ij` `ik`) | Built | With evil-indent-plus's quirks: `dii` leaves an empty line | — |
 | `ig` / `ag`, whole buffer (Doom) | Built | | — |
-| `if` / `af`, function (Doom defun) | Not built | For Clojure, the top-level form | M |
+| `if` / `af`, function (Doom defun) | Built | Whole lines and one blank line after, as Doom; Lisp text by top-level form, other text by indentation | — |
 | `ic` / `ac`, comment (evil-nerd-commenter) | Built | Comments over several lines make a block, as in Doom | — |
 | `iu` url, `ix` XML attribute (exato) | Built | A URL needs a scheme, as in Emacs | — |
 | `iB` / `aB` any block (anyblock) | Built | Doom's meaning (David, 2026-11-21): the nearest of `( ) { } [ ] < >`; `i{` is `{ }` | — |
