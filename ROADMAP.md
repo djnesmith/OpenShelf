@@ -526,7 +526,7 @@ In his Doom setup:
 | C16 | Surround a function call: `ysiwf` asks for a name and makes `foo(x)` (evil-surround/embrace `f`) | S | — |
 | C17 | `iq` / `aq`: the nearest quotes of any kind (Doom) — **built** | S | — |
 | C18 | `ia` / `aa`: one argument, with its comma or space (evil-args); Clojure forms split on spaces | M | — |
-| C19 | `ii` / `ai` (and `ij` `ik`): lines at the cursor's indent or deeper (evil-indent-plus) | S | — |
+| C19 | `ii` / `ai` (and `ij` `ik`): lines at the cursor's indent or deeper (evil-indent-plus) — **built** | S | — |
 | C20 | `ig` / `ag`: the whole text (Doom) — **built** | S | — |
 | C21 | `if` / `af`: the function; for Clojure the top-level form (Doom defun) | M | A rule per file type |
 | C22 | `ic` / `ac`: a comment (evil-nerd-commenter) | S | A comment string per file type |

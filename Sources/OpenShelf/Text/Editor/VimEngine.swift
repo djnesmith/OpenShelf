@@ -1140,7 +1140,7 @@ struct VimEngine {
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
             guard index < keys.count else { return .incomplete }
-            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qg".contains(kind) else { return .invalid }
+            guard case .char(let kind) = keys[index], "wWpt\"'`()b[]{}B<>qgikj".contains(kind) else { return .invalid }
             index += 1
             return .done(.textObject(inner: c == "i", kind))
         case "f", "F", "t", "T":
@@ -1770,6 +1770,14 @@ struct VimEngine {
             apply(op, from: word.start, to: Target(position: word.end, kind: word.inclusive ? .inclusive : .exclusive))
             return
         }
+        if case .textObject(let inner, let kind) = motion, "ikj".contains(kind) {
+            guard let (lines, _) = textObject(inner: inner, kind, count: count) else {
+                failed = true
+                return
+            }
+            operateOnIndent(op, lines: lines)
+            return
+        }
         if case .textObject(let inner, let kind) = motion {
             guard let (range, linewise) = textObject(inner: inner, kind, count: count) else {
                 failed = true
@@ -2112,11 +2120,86 @@ struct VimEngine {
         case "q": return anyQuoteObject(inner: inner, count: count).map { ($0, false) }
         // Doom's ig / ag (+evil:whole-buffer-txtobj): all the text, as characters.
         case "g": return (0..<text.count, false)
+        case "i", "k", "j": return indentObject(inner: inner, kind).map { ($0, true) }
         default: return nil
         }
     }
 
     // MARK: - Doom's text objects
+
+    /// Doom's ii / ai, ik / ak, ij / aj (evil-indent-plus): the lines around
+    /// the cursor's at its indentation or deeper, blank lines included but not at the ends;
+    /// k adds the line above with less indentation, j that line and the one below. a… adds
+    /// the blank lines after (or, with none, before). A port of evil-indent-plus.el, whose
+    /// odd edges it keeps.
+    private func indentObject(inner: Bool, _ kind: Character) -> Range<Int>? {
+        let lines = string.components(separatedBy: "\n")
+        // forward-line can't go past the last line's start when the text ends in a line break.
+        let end = text.last == "\n" || text.isEmpty ? lines.count - 1 : lines.count
+        func line(_ i: Int) -> Int { min(i, lines.count - 1) }
+        func blank(_ i: Int) -> Bool { lines[line(i)].allSatisfy { $0 == " " || $0 == "\t" } }
+        func indent(_ i: Int) -> Int {
+            lines[line(i)].prefix { $0 == " " || $0 == "\t" }.reduce(0) { $1 == "\t" ? ($0 / 8 + 1) * 8 : $0 + 1 }
+        }
+        /// evil-indent-plus--seek: from `start`, while `holds`, by whole lines. `before`: the
+        /// last line where it holds, else the first where it fails.
+        func seek(_ start: Int, _ step: Int, before: Bool, skip: Bool, _ holds: (Int) -> Bool) -> Int {
+            func move(_ i: Int) -> Int { step < 0 ? max(i - 1, 0) : min(i + 1, end) }
+            var i = start, found = start
+            if skip { i = move(i) }
+            while i != (step < 0 ? 0 : end), holds(i) {
+                if before { found = line(i) }
+                i = move(i)
+                if !before { found = line(i) }
+            }
+            return found
+        }
+        let here = lineIndex(cursor), base = indent(here)
+        var first = seek(here, -1, before: true, skip: false) { blank($0) || indent($0) >= base }
+        first = seek(first, 1, before: false, skip: false) { blank($0) || indent($0) > base }
+        var last = seek(here, 1, before: true, skip: false) { blank($0) || indent($0) >= base }
+        last = seek(last, -1, before: false, skip: false) { blank($0) }
+        if kind == "k" || kind == "j" { first = seek(first, -1, before: false, skip: false) { blank($0) || indent($0) >= base } }
+        if kind == "j" { last = seek(last, 1, before: false, skip: false) { blank($0) || indent($0) >= base } }
+        if !inner {
+            let after = seek(last, 1, before: true, skip: true) { blank($0) }
+            if after == last { first = seek(first, -1, before: true, skip: true) { blank($0) } }
+            last = after
+        }
+        return first..<(max(first, last) + 1)
+    }
+
+    /// An operator on ii, ik or ij. evil-indent-plus hands evil the lines' text without the
+    /// last line break, so Doom's operators treat it oddly, and this keeps their results: d
+    /// leaves an empty line (at the text's end it takes the line break before instead); c
+    /// does that, then types on a new line above the empty one (below, at the end); y takes
+    /// whole lines and goes to the first line's start. Visual mode selects whole lines.
+    private mutating func operateOnIndent(_ op: Operator, lines: Range<Int>) {
+        let starts = lineStarts
+        let start = starts[lines.lowerBound], end = lineEnd(starts[lines.upperBound - 1])
+        let low = end == text.count && lines.lowerBound > 0 ? start - 1 : start
+        switch op {
+        case .yank:
+            applyLines(.yank, lines.lowerBound, lines.upperBound - 1)
+            cursor = start
+        case .delete:
+            apply(.delete, to: low..<end)
+        case .change:
+            store(VimRegister(text: String(text[start..<end]) + "\n", linewise: true), yank: false)
+            checkpoint(at: start)
+            text.removeSubrange(low..<end)
+            if low < start {
+                text.append("\n")
+                cursor = text.count
+            } else {
+                text.insert("\n", at: start)
+                cursor = start
+            }
+            beginInsert()
+        default:
+            apply(op, to: start..<end)
+        }
+    }
 
     /// Doom's iq / aq (`+evil:inner-any-quote`, evil-textobj-anyblock over ' " ` and “ ”):
     /// each kind of quote gives a string, around the cursor or the next one after it, and
