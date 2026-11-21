@@ -672,6 +672,15 @@ enum MailKeys {
         static let other = Modifiers(rawValue: 2)
     }
 
+    /// The `?` panel's text: each key column padded to the longest, never cut (2026-11-21:
+    /// a fixed 24-column pad cut "g r" and "g a" off their lines; David: "in the ? dialog
+    /// you can't see it").
+    static var helpText: String {
+        let width = help.map(\.0.count).max() ?? 0
+        return help.map { $0.0.padding(toLength: width + 3, withPad: " ", startingAt: 0) + $0.1 }.joined(separator: "\n")
+            + "\n\nAny key closes this."
+    }
+
     /// The `?` list, one line a key, in the table's order.
     static let help: [(String, String)] = [
         ("j / k  or  ⌃N / ⌃P", "next / previous message"), ("o", "open"), ("/", "search"),

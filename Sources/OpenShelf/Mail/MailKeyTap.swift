@@ -1157,17 +1157,29 @@ final class MailKeyHelp {
     func close() { panel?.orderOut(nil) }
 
     private func make() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 380), styleMask: [.titled, .nonactivatingPanel, .utilityWindow], backing: .buffered, defer: false)
+        let label = NSTextField(labelWithString: MailKeys.helpText)
+        label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        // Sized to the text, so no line or row is cut; on a screen too small for it, the
+        // text scrolls inside the largest panel that fits.
+        let inset: CGFloat = 16
+        let fit = label.fittingSize
+        let screen = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
+        let size = CGSize(width: min(fit.width + 2 * inset, screen.width * 0.9), height: min(fit.height + 2 * inset, screen.height * 0.9))
+        let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .nonactivatingPanel, .utilityWindow], backing: .buffered, defer: false)
         panel.title = "Mail keys"
         panel.level = .floating
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        let text = MailKeys.help.map { "\($0.0.padding(toLength: 24, withPad: " ", startingAt: 0))\($0.1)" }.joined(separator: "\n")
-        let label = NSTextField(labelWithString: text + "\n\nAny key closes this.")
-        label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        let stack = NSStackView(views: [label])
-        stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
-        panel.contentView = stack
+        label.frame = NSRect(x: inset, y: inset, width: fit.width, height: fit.height)
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: fit.width + 2 * inset, height: fit.height + 2 * inset))
+        document.addSubview(label)
+        let scroll = NSScrollView(frame: NSRect(origin: .zero, size: size))
+        scroll.documentView = document
+        scroll.hasVerticalScroller = fit.height + 2 * inset > size.height
+        scroll.hasHorizontalScroller = fit.width + 2 * inset > size.width
+        scroll.drawsBackground = false
+        document.scroll(NSPoint(x: 0, y: document.bounds.height))
+        panel.contentView = scroll
         self.panel = panel
         return panel
     }

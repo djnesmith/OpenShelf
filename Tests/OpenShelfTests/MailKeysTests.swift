@@ -860,4 +860,25 @@ struct MailKeysTests {
         #expect(!MailKeys.reminderCleared(itemOff: false, rowsBefore: 10, rowsNow: 10))
         #expect(!MailKeys.reminderCleared(itemOff: false, rowsBefore: nil, rowsNow: nil))
     }
+
+    /// Every key in the tables shows in the `?` panel's text, whole: a new key can't be left
+    /// out, and no column is cut (a 24-column pad cut "g r" and "g a").
+    @Test func everyKeyIsInTheHelpPanel() {
+        let lines = MailKeys.helpText.split(separator: "\n").map(String.init)
+        let keyColumns = MailKeys.help.map { $0.0 }
+        for column in keyColumns { #expect(lines.contains { $0.hasPrefix(column) }, "\(column)") }
+        func tokens(_ column: String) -> [String] { column.split(separator: " ").map(String.init) }
+        func shown(_ key: Character, after prefix: String? = nil) -> Bool {
+            let names = [String(key), "⇧" + String(key)]
+            return keyColumns.contains { column in
+                let t = tokens(column)
+                guard let prefix else { return t.contains { names.contains($0) } }
+                return zip(t, t.dropFirst()).contains { $0 == prefix && names.contains($1) }
+            }
+        }
+        for key in MailKeys.single.keys { #expect(shown(key), "\(key)") }
+        for key in MailKeys.afterG.keys { #expect(shown(key, after: "g"), "g \(key)") }
+        for key in MailKeys.afterStar.keys { #expect(shown(key, after: "*"), "* \(key)") }
+        #expect(MailKeys.helpText.contains("g l  g r"))
+    }
 }
