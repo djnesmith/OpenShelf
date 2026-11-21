@@ -276,9 +276,8 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | Undo `u`, redo `⌃R` | Built | A line of undo, not a tree; no `g-` `g+` | M for a tree |
 | Macros `q` `@` `@@` | Built | Not kept between windows; `@:` built (C43) | — |
 
-Found while checking, worth fixing whatever David picks: `cgn` deletes a character instead of
-failing; `=ip` and `ma` drop into insert mode because the first key is unknown; `gcc` does
-nothing and says nothing.
+Found while checking on 11-20 and since fixed: `cgn`, `=ip`, `ma` and `gcc` are built (C36, C34,
+C37, C25); unbuilt commands read all their keys and say "not built".
 
 ## Edit window, different from vim
 

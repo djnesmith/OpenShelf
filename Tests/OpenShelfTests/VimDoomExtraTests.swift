@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import OpenShelf
 
@@ -220,5 +221,29 @@ struct VimDoomExtraTests {
     @Test func repeatExWithNoCommandSaysSo() {
         let engine = VimEngineTests.run("|a", "@:")
         #expect(engine.message == "E30: No previous command line")
+    }
+
+    /// Review of batch 4: one undo for a counted @:, marks on repeated lines, m in visual mode,
+    /// gp with nothing pasted, [( with a count past the brackets.
+    @Test func reviewEdges() {
+        #expect(VimEngineTests.run("|a a\na a\na a\na a", ":s/a/b/<CR>j3@:u").string == "b a\na a\na a\na a")
+        #expect(VimEngineTests.marked(VimEngineTests.run("|foo\nfoo\nfoo", "jjmaggyyP'ax")) == "foo\nfoo\nfoo\n|oo")
+        #expect(VimEngineTests.run("|ab cd", "wvlmao<Esc>0`a").cursor == 4)
+        let noPaste = VimEngineTests.run("|ab", "gp")
+        #expect(noPaste.mode == .normal && noPaste.string == "ab")
+        #expect(VimEngineTests.run("(a |b)", "5[(").cursor == 3)
+    }
+
+    /// moveMarks runs once per key typed, not per key a macro plays, so a mark costs a macro
+    /// little on a long text (review: 300@a went from 6.8 s to 16.5 s with a mark set).
+    @Test(.timeLimit(.minutes(1))) func marksDoNotSlowMacros() {
+        let text = (0..<2000).map { "line \($0) text" }.joined(separator: "\n")
+        var engine = VimEngine(text)
+        _ = engine.handle(VimEngineTests.keys("Gmagg"))
+        _ = engine.handle(VimEngineTests.keys("qaI// <Esc>jq100@a"))
+        #expect(engine.string.hasPrefix("// line 0"))
+        // The mark still moved with the 101 lines the macro changed above it.
+        _ = engine.handle(VimEngineTests.keys("`a"))
+        #expect(VimEngineTests.marked(engine).hasSuffix("\n|line 1999 text"))
     }
 }

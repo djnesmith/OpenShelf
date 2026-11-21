@@ -112,6 +112,9 @@ struct VimEngine {
     /// on, and a change is found by what stayed the same at either end.
     private var marks: [Character: Int] = [:]
     private var marksText: [Character] = []
+    /// The cursor when the marks were last checked: changes start at the cursor, so a change
+    /// in repeated text is taken there rather than as late as the text allows.
+    private var marksCursor = 0
     /// What `R` replaced, newest last (nil: a character added past the line's end), for
     /// Backspace; the keys typed, for the count and `.`.
     private var replaced: [Character?] = []
@@ -215,7 +218,8 @@ struct VimEngine {
     /// Handles one key. Returns `.finish` or `.cancel` when the window should close.
     mutating func handle(_ key: VimKey) -> VimEffect? {
         message = nil
-        moveMarks()
+        // Once per key typed, not for each key a macro or "." plays, which keeps those fast.
+        if playDepth == 0, !isRepeating { moveMarks() }
         if playDepth == 0, !isRepeating { failureHint = nil }
         if recording != nil, playDepth == 0, !isRepeating { recordedKeys.append(key) }
         switch mode {
@@ -668,8 +672,7 @@ struct VimEngine {
         var result: [Range<Int>] = []
         var i = low
         while i < high {
-            // Every turn must move on; one that doesn't ends the forms rather than loop forever
-            // (2026-11-21: a stray ")" spun here and froze the app).
+            // Every turn must move on; one that doesn't ends the forms rather than loop forever.
             let turn = i
             defer { if i <= turn { i = high + 1 } }
             let c = text[i]
@@ -1370,7 +1373,7 @@ struct VimEngine {
     /// mode). nil: not one of them; .some(nil): wait for more keys; .some(reason): done.
     static let unbuiltOperators = ["!", "g?", "gw", "g@", "zf"]
     static let unbuiltWithArgument: [String: String] = [
-        "z": "not built", "[": "not built", "]": "not built",
+        "z": "not built", "[": "not built", "]": "not built", "g'": "not built", "g`": "not built",
     ]
     static let unbuiltAlone = ["gi", "g;", "g,", "g+", "gd", "gD", "g*", "g#", "g&"]
 
@@ -1384,9 +1387,15 @@ struct VimEngine {
         // "g" or "z" alone waits for its next key; "g⌃A" (a ⌃ key next) is left to the parser.
         if typed == "g" || typed == "z", keys.count > start + typed.count { return nil }
         if typed == "g" || typed == "z" && !inVisual { return .some(nil) }
-        if Self.unbuiltAlone.contains(where: { typed.hasPrefix($0) }), !inVisual || typed.hasPrefix("gJ") {
+        if Self.unbuiltAlone.contains(where: { typed.hasPrefix($0) }), !inVisual {
             return .some("not built")
         }
+        // ' and ` before a letter are marks; before anything else ('' `. '<) not built.
+        if !inVisual, typed.count >= 2, typed.first == "'" || typed.first == "`", let second = typed.dropFirst().first,
+           !(second.isASCII && second.isLetter) {
+            return .some("not built")
+        }
+        if !inVisual, typed == "'" || typed == "`" { return .some(nil) }
         // [( [{ ]) ]} are built (ROADMAP C41); the rest of [ and ] are not.
         if ["[(", "[{", "])", "]}"].contains(where: { typed.hasPrefix($0) }) { return nil }
         for (prefix, reason) in Self.unbuiltWithArgument where !inVisual && typed.hasPrefix(prefix) {
@@ -1640,6 +1649,10 @@ struct VimEngine {
                 guard case .char(let target)? = next() else { return next() == nil ? .incomplete : .invalid }
                 return .done(Command(count: nil, action: .simple("blockr\(target)")))
             case "q" where recording != nil: return .done(Command(count: nil, action: .simple("q")))
+            case "m":
+                guard case .char(let name)? = next() else { return next() == nil ? .incomplete : .invalid }
+                guard name.isASCII, name.isLetter else { return .invalid }
+                return .done(Command(count: nil, action: .simple("mark\(name)")))
             default: return .invalid
             }
         }
@@ -2142,6 +2155,10 @@ struct VimEngine {
                 replaceSelection()
             case "gp":
                 replaceSelection(keepRegisters: true)
+            case let name where name.hasPrefix("mark") && name.count == 5:
+                // m in visual mode sets the mark at the cursor, as evil does.
+                moveMarks()
+                marks[name.last!] = cursor
             case "gJ":
                 let (low, high) = (min(anchor, cursor), max(anchor, cursor))
                 mode = .normal
@@ -2260,11 +2277,17 @@ struct VimEngine {
                 }
                 lastMacro = ":"
                 var effect: VimEffect?
+                // One undo takes back every run, as for a macro.
+                let undoBase = undoStack.count, trimmedBefore = undoTrimmed
                 for _ in 0..<min(n, 10_000) where !failed { effect = runCommandLine(line) ?? effect }
+                let first = undoBase - (undoTrimmed - trimmedBefore)
+                if first >= 0, undoStack.count > first + 1 { undoStack.removeSubrange((first + 1)...) }
                 return effect
             } else if name.hasPrefix("@"), name.count == 2, let register = name.last {
                 play(register == "@" ? lastMacro : register, count: n)
             } else if name.hasPrefix("mark"), name.count == 5, let mark = name.last {
+                // Bring the others up to date first, so this one is placed on today's text.
+                moveMarks()
                 marks[mark] = cursor
             } else if name.hasPrefix("r"), name.count == 2, let target = name.last {
                 replaceCharacters(with: target, count: n)
@@ -3060,9 +3083,12 @@ struct VimEngine {
     /// Moves the marks with what changed since they were last checked: a mark after the
     /// change shifts by its length, one inside it goes to its start.
     private mutating func moveMarks() {
-        defer { marksText = text }
+        defer {
+            marksText = text
+            marksCursor = cursor
+        }
         guard !marks.isEmpty, marksText != text else { return }
-        let prefix = zip(marksText, text).prefix { $0 == $1 }.count
+        let prefix = min(zip(marksText, text).prefix { $0 == $1 }.count, marksCursor)
         let room = min(marksText.count, text.count) - prefix
         let suffix = min(zip(marksText.reversed(), text.reversed()).prefix { $0 == $1 }.count, room)
         let oldEnd = marksText.count - suffix, delta = text.count - marksText.count
