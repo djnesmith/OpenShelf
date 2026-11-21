@@ -17,6 +17,7 @@ struct MailScriptTermTests {
          ("move to a nested mailbox", MailScripts.moveAndCheck(account: "Work", chain: ["Clients", "Acme (2026)"])),
          ("move in On My Mac", MailScripts.moveAndCheck(account: "", chain: ["Old"])),
          ("selection accounts", MailScripts.selectionAccounts),
+         ("show all mail", MailScripts.showAllMail),
          ("list one account", MailScripts.accountListing("Work")),
          ("list On My Mac", MailScripts.accountListing(""))]
     }

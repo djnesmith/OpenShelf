@@ -26,7 +26,7 @@ struct MailKeysTests {
     @Test func prefixes() {
         #expect(MailKeys.outcome(for: "g", pending: nil) == .prefix("g"))
         #expect(MailKeys.outcome(for: "i", pending: "g") == .act(.favorite("Inbox")))
-        #expect(MailKeys.outcome(for: "a", pending: "g") == .act(.favorite("Archive")))
+        #expect(MailKeys.outcome(for: "a", pending: "g") == .act(.favorite("All Mail")))
         #expect(MailKeys.outcome(for: "*", pending: nil) == .prefix("*"))
         #expect(MailKeys.outcome(for: "a", pending: "*") == .act(.menu("Edit", "Select All")))
         // A second key that means nothing after the prefix goes to Mail.
@@ -271,6 +271,29 @@ struct MailKeysTests {
 
     /// `u`: a message window closes, the viewer's reading pane gives the list the keyboard,
     /// the list itself does nothing; a message being written or a sheet: nothing.
+    /// `u` with a folder selected: focus in the sidebar (an outline, like the list) or on the
+    /// window itself is not in the message list, so u gives the list the keyboard; focus on
+    /// a row or cell inside the list is.
+    @Test func focusInTheSidebarIsNotTheList() {
+        final class N { let parent: N?; init(_ parent: N?) { self.parent = parent } }
+        let window = N(nil), split = N(window)
+        let sidebar = N(split), folderRow = N(sidebar)
+        let list = N(split), row = N(list), cell = N(row)
+        func inside(_ focused: N?) -> Bool { MailKeys.isInside(focused, list, parent: { $0.parent }, same: { $0 === $1 }) }
+        #expect(inside(list))
+        #expect(inside(cell))
+        #expect(!inside(sidebar))
+        #expect(!inside(folderRow))
+        #expect(!inside(window))
+        #expect(!inside(nil))
+        #expect(!MailKeys.isInside(cell, nil, parent: { $0.parent }, same: { $0 === $1 }))
+        let viewer = MailKeys.WindowFacts(isStandardWindow: true, isViewer: true, hasSheetOrPopover: false, hasComposeControls: false, textFieldCount: 0)
+        #expect(MailKeys.backToList(viewer, focusInList: inside(folderRow), sendEnabled: false) == .focusList)
+        // Renaming a mailbox in the sidebar is a text field: u goes to Mail untouched.
+        #expect(!MailKeys.mayTake(focusedRole: "AXTextField", isEditable: true, sendEnabled: false, modifiers: [], action: .backToList))
+        #expect(!MailKeys.mayTake(focusedRole: "AXTextField", isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: true, action: .backToList))
+    }
+
     @Test func backToListInEachState() {
         typealias F = MailKeys.WindowFacts
         let message = F(isStandardWindow: true, isViewer: false, hasSheetOrPopover: false, hasComposeControls: false, textFieldCount: 0)
@@ -502,14 +525,33 @@ struct MailKeysTests {
     }
 
     /// David's go-to keys (2026-11-20): g i All Inboxes, g f Flagged, g s All Sent, g t All
-    /// Trash, g d All Drafts, g a All Archive; g g stays the first message.
+    /// Trash, g d All Drafts, g a All Mail (David, 2026-11-20 evening; was All Archive); g g
+    /// stays the first message.
     @Test func goToKeys() {
         let expected: [Character: MailKeys.Action] = ["i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"),
-                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("Archive"), "g": .firstMessage,
+                                                      "t": .favorite("Trash"), "d": .favorite("Drafts"), "a": .favorite("All Mail"), "g": .firstMessage,
                                                       "j": .favorite("Junk"), "u": .favorite("Follow Up"), "l": .favorite("Send Later"), "r": .favorite("Remind Me")]
         for (key, action) in expected { #expect(MailKeys.outcome(for: key, pending: "g") == .act(action), "g \(key)") }
         #expect(MailKeys.outcome(for: "g", pending: nil) == .prefix("g"))
-        #expect(MailKeys.help.contains { $0.0.contains("g f") && $0.1.contains("All Trash") })
+        #expect(MailKeys.help.contains { $0.0.contains("g a") && $0.1.contains("All Mail") && !$0.1.contains("All Archive") })
+    }
+
+    /// g a's script answer: which All Mail it showed, none, or a failure; and the viewer's
+    /// title "All Mail" (with or without an account after it) counts as arrived.
+    @Test func allMailAnswers() {
+        #expect(MailKeys.allMailResult("#OK selected\n") == .selected)
+        #expect(MailKeys.allMailResult("#OK first") == .first)
+        #expect(MailKeys.allMailResult("#NONE") == .none)
+        #expect(MailKeys.allMailResult(nil) == .failed)
+        #expect(MailKeys.allMailResult("") == .failed)
+        #expect(MailKeys.unifiedIndex(for: "All Mail", in: ["All Inboxes", "All Mail (3)"]) == 1)
+        #expect(MailKeys.showsUnified("All Mail", windowTitle: "All Mail – 12 messages"))
+        #expect(!MailKeys.showsUnified("All Mail", windowTitle: "All Inboxes"))
+        // It asks for the mailbox by name and never searches or reads messages.
+        let script = MailScripts.showAllMail
+        #expect(script.contains("exists mailbox \"All Mail\""))
+        #expect(!script.contains("messages of"))
+        #expect(script.contains("with timeout of 5 seconds"))
     }
 
     /// The unified mailbox is found by Mail's titles now: "All …" with several accounts, the

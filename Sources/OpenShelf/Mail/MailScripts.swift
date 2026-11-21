@@ -64,6 +64,36 @@ enum MailScripts {
     return osOut
     """
 
+    /// `g a`: shows Gmail's All Mail in the front viewer: the selected message's account's,
+    /// else the first enabled account that has one. Asks for the mailbox by name; never
+    /// reads its messages. "#OK selected", "#OK first" or "#NONE".
+    static let showAllMail = """
+    tell application id "com.apple.mail"
+        with timeout of 5 seconds
+            set osTarget to missing value
+            set osWhere to "first"
+            try
+                set osAccountRef to account of mailbox of (item 1 of (selection as list))
+                if exists mailbox "All Mail" of osAccountRef then
+                    set osTarget to mailbox "All Mail" of osAccountRef
+                    set osWhere to "selected"
+                end if
+            end try
+            if osTarget is missing value then
+                repeat with osAccountRef in (every account whose enabled is true)
+                    if exists mailbox "All Mail" of osAccountRef then
+                        set osTarget to mailbox "All Mail" of osAccountRef
+                        exit repeat
+                    end if
+                end repeat
+            end if
+            if osTarget is missing value then return "#NONE"
+            set selected mailboxes of message viewer 1 to {osTarget}
+            return "#OK " & osWhere
+        end timeout
+    end tell
+    """
+
     /// One account's mailboxes (or On My Mac's, for an empty name), three levels deep, in
     /// three bulk requests instead of one per mailbox (2026-11-20: v was slow). Lines:
     /// "#L1 name", "#L2 i name", "#L3 i j name" (i, j: the parent's place in its level).

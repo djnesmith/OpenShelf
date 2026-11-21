@@ -879,7 +879,7 @@ sometimes doesn't and i don't know why. so command shift enter would send and Ar
     | `g s` | All Sent (David, 2026-11-20; Gmail's `g t`) | As above |
     | `g t` | All Trash (David, 2026-11-20) | As above |
     | `g d` | All Drafts | As above |
-    | `g a` | All Archive (Gmail: All Mail) | As above |
+    | `g a` | All Mail (David, 2026-11-20 evening; All Archive has no key now) | As above |
     | `g j` | All Junk (David, 2026-11-20) | As above |
     | `g u` | Follow Up (David, 2026-11-20) | As above; shown by Mail only when it holds messages |
     | `g l` | Send Later (David, 2026-11-20) | As above; shown only when it holds messages |

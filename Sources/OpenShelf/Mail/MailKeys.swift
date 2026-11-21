@@ -58,10 +58,32 @@ enum MailKeys {
     static let afterG: [Character: Action] = [
         // David, 2026-11-20: g f Flagged, g s All Sent, g t All Trash (not Gmail's letters).
         "i": .favorite("Inbox"), "f": .favorite("Flagged"), "s": .favorite("Sent"), "t": .favorite("Trash"),
-        "d": .favorite("Drafts"), "a": .favorite("Archive"), "g": .firstMessage,
+        // David, 2026-11-20: "\"g a\" should be \"All Mail\"" (it was All Archive).
+        "d": .favorite("Drafts"), "a": .favorite(allMail), "g": .firstMessage,
         // David, 2026-11-20: g j All Junk, g u Follow Up, g l Send Later, g r Remind Me.
         "j": .favorite("Junk"), "u": .favorite("Follow Up"), "l": .favorite("Send Later"), "r": .favorite("Remind Me"),
     ]
+
+    /// Gmail's All Mail: one per Gmail account, not a unified mailbox.
+    static let allMail = "All Mail"
+
+    enum AllMailResult: Equatable {
+        /// Shown: the selected message's account's, or the first account that has one.
+        case selected, first
+        /// No account has a mailbox named All Mail.
+        case none
+        /// Mail's script failed or answered something else.
+        case failed
+    }
+
+    static func allMailResult(_ text: String?) -> AllMailResult {
+        switch text?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "#OK selected": .selected
+        case "#OK first": .first
+        case "#NONE": .none
+        default: .failed
+        }
+    }
 
     static let afterStar: [Character: Action] = ["a": .menu("Edit", "Select All"), "n": .clearSelection]
 
@@ -224,6 +246,20 @@ enum MailKeys {
     /// What `u` does: close a message open on its own, give the list the keyboard in the
     /// viewer, or nothing when the list has it already (or anything is unsure).
     enum BackToList: Equatable { case close, focusList, nothing }
+
+    /// Whether `focused` is `list` or inside it, up to 8 levels. The sidebar is an outline
+    /// too, so a list role alone doesn't say focus is in the message list (David,
+    /// 2026-11-20: "when a folder is selected pressing u does not go back to the message list").
+    static func isInside<T>(_ focused: T?, _ list: T?, parent: (T) -> T?, same: (T, T) -> Bool) -> Bool {
+        guard let list else { return false }
+        var node = focused
+        for _ in 0..<8 {
+            guard let current = node else { return false }
+            if same(current, list) { return true }
+            node = parent(current)
+        }
+        return false
+    }
 
     static func backToList(_ window: WindowFacts?, focusInList: Bool, sendEnabled: Bool) -> BackToList {
         guard let window, !window.hasSheetOrPopover else { return .nothing }
@@ -461,7 +497,7 @@ enum MailKeys {
     /// The `?` list, one line a key, in the table's order.
     static let help: [(String, String)] = [
         ("j / k", "next / previous message"), ("o", "open"), ("/", "search"),
-        ("g i  g f  g s  g t  g d  g a", "All Inboxes, Flagged, All Sent, All Trash, All Drafts, All Archive"),
+        ("g i  g f  g s  g t  g d  g a", "All Inboxes, Flagged, All Sent, All Trash, All Drafts, All Mail"),
         ("g j  g u  g l  g r", "All Junk, Follow Up, Send Later, Remind Me"),
         ("e  or  ]", "archive"), ("[", "archive, then the message above"), ("x", "move to Trash"),
         ("r / a / f", "reply / reply all / forward"), ("s", "flag"), ("b", "snooze"),

@@ -603,16 +603,27 @@ enum MailKeyActions {
         AXUIElementSetMessagingTimeout(app, 0.5)
         guard let window = AXMenuNode.element(app, kAXFocusedWindowAttribute) else { return }
         let facts = MailKeyTap.facts(window, app: app)
-        let focusInList = AXMenuNode.element(app, kAXFocusedUIElementAttribute).flatMap { AXMenuNode.string($0, kAXRoleAttribute) }.map(MailKeys.listRoles.contains) ?? false
+        let messageList = AXSelectableList.inViewer(window)?.list
+        func focusInList() -> Bool {
+            MailKeys.isInside(AXMenuNode.element(app, kAXFocusedUIElementAttribute), messageList,
+                              parent: { AXMenuNode.element($0, kAXParentAttribute) }, same: { CFEqual($0, $1) })
+        }
         let sendEnabled = MailKeys.sendIsOn(menuRead: MailMenu.menuBar() != nil, send: MailMenu.menuBar().flatMap { MailMenu.find(MailMenu.send, in: $0) }?.isEnabled)
-        let plan = MailKeys.backToList(facts, focusInList: focusInList, sendEnabled: sendEnabled)
+        let plan = MailKeys.backToList(facts, focusInList: focusInList(), sendEnabled: sendEnabled)
         KeysLog.note("u: \(plan)")
         switch plan {
         case .close: close(window)
         case .focusList:
-            if let list = AXSelectableList.inViewer(window) {
-                AXUIElementSetAttributeValue(list.list, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            guard let messageList else { KeysLog.note("u: no message list in the viewer"); return }
+            // The list's own focus first; Mail may ignore it when the window itself has focus
+            // (2026-11-20, after a g key through the sidebar), so then the app's focus.
+            AXUIElementSetAttributeValue(messageList, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            var taken = focusInList()
+            if !taken {
+                AXUIElementSetAttributeValue(app, kAXFocusedUIElementAttribute as CFString, messageList)
+                taken = focusInList()
             }
+            KeysLog.note("u: list has the keyboard: \(taken ? "yes" : "no")")
         case .nothing: break
         }
     }
@@ -661,6 +672,20 @@ enum MailKeyActions {
         if let bar = MailMenu.menuBar(), let favorites = MailMenu.find(["Mailbox", "Go to Favorite Mailbox"], in: bar)?.children,
            let index = MailKeys.unifiedIndex(for: name, in: favorites.map(\.title)), favorites[index].isEnabled, favorites[index].press() {
             route = "Favorites"
+        } else if name == MailKeys.allMail {
+            // One All Mail per Gmail account: the script picks the selected message's.
+            Task { @MainActor in
+                let result = MailKeys.allMailResult(await MailScript.run("show all mail", MailScripts.showAllMail).text)
+                KeysLog.note("g a: All Mail script \(result)")
+                switch result {
+                case .selected, .first: checkArrival(name, route: "script (\(result))", app: app)
+                case .none:
+                    ToastController.shared.show(Toast(systemImage: "tray", title: "No All Mail in Mail", subtitle: "Only Gmail accounts have one"), for: .seconds(4))
+                case .failed:
+                    ToastController.shared.show(Toast(systemImage: "tray", title: "Couldn't open All Mail", subtitle: "Mail didn't answer; see mail-scripts.log"), for: .seconds(4))
+                }
+            }
+            return
         } else if let viewer = AXMenuNode.element(app, kAXFocusedWindowAttribute), selectSidebarRow(name, in: viewer) {
             route = "sidebar"
         }
@@ -672,6 +697,12 @@ enum MailKeyActions {
                                               subtitle: shownOnlyWhenFull ? "Mail shows it when it holds messages" : "Nor in the sidebar; add it to Favorites in Mail"), for: .seconds(5))
             return
         }
+        checkArrival(name, route: route, app: app)
+    }
+
+    /// 0.6 s later, whether the viewer's title says it shows `name`; a toast if not.
+    private static func checkArrival(_ name: String, route: String, app: AXUIElement) {
+        let wanted = MailKeys.unifiedTitles(for: name).first ?? name
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             MainActor.assumeIsolated {
                 let title = AXMenuNode.element(app, kAXFocusedWindowAttribute).flatMap { AXMenuNode.string($0, kAXTitleAttribute) }
