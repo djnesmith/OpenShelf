@@ -21,4 +21,22 @@ struct VimDoomExtraTests {
         let engine = VimEngineTests.run("|a b", "ysiwffoo<CR>fb.")
         #expect(engine.string == "foo(a) foo(b)")
     }
+
+    /// ysii wraps as ysip does here (pair on lines of its own); Doom's evil-surround differs for
+    /// both ("x\n(\na\nb)\n\ny"), left for David to decide.
+    @Test func surroundOnAnIndentBlockIsLikeAParagraph() {
+        #expect(VimEngineTests.run("x\n  |a\n  b\ny", "ysiib").string == "x\n  (\n  a\n  b\n  )\ny")
+    }
+
+    @Test func newObjectsSayWhyTheyFailed() {
+        for (start, keys, hint) in [("x) |y", "dia", "dia: no argument here"), ("|x", "diu", "diu: no URL here"), ("|x", "dix", "dix: no attribute here"), ("|x", "dsf", "dsf: no function call around the cursor")] {
+            #expect(VimEngineTests.run(start, keys).failureHint == hint)
+        }
+    }
+
+    /// > on ii keeps the cursor's column, as Doom's does. (Doom also rounds the indent to a
+    /// multiple of 4, evil-shift-round; the engine's > adds 4, as vim, for every motion.)
+    @Test func shiftOnAnIndentBlockKeepsTheColumn() {
+        #expect(VimEngineTests.marked(VimEngineTests.run("x\n  a|b\n  b\ny", ">ii")) == "x\n   |   ab\n      b\ny")
+    }
 }

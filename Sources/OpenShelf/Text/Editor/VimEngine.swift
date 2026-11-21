@@ -1229,6 +1229,11 @@ struct VimEngine {
         case .operate(_, let motion): motion
         default: nil
         }
+        switch command.action {
+        case .deleteSurround(let target), .changeSurround(let target, _):
+            if target == "f" || target == "\u{6}" { return "\(keys): no function call around the cursor" }
+        default: break
+        }
         if case .simple(let name) = command.action, name == "moveDown" || name == "moveUp" {
             return "\(keys): no line \(name == "moveDown" ? "below" : "above")"
         }
@@ -1242,6 +1247,9 @@ struct VimEngine {
         case .textObject(_, let kind)? where "([{<)]}>bB".contains(kind): "not inside \(Self.bracketPair(kind))"
         case .textObject(_, "t")?: "not inside a tag"
         case .textObject(_, "q")?: "no quotes here"
+        case .textObject(_, "a")?: "no argument here"
+        case .textObject(_, "u")?: "no URL here"
+        case .textObject(_, "x")?: "no attribute here"
         default: "nothing to do"
         }
         return "\(keys): \(reason)"
@@ -2391,7 +2399,8 @@ struct VimEngine {
     /// last line break, so Doom's operators treat it oddly, and this keeps their results: d
     /// leaves an empty line (at the text's end it takes the line break before instead); c
     /// does that, then types on a new line above the empty one (below, at the end); y takes
-    /// whole lines and goes to the first line's start. Visual mode selects whole lines.
+    /// whole lines and goes to the first line's start; > and < keep the cursor's column; ys
+    /// puts the pair on lines of its own, as ysip does here. Visual mode selects whole lines.
     private mutating func operateOnIndent(_ op: Operator, lines: Range<Int>) {
         let starts = lineStarts
         let start = starts[lines.lowerBound], end = lineEnd(starts[lines.upperBound - 1])
@@ -2402,6 +2411,15 @@ struct VimEngine {
             cursor = start
         case .delete:
             apply(.delete, to: low..<end)
+        case .surround:
+            // As ysip here: the pair on lines of its own.
+            applyLines(.surround, lines.lowerBound, lines.upperBound - 1)
+        case .indent, .outdent:
+            // Doom's > and < keep the cursor's column.
+            let line = lineIndex(cursor), column = cursor - lineStart(cursor)
+            applyLines(op, lines.lowerBound, lines.upperBound - 1)
+            let lineStart = lineStarts[line]
+            cursor = lineStart + min(column, max(lineEnd(lineStart) - lineStart - 1, 0))
         case .change:
             store(VimRegister(text: String(text[start..<end]) + "\n", linewise: true), yank: false)
             checkpoint(at: start)
