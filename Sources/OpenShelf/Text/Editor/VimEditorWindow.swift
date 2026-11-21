@@ -458,6 +458,8 @@ final class VimTextView: NSTextView {
 
     func load(_ text: String) {
         engine = VimEngine(text)
+        // H M L and ⌃D ask which lines show only when they need to.
+        engine.visibleLinesSource = { [weak self] in self?.visibleLineRange() }
         // "+ and "* are the Mac clipboard.
         engine.usesSystemClipboard = true
         engine.clipboard = VimClipboard(
@@ -526,10 +528,11 @@ final class VimTextView: NSTextView {
             engine.syncInsert(text: string, cursor: characterIndex(utf16: selectedRange().location))
         }
         guard let key else { return }
-        engine.visibleLines = visibleLineRange()
+        // Where the view was before the key: render scrolls to the cursor, and a ⌃D is from here.
+        let viewTop = visibleRect.minY
         let effect = engine.handle(key)
         render()
-        applyScroll()
+        applyScroll(from: viewTop)
         runReindent()
         if let effect { onEffect(effect) }
     }
@@ -594,15 +597,28 @@ final class VimTextView: NSTextView {
         guard let layoutManager else { return }
         let whole = NSRange(location: 0, length: (string as NSString).length)
         layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: whole)
-        let matches = engine.searchHighlights
+        // Only what the window shows (and a little around it) gets search highlights.
+        let shown = shownCharacters()
+        let matches = engine.searchHighlights(in: shown)
         let mark = engine.exchangeHighlight
         let regions = engine.multiedit
         guard !matches.isEmpty || mark != nil || !regions.isEmpty else { return }
-        // UTF-16 offsets for every character once, rather than counting from the start per match.
-        var offsets = [0]
-        offsets.reserveCapacity(engine.text.count + 1)
-        for c in engine.text { offsets.append(offsets.last! + c.utf16.count) }
-        func nsRange(_ range: Range<Int>) -> NSRange { NSRange(location: offsets[range.lowerBound], length: offsets[range.upperBound] - offsets[range.lowerBound]) }
+        // UTF-16 offsets counted once, from the first character needed.
+        let needed = ([shown.lowerBound, mark?.lowerBound ?? Int.max] + regions.map(\.lowerBound)).min()!
+        let base = utf16Offset(of: needed)
+        var offsets: [Int: Int] = [:]
+        var running = base, at = needed
+        func offset(_ index: Int) -> Int {
+            if let known = offsets[index] { return known }
+            if index < at { return utf16Offset(of: index) }
+            while at < index { running += engine.text[at].utf16.count; at += 1 }
+            offsets[index] = running
+            return running
+        }
+        func nsRange(_ range: Range<Int>) -> NSRange {
+            let low = offset(range.lowerBound)
+            return NSRange(location: low, length: offset(range.upperBound) - low)
+        }
         for match in matches {
             layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.systemYellow.withAlphaComponent(0.35), forCharacterRange: nsRange(match))
         }
@@ -615,14 +631,38 @@ final class VimTextView: NSTextView {
         }
     }
 
+    /// The characters the view shows, with a margin, for highlighting; all of them outside a
+    /// scroll view.
+    private func shownCharacters() -> Range<Int> {
+        guard let layoutManager, let container = textContainer, enclosingScrollView != nil else { return 0..<engine.text.count }
+        var rect = visibleRect
+        rect = rect.insetBy(dx: 0, dy: -rect.height)
+        let glyphs = layoutManager.glyphRange(forBoundingRect: rect, in: container)
+        let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        let low = characterIndex(utf16: characters.location), high = characterIndex(utf16: characters.location + characters.length)
+        // A match that starts a little before the view still shows.
+        return max(low - 200, 0)..<min(high + 1, engine.text.count)
+    }
+
     /// The lines the view shows, for H M L and ⌃D (ROADMAP C39); nil when not in a scroll view.
     func visibleLineRange() -> ClosedRange<Int>? {
         guard let layoutManager, let container = textContainer, enclosingScrollView != nil else { return nil }
+        // Only the view's own text is read here: the engine asks for this in the middle of a key.
         let visible = visibleRect
-        guard visible.height > 0, !engine.text.isEmpty else { return nil }
+        let text = string as NSString
+        guard visible.height > 0, text.length > 0 else { return nil }
         let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
         let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-        func line(_ utf16: Int) -> Int { engine.text.prefix(characterIndex(utf16: utf16)).reduce(0) { $1 == "\n" ? $0 + 1 : $0 } }
+        func line(_ utf16: Int) -> Int {
+            var count = 0, at = 0
+            while at < min(utf16, text.length) {
+                let found = text.range(of: "\n", range: NSRange(location: at, length: min(utf16, text.length) - at))
+                guard found.location != NSNotFound else { break }
+                count += 1
+                at = found.location + 1
+            }
+            return count
+        }
         // A line only partly shown at the top or bottom doesn't count.
         var first = line(characters.location), last = line(max(characters.location + characters.length - 1, characters.location))
         if first < last, let top = lineRect(first), top.minY < visible.minY - 1 { first += 1 }
@@ -633,10 +673,16 @@ final class VimTextView: NSTextView {
     /// Where line `line` (a real line, not a wrapped row) is drawn.
     private func lineRect(_ line: Int) -> NSRect? {
         guard let layoutManager, let container = textContainer else { return nil }
-        let starts = [0] + engine.text.indices.filter { engine.text[$0] == "\n" }.map { $0 + 1 }
-        guard line < starts.count else { return nil }
-        let start = utf16Offset(of: starts[line])
-        let end = line + 1 < starts.count ? utf16Offset(of: starts[line + 1] - 1) : (string as NSString).length
+        // The view's own text (UTF-16), as visibleLineRange needs.
+        let text = string as NSString
+        var start = 0
+        for _ in 0..<line {
+            let found = text.range(of: "\n", range: NSRange(location: start, length: text.length - start))
+            guard found.location != NSNotFound else { return nil }
+            start = found.location + 1
+        }
+        let next = text.range(of: "\n", range: NSRange(location: start, length: text.length - start))
+        let end = next.location == NSNotFound ? text.length : next.location
         let glyphs = layoutManager.glyphRange(forCharacterRange: NSRange(location: start, length: max(end - start, 0)), actualCharacterRange: nil)
         var rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: container)
         if glyphs.length == 0 { rect = layoutManager.extraLineFragmentRect.isEmpty ? layoutManager.lineFragmentRect(forGlyphAt: max(glyphs.location - 1, 0), effectiveRange: nil) : layoutManager.extraLineFragmentRect }
@@ -645,17 +691,28 @@ final class VimTextView: NSTextView {
     }
 
     /// Scrolls as zz zt zb ⌃D ⌃U ⌃E ⌃Y asked, then keeps the cursor in view.
-    private func applyScroll() {
+    private func applyScroll(from viewTop: CGFloat? = nil) {
         guard let request = engine.scrollRequest else { return }
         engine.scrollRequest = nil
         guard let clip = enclosingScrollView?.contentView else { return }
-        // Layout is lazy; the view's height must be known before scrolling to a far line.
+        let visible = visibleRect
+        // Layout is lazy; the text down to the target and a window beyond must be laid out, so
+        // the view's height is known before scrolling there.
         if let layoutManager, let textContainer {
-            layoutManager.ensureLayout(for: textContainer)
+            let lines = engine.string.components(separatedBy: "\n").count
+            let target: Int
+            switch request {
+            case .line(let line, _): target = line
+            case .by(let n): target = (visibleLineRange()?.upperBound ?? 0) + max(n, 0)
+            }
+            let reach = min(target + Int(visible.height / 16) + 2, lines - 1)
+            let starts = [0] + engine.text.indices.filter { engine.text[$0] == "\n" }.map { $0 + 1 }
+            let end = reach + 1 < starts.count ? utf16Offset(of: starts[reach + 1]) : (string as NSString).length
+            layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: end))
+
             sizeToFit()
         }
-        let visible = visibleRect
-        var y = visible.minY
+        var y = viewTop ?? visible.minY
         switch request {
         case .line(let line, let place):
             guard let rect = lineRect(line) else { return }

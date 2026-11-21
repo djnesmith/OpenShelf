@@ -366,4 +366,19 @@ struct VimDoomExtraTests {
         engine.syncInsert(text: "QR x Q", cursor: 2)
         #expect(engine.string == "QR x QR")
     }
+
+    /// Review of batch 5: "." and macros on the change list, changes that change nothing kept
+    /// off it, ⌃Y at the top, ⌃I still jumps forward (Tab is % in Doom).
+    @Test func batchFiveReviewEdges() {
+        func line(_ e: VimEngine) -> Int { e.string.prefix(e.cursor).filter { $0 == "\n" }.count }
+        #expect(line(VimEngineTests.run("|ab\ncd\nef", "xG.ggg;")) == 2)
+        #expect(line(VimEngineTests.run("|ab\ncd\nef", "qaxjqG@aggg;")) == 2)
+        #expect(line(VimEngineTests.run("|a\nb\nc", "jji<Esc>ggg;")) == 0)
+        #expect(line(VimEngineTests.run("|a\nB", "jgUlggg;")) == 0)
+        #expect(line(VimEngineTests.run("|a\nb\nc\nd", "G<C-o><C-i>")) == 3)
+        var engine = VimEngine((0..<20).map { "l\($0)" }.joined(separator: "\n"))
+        engine.visibleLines = 0...9
+        _ = engine.handle(VimEngineTests.keys("9j<C-y>"))
+        #expect(line(engine) == 9 && engine.scrollRequest == nil)
+    }
 }

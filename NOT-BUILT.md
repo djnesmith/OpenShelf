@@ -270,7 +270,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | Counts on motions, operators, objects, `.`, `p`, `⌃A` | Built | | — |
 | `.` repeat | Built | Not after visual-mode changes | — |
 | `zz` `zt` `zb`, `H` `M` `L`, `⌃D` `⌃U` `⌃E` `⌃Y` | Built | Also `z.` `z-` `z↩`; Doom's `⌃U` scrolls (evil-want-C-u-scroll) | — |
-| `⌃O` / `⌃I` jump list, `g;` change list, `gi` | Built | Also `''` and `` `` ``; changes a macro or `.` makes count as the key's | — |
+| `⌃O` / `⌃I` jump list, `g;` change list, `gi` | Built | Also `''` and `` `` ``; Tab is `%`, as in Doom | — |
 | `gv`, `o` in visual, `⌃V` block, `R` | Built | | — |
 | `gJ`, `gp`, `ga`, `[(` `])` | Built | `gp` is Doom's: select the last paste again; visual `gp` pastes without keeping what it replaced | — |
 | Undo `u`, redo `⌃R` | Built | A line of undo, as David's Doom has it (undo-fu, `~/.doom.d/init.el:73`, no tree); `g-` is Doom's evil-numbers | — |

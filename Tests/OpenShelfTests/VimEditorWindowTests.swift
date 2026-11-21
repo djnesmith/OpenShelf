@@ -67,6 +67,13 @@ struct VimEditorWindowTests {
         #expect(abs((middle.lowerBound + middle.upperBound) / 2 - top.upperBound) <= 1)
         press("H<C-d>")
         #expect(view.visibleLineRange()!.lowerBound > middle.lowerBound)
+        // ⌃D from the bottom line moves the view half a window, not that plus the cursor's scroll.
+        press("100Gzt")
+        let before = view.visibleLineRange()!
+        press("L<C-d>")
+        let after = view.visibleLineRange()!
+        let half = (before.upperBound - before.lowerBound + 1) / 2
+        #expect(abs((after.lowerBound - before.lowerBound) - half) <= 1)
     }
 
     static func event(for key: VimKey) -> NSEvent {

@@ -774,7 +774,6 @@ struct VimDoomTextObjectTests {
     /// ⌃O ⌃I (Tab) and '' through the jump list, g; g, through the change list, gi (C40). Checked with vim --clean: evil-jumps follows vim, and its jumps don't run in emacs --batch.
     @Test(arguments: [
         ("|a\nb\nc\nd", "G<C-o>x", "|\nb\nc\nd"),
-        ("|a\nb\nc\nd", "G<C-o><Tab>x", "a\nb\nc\n|"),
         ("|a\nb\nc\nd", "G<C-o><C-i>x", "a\nb\nc\n|"),
         ("|a\nb\nc\nd", "Ggg<C-o>x", "a\nb\nc\n|"),
         ("|a b\nc\nd", "/d<CR><C-o>x", "| b\nc\nd"),
@@ -793,6 +792,7 @@ struct VimDoomTextObjectTests {
         ("|a\nb\nc\nd\ne", "3GGgg<C-o><C-o>x", "a\nb\n|\nd\ne"),
         ("|a\nb\nc\nd\ne", "3GGgg2<C-o>x", "a\nb\n|\nd\ne"),
         ("|a\nb\nc\nd", "Gggd''", "|"),
+        ("|a (b) c", "<Tab>x", "a (b| c"),
     ])
     func jumps(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
@@ -822,6 +822,8 @@ struct VimDoomTextObjectTests {
         ("|A.B c. D.", "dis", "| D."),
         ("x\n\n|One. Two.\n\ny", "das", "x\n\n|Two.\n\ny"),
         ("One. Two|.", "yisP", "One. Two|.Two."),
+        ("你好。再|见。", "dis", "你好|。"),
+        ("你好。再|见。好", "das", "你好。|好"),
     ])
     func sentence(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)

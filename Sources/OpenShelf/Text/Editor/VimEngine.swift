@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// A key as the vim keymap sees it.
 enum VimKey: Equatable, Sendable {
@@ -56,7 +57,20 @@ struct VimRegister: Equatable, Sendable {
 /// plain text buffer. It has no view, so every key is testable; the window
 /// feeds it keys and shows `text`, `cursor` and `selection`.
 struct VimEngine {
-    private(set) var text: [Character]
+    private(set) var text: [Character] { didSet { textVersion = Self.nextVersion() } }
+    /// Changes with every change to `text`, and is never the same for two different texts,
+    /// even across copies of the engine: places that follow the text (marks, jumps) skip
+    /// comparing it when nothing changed, and the line starts are kept until it changes.
+    private var textVersion = VimEngine.nextVersion()
+    private static let versions = OSAllocatedUnfairLock(initialState: 0)
+    private static func nextVersion() -> Int { versions.withLock { $0 += 1; return $0 } }
+    /// The line starts for `cacheVersion`'s text, shared by copies, which is safe since a
+    /// version names one text only.
+    private final class LineCache: @unchecked Sendable {
+        var version = -1
+        var starts: [Int] = []
+    }
+    private let lineCache = LineCache()
     /// A character index. In normal mode it sits on a character (or at the
     /// start of an empty line); in insert mode it is between characters.
     private(set) var cursor = 0
@@ -112,6 +126,7 @@ struct VimEngine {
     /// on, and a change is found by what stayed the same at either end.
     private var marks: [Character: Int] = [:]
     private var marksText: [Character] = []
+    private var marksVersion = -1
     /// The cursor when the marks were last checked: changes start at the cursor, so a change
     /// in repeated text is taken there rather than as late as the text allows.
     private var marksCursor = 0
@@ -554,7 +569,7 @@ struct VimEngine {
             cursor += more.count
         }
         insertCount = 1
-        if let start = insertStartText, start == text { undoStack.removeLast() }
+        if let start = insertStartText, start == text { dropCheckpoint() }
         insertStartText = nil
         // The text view typed this insert, so the recording gets the text, before its Esc.
         if recording != nil, viewTyped, playDepth == 0, !isRepeating {
@@ -610,8 +625,10 @@ struct VimEngine {
     /// The last : command, for @:.
     private var lastExCommand: String?
 
-    /// The lines the window shows, which it sets before each key (ROADMAP C39); nil means all.
+    /// The lines the window shows (ROADMAP C39); nil means all. The window either sets them, or
+    /// gives `visibleLinesSource`, asked only by the keys that need it (H M L ⌃D ⌃U ⌃E ⌃Y).
     var visibleLines: ClosedRange<Int>?
+    var visibleLinesSource: (() -> ClosedRange<Int>?)?
 
     /// How the window should scroll after a key: put a line at the top, middle or bottom, or
     /// move the view by some lines.
@@ -625,7 +642,7 @@ struct VimEngine {
     /// The shown lines that hold text.
     private var shownLines: ClosedRange<Int> {
         let last = lineStarts.count - 1
-        guard let visible = visibleLines else { return 0...last }
+        guard let visible = visibleLines ?? visibleLinesSource?() else { return 0...last }
         let low = min(max(visible.lowerBound, 0), last)
         return low...max(low, min(visible.upperBound, last))
     }
@@ -655,6 +672,9 @@ struct VimEngine {
         case "scrolle", "scrolly":
             let n = count ?? 1
             let down = name == "scrolle"
+            // The view can't move past the top, nor past the last line at the top.
+            if !down, shown.lowerBound == 0 { return }
+            if down, shown.lowerBound >= last { return }
             scrollRequest = .by(down ? n : -n)
             let top = min(shown.lowerBound + (down ? n : -n), last), bottom = max(shown.upperBound + (down ? n : -n), 0)
             if down, here < top { go(max(top, 0)) } else if !down, here > bottom { go(min(bottom, last)) }
@@ -678,23 +698,27 @@ struct VimEngine {
 
     /// What the window highlights for the search: the matches of what is being typed after
     /// / or ?, else of the last search while it stays shown. At most 10,000.
-    var searchHighlights: [Range<Int>] {
+    var searchHighlights: [Range<Int>] { searchHighlights(in: 0..<text.count) }
+
+    /// The same, only the matches that start in `range` (what the window shows).
+    func searchHighlights(in range: Range<Int>) -> [Range<Int>] {
         if mode == .commandLine, let first = commandLine.first, first == "/" || first == "?", commandLine.count > 1 {
-            return allMatches(String(commandLine.dropFirst()), wholeWord: false)
+            return allMatches(String(commandLine.dropFirst()), wholeWord: false, in: range)
         }
         guard highlightsSearch, let last = lastSearch else { return [] }
-        return allMatches(last.pattern, wholeWord: last.wholeWord)
+        return allMatches(last.pattern, wholeWord: last.wholeWord, in: range)
     }
 
-    /// Every match of `pattern`, as / finds them (smartcase, whole words for * and #).
-    private func allMatches(_ pattern: String, wholeWord: Bool) -> [Range<Int>] {
+    /// Every match of `pattern` starting in `range`, as / finds them (smartcase, whole words for
+    /// * and #).
+    private func allMatches(_ pattern: String, wholeWord: Bool, in range: Range<Int>) -> [Range<Int>] {
         let needle = Array(pattern)
         guard !needle.isEmpty, needle.count <= text.count else { return [] }
         let ignoreCase = !wholeWord && !pattern.contains(where: \.isUppercase)
         let wanted = ignoreCase ? needle.map { Character($0.lowercased()) } : needle
         var result: [Range<Int>] = []
-        var at = 0
-        while at + needle.count <= text.count, result.count < 10_000 {
+        var at = max(range.lowerBound, 0)
+        while at + needle.count <= text.count, at < range.upperBound, result.count < 10_000 {
             var hit = true
             for i in 0..<needle.count {
                 let c = ignoreCase ? Character(text[at + i].lowercased()) : text[at + i]
@@ -1613,7 +1637,7 @@ struct VimEngine {
                 for _ in 1..<max(replaceCount, 1) { typed.forEach { put($0) } }
             }
             if !isRepeating { lastChange = (replaceCount > 1 ? replaceCount : nil, [.char("R")] + replaceKeys + [.escape]) }
-            if string == undoStack.last?.text { undoStack.removeLast() }
+            if string == undoStack.last?.text { dropCheckpoint() }
             mode = .normal
             if cursor > lineStart(cursor) { cursor -= 1 }
             clampCursor()
@@ -1989,7 +2013,9 @@ struct VimEngine {
             }
         }
         switch key {
-        case .char("\t") where !inVisual: return .done(Command(count: count, action: .simple("jumpForward")))
+        // In Doom's GUI Tab and ⌃I are different keys: Tab is evil-jump-item (%),
+        // doom+/modules/config/default/+evil-bindings.el:63; ⌃I jumps forward.
+        case .char("\t"): return .done(Command(count: count, action: .motion(.matchingBracket)))
         case .escape: return .done(Command(count: nil, action: .simple("escape")))
         case .backspace: return .done(Command(count: count, action: .motion(.left)))
         case .enter: return .done(Command(count: count, action: .motion(.down)))
@@ -3418,7 +3444,7 @@ struct VimEngine {
             text.replaceSubrange(start..<bodyEnd, with: Array(transformed(block, op)))
             // Indenting goes to the first non-blank; a case change no further right.
             cursor = op == .indent || op == .outdent ? firstNonBlank(start) : min(cursor, firstNonBlank(start))
-            if string == undoStack.last?.text { undoStack.removeLast() }
+            if string == undoStack.last?.text { dropCheckpoint() }
         }
         wantedColumn = nil
         clampCursor()
@@ -3457,7 +3483,7 @@ struct VimEngine {
             checkpoint(at: range.lowerBound)
             text.replaceSubrange(range, with: Array(transformed(taken, op)))
             cursor = range.lowerBound
-            if string == undoStack.last?.text { undoStack.removeLast() }
+            if string == undoStack.last?.text { dropCheckpoint() }
         }
         wantedColumn = nil
         clampCursor()
@@ -3667,8 +3693,14 @@ struct VimEngine {
     /// Moves the marks with what changed since they were last checked: a mark after the
     /// change shifts by its length, one inside it goes to its start.
     private mutating func moveMarks() {
+        // Nothing changed since the places were last checked: nothing to move.
+        if marksVersion == textVersion {
+            marksCursor = cursor
+            return
+        }
         defer {
             marksText = text
+            marksVersion = textVersion
             marksCursor = cursor
         }
         let hasPlaces = !marks.isEmpty || !jumps.isEmpty || !changes.isEmpty || insertStop != nil || contextMark != nil
@@ -3699,6 +3731,21 @@ struct VimEngine {
     private var changeIndex = 0
     /// Where insert mode last ended, for gi.
     private var insertStop: Int?
+    /// The undo depth when a change-list place was last added, and the list before it, so a
+    /// change that turned out to change nothing can take it back.
+    private var changeAddedAt: Int?
+    private var changesBeforeLastAdd: [Int] = []
+
+    /// Puts a change at `at` on the change list (one place a line, newest last).
+    private mutating func recordChange(at: Int, undoDepth: Int) {
+        moveMarks()
+        changesBeforeLastAdd = changes
+        changeAddedAt = undoDepth
+        if let last = changes.last, lineIndex(min(last, text.count)) == lineIndex(min(at, text.count)) { changes.removeLast() }
+        changes.append(at)
+        if changes.count > 100 { changes.removeFirst() }
+        changeIndex = changes.count
+    }
 
     /// Empties the jump list, as a fresh window has it.
     mutating func clearJumps() {
@@ -3710,8 +3757,18 @@ struct VimEngine {
     /// Puts the cursor's place on the jump list before a jump.
     private mutating func recordJump() {
         moveMarks()
-        let line = lineIndex(cursor)
-        let others = jumps.filter { lineIndex(min($0, text.count)) != line }
+        // Line starts once, then a search for each place's line.
+        let starts = lineStarts
+        func line(_ at: Int) -> Int {
+            var low = 0, high = starts.count - 1
+            while low < high {
+                let middle = (low + high + 1) / 2
+                if starts[middle] <= at { low = middle } else { high = middle - 1 }
+            }
+            return low
+        }
+        let here = line(cursor)
+        let others = jumps.filter { line(min($0, text.count)) != here }
         jumps = others
         jumps.append(cursor)
         if jumps.count > 100 { jumps.removeFirst() }
@@ -3784,6 +3841,13 @@ struct VimEngine {
             var end = high
             var j = i
             while j < high {
+                // Full-width ends need no blank after them (Emacs's sentence-end-without-space).
+                if "。．？！".contains(text[j]) {
+                    var k = j + 1
+                    while k < high, "]\"'”’)}»›」』".contains(text[k]) { k += 1 }
+                    end = k
+                    break
+                }
                 if ".?!…‽".contains(text[j]) {
                     var k = j + 1
                     while k < high, "]\"'”’)}»›".contains(text[k]) { k += 1 }
@@ -4841,6 +4905,8 @@ struct VimEngine {
             playDepth = 0
             macroQueue = []
             pending = []
+            // What the macro changed goes on the change list once, where it left the cursor.
+            if !isRepeating, undoStack.count + undoTrimmed != undoBase + trimmedBefore { recordChange(at: cursor, undoDepth: -1) }
             let first = undoBase - (undoTrimmed - trimmedBefore)
             if first >= 0, undoStack.count > first + 1 { undoStack.removeSubrange((first + 1)...) }
             // Typing in the window after a macro that ended in insert mode is the person's, not the macro's.
@@ -4915,6 +4981,9 @@ struct VimEngine {
     /// Runs the last change again; a count replaces the one it had.
     private mutating func repeatLastChange(count: Int?) {
         guard let change = lastChange else { return }
+        let changesBefore = undoStack.count + undoTrimmed
+        // What "." changed goes on the change list once, where it left the cursor.
+        defer { if playDepth == 0, undoStack.count + undoTrimmed != changesBefore { recordChange(at: cursor, undoDepth: -1) } }
         let digits = (count ?? change.count).map { VimKey.keys(String($0)) } ?? []
         isRepeating = true
         defer { isRepeating = false }
@@ -5025,18 +5094,22 @@ struct VimEngine {
 
     /// Saves the text for undo. `position` is where the change begins,
     /// where undo leaves the cursor, as vim does.
+    /// Takes back the last checkpoint when the change it was for changed nothing, with the
+    /// change-list place it added.
+    private mutating func dropCheckpoint() {
+        undoStack.removeLast()
+        if changeAddedAt == undoStack.count + 1 {
+            changes = changesBeforeLastAdd
+            changeIndex = changes.count
+            changeAddedAt = nil
+        }
+    }
+
     private mutating func checkpoint(at position: Int? = nil) {
         if !text.isEmpty { noLines = false }
         // The change list, for g; and g, (one place per line, newest last). Changes a macro or
-        // "." makes are left out, which keeps them fast; the key that played them is recorded.
-        if playDepth == 0, !isRepeating {
-            moveMarks()
-            let at = position ?? cursor
-            if let last = changes.last, lineIndex(min(last, text.count)) == lineIndex(at) { changes.removeLast() }
-            changes.append(at)
-            if changes.count > 100 { changes.removeFirst() }
-            changeIndex = changes.count
-        }
+        // "." makes are recorded once, where they leave the cursor, which keeps them fast.
+        if playDepth == 0, !isRepeating { recordChange(at: position ?? cursor, undoDepth: undoStack.count + 1) }
         undoStack.append((string, position ?? cursor))
         if undoStack.count > Self.undoLimit {
             undoStack.removeFirst()
@@ -5074,7 +5147,11 @@ struct VimEngine {
     // MARK: - Lines
 
     private var lineStarts: [Int] {
-        [0] + text.indices.filter { text[$0] == "\n" }.map { $0 + 1 }
+        if lineCache.version == textVersion { return lineCache.starts }
+        let starts = [0] + text.indices.filter { text[$0] == "\n" }.map { $0 + 1 }
+        lineCache.version = textVersion
+        lineCache.starts = starts
+        return starts
     }
 
     private func lineIndex(_ position: Int) -> Int {
