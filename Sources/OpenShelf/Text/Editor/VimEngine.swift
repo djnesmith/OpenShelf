@@ -1244,7 +1244,8 @@ struct VimEngine {
         case .wordBackward?: "at the start"
         case .find(_, let target)?: "no “\(target)” on the line"
         case .textObject(_, let kind)? where "\"'`".contains(kind): "no \(kind)…\(kind) on this line"
-        case .textObject(_, let kind)? where "([{<)]}>bB".contains(kind): "not inside \(Self.bracketPair(kind))"
+        case .textObject(_, "B")?: "not inside a block"
+        case .textObject(_, let kind)? where "([{<)]}>b".contains(kind): "not inside \(Self.bracketPair(kind))"
         case .textObject(_, "t")?: "not inside a tag"
         case .textObject(_, "q")?: "no quotes here"
         case .textObject(_, "a")?: "no argument here"
@@ -2143,7 +2144,8 @@ struct VimEngine {
         case "\"", "'", "`": return quoteObject(inner: inner, quote: kind).map { ($0, false) }
         case "(", ")", "b": return bracketObject(inner: inner, open: "(", close: ")", count: count)
         case "[", "]": return bracketObject(inner: inner, open: "[", close: "]", count: count)
-        case "{", "}", "B": return bracketObject(inner: inner, open: "{", close: "}", count: count)
+        case "{", "}": return bracketObject(inner: inner, open: "{", close: "}", count: count)
+        case "B": return anyBlockObject(inner: inner, count: count)
         case "<", ">": return bracketObject(inner: inner, open: "<", close: ">", count: count)
         case "p": return paragraphObject(inner: inner, count: count).map { ($0, true) }
         case "t": return tagObject(inner: inner, count: count).map { ($0, false) }
@@ -2159,6 +2161,33 @@ struct VimEngine {
     }
 
     // MARK: - Doom's text objects
+
+    /// Doom's iB / aB (evil-textobj-anyblock, set to ( { [ < in Doom's evil module): of the
+    /// bracket pairs around the cursor, the smallest; around none, the next pair after it.
+    private func anyBlockObject(inner: Bool, count: Int) -> (Range<Int>, Bool)? {
+        let pairs: [(Character, Character)] = [("(", ")"), ("{", "}"), ("[", "]"), ("<", ">")]
+        let around = pairs.filter { open, close in
+            (cursor < text.count && text[cursor] == open) || enclosingOpen(open, close, before: cursor) != nil
+        }
+        // A count past a kind's depth takes its outermost pair, as evil does.
+        let sized = around.compactMap { pair -> (pair: (Character, Character), count: Int, size: Int)? in
+            var depth = 1, position = cursor
+            while let open = enclosingOpen(pair.0, pair.1, before: position) {
+                depth += 1
+                position = open
+            }
+            for level in stride(from: min(max(count, 1), depth), through: 1, by: -1) {
+                if let (outer, _) = bracketObject(inner: false, open: pair.0, close: pair.1, count: level) { return (pair, level, outer.count) }
+            }
+            return nil
+        }
+        if let best = sized.min(by: { $0.size < $1.size }) {
+            return bracketObject(inner: inner, open: best.pair.0, close: best.pair.1, count: best.count)
+        }
+        guard let next = (cursor..<text.count).first(where: { i in pairs.contains { $0.0 == text[i] } }),
+              let pair = pairs.first(where: { $0.0 == text[next] }) else { return nil }
+        return bracketObject(inner: inner, open: pair.0, close: pair.1, count: count)
+    }
 
     /// Doom's iu / au (+evil:inner-url-txtobj, Emacs's url thing): au is the URL under the
     /// cursor; iu leaves out its scheme and "://" and anything from its last ? or #. A URL

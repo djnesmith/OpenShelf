@@ -303,4 +303,40 @@ struct VimDoomTextObjectTests {
     func functionSurround(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// iB / aB, Doom's anyblock over ( { [ < (C24).
+    @Test(arguments: [
+        ("(a [b| c] d)", "diB", "(a [|] d)"),
+        ("(a [b| c] d)", "daB", "(a | d)"),
+        ("{:a (f x|) :b 2}", "ciBX<Esc>", "{:a (|X) :b 2}"),
+        ("{:a (f x) :b |2}", "diB", "{|}"),
+        ("f(a, \"b|\")", "diB", "f(|)"),
+        ("x |(a b)", "diB", "x (|)"),
+        ("x| y", "diB", "x| y"),
+        ("(a\n  b|\n  c)", "diB", "(|)"),
+        ("(defn f [x]\n  (let [a 1\n        b| 2]\n    (+ a b)))", "diB", "(defn f [x]\n  (let [|]\n    (+ a b)))"),
+        ("(a (b| c))", "d2iB", "(|)"),
+        ("<a (b|)>", "diB", "<a (|)>"),
+        ("if (x) {\n  y|;\n}", "diB", "if (x) {\n|}"),
+        ("(a |[b] c)", "diB", "(a [|] c)"),
+        ("(a [b]| c)", "diB", "(|)"),
+        ("(a [b] |c)", "vaBd", "|"),
+        ("x {a |b} y", "diB", "x {|} y"),
+        ("x {a |b} y", "daB", "x | y"),
+        ("{:a [1 |2]}", "ciBX<Esc>", "{:a [|X]}"),
+        ("(a <b|> c)", "daB", "(a | c)"),
+        ("(a {b} |c)", "diB", "(|)"),
+        ("x |y (a)", "daB", "x y| "),
+        ("|", "diB", "|"),
+        ("(a\n  (b|)\n  c)", "2diB", "(|)"),
+        ("(defn f [x]\n  (let [a 1\n        b| 2]\n    (+ a b)))", "2diB", "(defn f [x]\n  (let [|]\n    (+ a b)))"),
+        ("(defn f [x]\n  (let [a 1\n        b| 2]\n    (+ a b)))", "ciBX<Esc>", "(defn f [x]\n  (let [|X]\n    (+ a b)))"),
+        ("{|}", "ciBX<Esc>", "{|X}"),
+        ("(a [b (c|)])", "9diB", "(a [|])"),
+        ("(a [b (|c)])", "9diB", "(a [|])"),
+        ("(a [b (|c)])", "3diB", "(a [|])"),
+    ])
+    func anyBlock(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

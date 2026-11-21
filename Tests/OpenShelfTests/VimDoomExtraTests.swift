@@ -39,4 +39,10 @@ struct VimDoomExtraTests {
     @Test func shiftOnAnIndentBlockKeepsTheColumn() {
         #expect(VimEngineTests.marked(VimEngineTests.run("x\n  a|b\n  b\ny", ">ii")) == "x\n   |   ab\n      b\ny")
     }
+
+    /// A huge count on iB takes each kind's outermost pair, then the smallest, as evil does,
+    /// without trying every count down from 999999.
+    @Test(.timeLimit(.minutes(1))) func hugeCountOnAnyBlockTakesTheOutermostPair() {
+        #expect(VimEngineTests.run("(a [b (c|)])", "999999diB").string == "(a [])")
+    }
 }
