@@ -303,4 +303,14 @@ struct VimDoomExtraTests {
         #expect(run("40zt").scrollRequest == .line(39, .top) && line(run("40zt")) == 39)
         #expect(run("<C-d>", from: 99).failureHint != nil)
     }
+
+    /// g; and g, walk the change list, newest first, one place per line (vim -es stops a key
+    /// sequence at its first error, so these are by hand).
+    @Test func changeList() {
+        func line(_ e: VimEngine) -> Int { e.string.prefix(e.cursor).filter { $0 == "\n" }.count }
+        #expect(line(VimEngineTests.run("|ab\ncd\nef\ngh", "jxjjxggg;")) == 3)
+        #expect(line(VimEngineTests.run("|ab\ncd\nef\ngh", "jxjjxggg;g;")) == 1)
+        #expect(line(VimEngineTests.run("|ab\ncd\nef\ngh", "jxjjxggg;g;g,")) == 3)
+        #expect(VimEngineTests.run("|ab", "g;").failureHint != nil)
+    }
 }

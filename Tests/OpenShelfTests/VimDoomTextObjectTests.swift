@@ -770,4 +770,31 @@ struct VimDoomTextObjectTests {
     func repeatEx(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// ⌃O ⌃I (Tab) and '' through the jump list, g; g, through the change list, gi (C40). Checked with vim --clean: evil-jumps follows vim, and its jumps don't run in emacs --batch.
+    @Test(arguments: [
+        ("|a\nb\nc\nd", "G<C-o>x", "|\nb\nc\nd"),
+        ("|a\nb\nc\nd", "G<C-o><Tab>x", "a\nb\nc\n|"),
+        ("|a\nb\nc\nd", "G<C-o><C-i>x", "a\nb\nc\n|"),
+        ("|a\nb\nc\nd", "Ggg<C-o>x", "a\nb\nc\n|"),
+        ("|a b\nc\nd", "/d<CR><C-o>x", "| b\nc\nd"),
+        ("|ab\ncd\nef", "jlxggg;x", "ab\n|\nef"),
+        ("|ab\ncd", "jAX<Esc>gggiY<Esc>", "ab\ncdX|Y"),
+        ("|a\nb\nc\nd", "3G<C-o>x", "|\nb\nc\nd"),
+        ("|a\nb\nc\nd", ":3<CR><C-o>x", "|\nb\nc\nd"),
+        ("|a (b) c", "%<C-o>x", "| (b) c"),
+        ("|a\nb\n\nd", "}<C-o>x", "|\nb\n\nd"),
+        ("|a b a", "*<C-o>x", "| b a"),
+        ("|ab\ncd", "giY<Esc>", "|Yab\ncd"),
+        ("|a\nb\nc\nd", "majjj'a<C-o>x", "a\nb\nc\n|"),
+        ("|a\nb\nc\nd", "G''x", "|\nb\nc\nd"),
+        ("|a\nb\nc\nd", "G``x", "|\nb\nc\nd"),
+        ("|a\nb\nc\nd", "G''''x", "a\nb\nc\n|"),
+        ("|a\nb\nc\nd\ne", "3GGgg<C-o><C-o>x", "a\nb\n|\nd\ne"),
+        ("|a\nb\nc\nd\ne", "3GGgg2<C-o>x", "a\nb\n|\nd\ne"),
+        ("|a\nb\nc\nd", "Gggd''", "|"),
+    ])
+    func jumps(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

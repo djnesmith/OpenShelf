@@ -13,6 +13,7 @@ struct VimEngineTests {
                 let name = rest[rest.index(after: rest.startIndex)..<close]
                 switch name {
                 case "Esc": keys.append(.escape)
+                case "Tab": keys.append(.char("\t"))
                 case "CR": keys.append(.enter)
                 case "BS": keys.append(.backspace)
                 case "Left": keys.append(.left)
@@ -45,6 +46,8 @@ struct VimEngineTests {
             let column = marked.prefix(cursor).split(separator: "\n", omittingEmptySubsequences: false).last!.count
             for _ in 0..<column { _ = engine.handle(.char("l")) }
         }
+        // The gg above is a jump; a fresh window has none.
+        engine.clearJumps()
         return engine
     }
 

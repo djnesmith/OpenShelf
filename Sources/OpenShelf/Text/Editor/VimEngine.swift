@@ -401,6 +401,11 @@ struct VimEngine {
         changeInProgress = nil
         mode = .normal
         wantedColumn = nil
+        // Where insert mode ended, for gi; not while a macro or "." plays, which keeps them fast.
+        if playDepth == 0, !isRepeating {
+            moveMarks()
+            insertStop = cursor
+        }
         if blockInsert != nil {
             finishBlockInsert(typed: String(typedSinceInsert(single: repeats)))
             clampCursor()
@@ -584,6 +589,7 @@ struct VimEngine {
                 return nil
             }
             if let number = Int(command) {
+                recordJump()
                 cursor = firstNonBlank(lineStarts[min(max(number, 1), lineStarts.count) - 1])
                 wantedColumn = nil
             } else if !command.isEmpty {
@@ -1484,7 +1490,7 @@ struct VimEngine {
     static let unbuiltWithArgument: [String: String] = [
         "z": "not built", "[": "not built", "]": "not built", "g'": "not built", "g`": "not built",
     ]
-    static let unbuiltAlone = ["gi", "g;", "g,", "g+", "gd", "gD", "g*", "g#", "g&"]
+    static let unbuiltAlone = ["g+", "gd", "gD", "g*", "g#", "g&"]
 
     private func unbuiltCommand(_ keys: [VimKey], from start: Int) -> String?? {
         var typed = ""
@@ -1501,7 +1507,7 @@ struct VimEngine {
         }
         // ' and ` before a letter are marks; before anything else ('' `. '<) not built.
         if !inVisual, typed.count >= 2, typed.first == "'" || typed.first == "`", let second = typed.dropFirst().first,
-           !(second.isASCII && second.isLetter) {
+           !(second.isASCII && second.isLetter), second != "'", second != "`" {
             return .some("not built")
         }
         if !inVisual, typed == "'" || typed == "`" { return .some(nil) }
@@ -1562,6 +1568,8 @@ struct VimEngine {
         if case .ctrl(let c) = key {
             switch c {
             case "r": return .done(Command(count: count, action: .simple("redo")))
+            case "o" where !inVisual: return .done(Command(count: count, action: .simple("jumpBack")))
+            case "i" where !inVisual: return .done(Command(count: count, action: .simple("jumpForward")))
             // Scrolling (ROADMAP C39): ⌃D ⌃U half a page (Doom has evil-want-C-u-scroll), ⌃E ⌃Y a line.
             case "d", "u", "e", "y": return .done(Command(count: count, action: .simple("scroll" + String(c))))
             case "[", "c": return .done(Command(count: nil, action: .simple("escape")))
@@ -1576,6 +1584,7 @@ struct VimEngine {
             }
         }
         switch key {
+        case .char("\t") where !inVisual: return .done(Command(count: count, action: .simple("jumpForward")))
         case .escape: return .done(Command(count: nil, action: .simple("escape")))
         case .backspace: return .done(Command(count: count, action: .motion(.left)))
         case .enter: return .done(Command(count: count, action: .motion(.down)))
@@ -1673,6 +1682,11 @@ struct VimEngine {
             // without keeping what it replaced); gP pastes before and moves after; ga shows the
             // character's code (ROADMAP C41).
             if case .char(let g) = second, "JpPa".contains(g), !(inVisual && g != "J" && g != "p") {
+                index += 1
+                return .done(Command(count: count, action: .simple("g" + String(g))))
+            }
+            // g; g, walk the change list; gi inserts where insert mode last ended (ROADMAP C40).
+            if case .char(let g) = second, ";,i".contains(g), !inVisual {
                 index += 1
                 return .done(Command(count: count, action: .simple("g" + String(g))))
             }
@@ -1941,9 +1955,10 @@ struct VimEngine {
             return .done(.unmatched(bracket))
         case "'", "`":
             guard index < keys.count else { return .incomplete }
-            guard case .char(let name) = keys[index], name.isASCII, name.isLetter else { return .invalid }
+            guard case .char(let name) = keys[index], name.isASCII && name.isLetter || name == "'" || name == "`" else { return .invalid }
             index += 1
-            return .done(.mark(name, exact: c == "`"))
+            // '' and `` are where the last jump left (ROADMAP C40).
+            return .done(.mark(name == "`" ? "'" : name, exact: c == "`"))
         case "*": return .done(.searchWord(forward: true))
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
@@ -2079,7 +2094,7 @@ struct VimEngine {
         case .deleteSurround, .changeSurround, .addSurround, .align: true
         case .operate(let op, _): op != .yank && op != .exchange
         case .simple(let name):
-            ["x", "X", "D", "C", "gJ", "gP", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement", "slurpForward", "slurpBackward", "barfForward", "barfBackward", "raise"].contains(name)
+            ["x", "X", "D", "C", "gJ", "gP", "gi", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement", "slurpForward", "slurpBackward", "barfForward", "barfBackward", "raise"].contains(name)
                 || (name.hasPrefix("line") && name != "liney" && name != "lineX") || (name.hasPrefix("r") && name.count == 2)
         }
     }
@@ -2212,9 +2227,16 @@ struct VimEngine {
 
     /// Moves the cursor. Returns false when the motion found nowhere to go.
     private mutating func runMotion(_ motion: Motion, count: Int) -> Bool {
+        let from = cursor
         guard let target = target(of: motion, count: count, forOperator: false) else {
             failed = true
             return false
+        }
+        if Self.isJump(motion), !inVisual {
+            let landing = target.position
+            cursor = from
+            recordJump()
+            cursor = landing
         }
         let before = cursor
         cursor = target.position
@@ -2236,6 +2258,14 @@ struct VimEngine {
         default: break
         }
         return true
+    }
+
+    /// The motions vim and evil count as jumps.
+    private static func isJump(_ motion: Motion) -> Bool {
+        switch motion {
+        case .goToLine, .matchingBracket, .paragraphForward, .paragraphBackward, .searchNext, .searchWord, .mark, .screenLine: true
+        default: false
+        }
     }
 
     private mutating func runSimple(_ name: String, count: Int?) -> VimEffect? {
@@ -2319,6 +2349,12 @@ struct VimEngine {
         case "p", "P": put(after: name == "p", count: n)
         case "gP": put(after: false, count: n, cursorAfter: true)
         case "gJ": joinWithoutSpaces(count: max(n, 2))
+        case "jumpBack", "jumpForward": jump(back: name == "jumpBack", count: n)
+        case "g;", "g,": goToChange(older: name == "g;", count: n)
+        case "gi":
+            moveMarks()
+            insertCount = 1
+            enterInsert(at: min(insertStop ?? cursor, text.count))
         case "gp":
             // Doom's +evil/reselect-paste: the last paste, as evil selects it (one character past
             // its end, since evil takes the end as inclusive).
@@ -2586,7 +2622,7 @@ struct VimEngine {
             }
             return Target(position: position, kind: .exclusive)
         case .mark(let name, let exact):
-            guard let position = marks[name] else {
+            guard let position = name == "'" ? contextMark : marks[name] else {
                 message = "E20: Mark not set"
                 return nil
             }
@@ -3228,14 +3264,84 @@ struct VimEngine {
             marksText = text
             marksCursor = cursor
         }
-        guard !marks.isEmpty, marksText != text else { return }
+        let hasPlaces = !marks.isEmpty || !jumps.isEmpty || !changes.isEmpty || insertStop != nil || contextMark != nil
+        guard hasPlaces, marksText != text else { return }
         let prefix = min(zip(marksText, text).prefix { $0 == $1 }.count, marksCursor)
         let room = min(marksText.count, text.count) - prefix
         let suffix = min(zip(marksText.reversed(), text.reversed()).prefix { $0 == $1 }.count, room)
         let oldEnd = marksText.count - suffix, delta = text.count - marksText.count
-        for (name, at) in marks {
-            if at >= oldEnd { marks[name] = at + delta } else if at > prefix { marks[name] = prefix }
+        func moved(_ at: Int) -> Int { at >= oldEnd ? at + delta : at > prefix ? prefix : at }
+        for (name, at) in marks { marks[name] = moved(at) }
+        jumps = jumps.map(moved)
+        changes = changes.map(moved)
+        insertStop = insertStop.map(moved)
+        contextMark = contextMark.map(moved)
+    }
+
+    // MARK: - Jumps and changes
+
+    /// The jump list for ⌃O and ⌃I (ROADMAP C40), as vim's and evil's: a jump (G, gg, /, n, %,
+    /// {, H, :N, 'a …) puts where it left on the list, one place per line; `jumpIndex` is where
+    /// ⌃O and ⌃I have got to, `jumps.count` meaning past the newest.
+    private var jumps: [Int] = []
+    private var jumpIndex = 0
+    /// Where the last jump left, for '' and ``.
+    private var contextMark: Int?
+    /// Where changes were made, for g; and g,, and how far back g; has gone.
+    private var changes: [Int] = []
+    private var changeIndex = 0
+    /// Where insert mode last ended, for gi.
+    private var insertStop: Int?
+
+    /// Empties the jump list, as a fresh window has it.
+    mutating func clearJumps() {
+        jumps = []
+        jumpIndex = 0
+        contextMark = nil
+    }
+
+    /// Puts the cursor's place on the jump list before a jump.
+    private mutating func recordJump() {
+        moveMarks()
+        let line = lineIndex(cursor)
+        let others = jumps.filter { lineIndex(min($0, text.count)) != line }
+        jumps = others
+        jumps.append(cursor)
+        if jumps.count > 100 { jumps.removeFirst() }
+        jumpIndex = jumps.count
+        contextMark = cursor
+    }
+
+    /// ⌃O (back) and ⌃I (forward) through the jump list.
+    private mutating func jump(back: Bool, count: Int) {
+        moveMarks()
+        if back, jumpIndex >= jumps.count {
+            // Leaving the newest end: keep this place, so ⌃I comes back to it (even on the line
+            // the last jump left, as vim does for % on one line).
+            jumps.append(cursor)
+            jumpIndex = jumps.count - 1
         }
+        let target = jumpIndex + (back ? -count : count)
+        guard target >= 0, target < jumps.count else {
+            failed = true
+            return
+        }
+        jumpIndex = target
+        cursor = min(jumps[target], text.count)
+        clampCursor()
+    }
+
+    /// g; (older) and g, (newer) through the change list.
+    private mutating func goToChange(older: Bool, count: Int) {
+        moveMarks()
+        let target = changeIndex + (older ? -count : count)
+        guard !changes.isEmpty, target >= 0, target < changes.count else {
+            failed = true
+            return
+        }
+        changeIndex = target
+        cursor = min(changes[target], text.count)
+        clampCursor()
     }
 
     // MARK: - gn
@@ -4438,6 +4544,16 @@ struct VimEngine {
     /// where undo leaves the cursor, as vim does.
     private mutating func checkpoint(at position: Int? = nil) {
         if !text.isEmpty { noLines = false }
+        // The change list, for g; and g, (one place per line, newest last). Changes a macro or
+        // "." makes are left out, which keeps them fast; the key that played them is recorded.
+        if playDepth == 0, !isRepeating {
+            moveMarks()
+            let at = position ?? cursor
+            if let last = changes.last, lineIndex(min(last, text.count)) == lineIndex(at) { changes.removeLast() }
+            changes.append(at)
+            if changes.count > 100 { changes.removeFirst() }
+            changeIndex = changes.count
+        }
         undoStack.append((string, position ?? cursor))
         if undoStack.count > Self.undoLimit {
             undoStack.removeFirst()

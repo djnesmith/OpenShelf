@@ -552,7 +552,7 @@ Plain vim:
 | C37 | Marks: `m{a-z}`, `'` and `` ` `` jumps — **built** | S | — |
 | C38 | Ex commands with ranges: `:g`, `:norm`, `:sort`, `:m`, `:t`, `:d` | M-L | — |
 | C39 | Scrolling: `zz` `zt` `zb`, `H` `M` `L`, `⌃D` `⌃U` `⌃E` `⌃Y` — **built** | S | — |
-| C40 | Jump and change lists: `⌃O` / `⌃I`, `g;` / `g,`, `gi` | S-M | — |
+| C40 | Jump and change lists: `⌃O` / `⌃I`, `g;` / `g,`, `gi` — **built** | S-M | — |
 | C41 | `gJ` join without spaces, `gp` / `gP`, `ga`, `[(` / `])` — **built**; `gp` is Doom's (+evil/reselect-paste; visual +evil/alt-paste) | S each | — |
 | C42 | An undo tree: `g-` / `g+` (today undo and redo are a line) | M | — |
 | C43 | `@:` repeats the last ex command — **built** | S | — |

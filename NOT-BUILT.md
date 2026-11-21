@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 23 | 0 | 5 |
+| Vim features (C16–C43) | 24 | 0 | 4 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 41 | 5 | 46 |
+| **Total** | 42 | 5 | 45 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -270,7 +270,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | Counts on motions, operators, objects, `.`, `p`, `⌃A` | Built | | — |
 | `.` repeat | Built | Not after visual-mode changes | — |
 | `zz` `zt` `zb`, `H` `M` `L`, `⌃D` `⌃U` `⌃E` `⌃Y` | Built | Also `z.` `z-` `z↩`; Doom's `⌃U` scrolls (evil-want-C-u-scroll) | — |
-| `⌃O` / `⌃I` jump list, `g;` change list, `gi` | Not built | | S-M |
+| `⌃O` / `⌃I` jump list, `g;` change list, `gi` | Built | Also `''` and `` `` ``; changes a macro or `.` makes count as the key's | — |
 | `gv`, `o` in visual, `⌃V` block, `R` | Built | | — |
 | `gJ`, `gp`, `ga`, `[(` `])` | Built | `gp` is Doom's: select the last paste again; visual `gp` pastes without keeping what it replaced | — |
 | Undo `u`, redo `⌃R` | Built | A line of undo, not a tree; no `g-` `g+` | M for a tree |
