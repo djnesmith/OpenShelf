@@ -536,6 +536,86 @@ struct VimEngine {
         wantedColumn = nil
     }
 
+    // MARK: - Aligning
+
+    /// The lines a motion or text object covers from the cursor, for gl.
+    private mutating func lineRange(of motion: Motion, count: Int) -> (Int, Int)? {
+        if case .textObject(let inner, let kind) = motion {
+            if kind == "w" || kind == "W" {
+                let word = wordObject(inner: inner, big: kind == "W", count: count)
+                return word.found ? (lineIndex(word.start), lineIndex(word.end)) : nil
+            }
+            guard let (range, linewise) = textObject(inner: inner, kind, count: count) else { return nil }
+            return linewise ? (range.lowerBound, range.upperBound - 1) : (lineIndex(range.lowerBound), lineIndex(max(range.upperBound - 1, range.lowerBound)))
+        }
+        guard let target = target(of: motion, count: count, forOperator: true) else { return nil }
+        let low = min(cursor, target.position), high = max(cursor, target.position)
+        var last = lineIndex(high)
+        if target.kind == .exclusive, high == lineStart(high), last > lineIndex(low) { last -= 1 }
+        return (lineIndex(low), last)
+    }
+
+    /// gl / gL (evil-lion, ROADMAP C28) on lines `first`...`last`: runs of two or more spaces
+    /// before (gl) or after (gL) each match become one, then each match, column by column,
+    /// gets spaces before it (gl) or after it (gL) so they line up, as Emacs's align-region
+    /// with spacing 0. `firstOnly` (a count of 1) does the first match on each line only. The
+    /// pattern is the character typed, or after "/" a pattern typed to Return. The cursor stays.
+    private mutating func align(_ first: Int, _ last: Int, right: Bool, pattern: String, firstOnly: Bool) {
+        let source = pattern.count > 1 && pattern.hasPrefix("/") ? String(pattern.dropFirst()) : NSRegularExpression.escapedPattern(for: pattern)
+        guard let regex = try? NSRegularExpression(pattern: source) else {
+            failed = true
+            return
+        }
+        func matches(_ line: String) -> [Range<Int>] {
+            let found = regex.matches(in: line, range: NSRange(line.startIndex..., in: line)).compactMap { Range($0.range, in: line) }
+                .filter { !$0.isEmpty }
+                .map { line.distance(from: line.startIndex, to: $0.lowerBound)..<line.distance(from: line.startIndex, to: $0.upperBound) }
+            return firstOnly ? Array(found.prefix(1)) : found
+        }
+        var lines = string.components(separatedBy: "\n")
+        let line = lineIndex(cursor), column = cursor - lineStart(cursor)
+        // Squeeze the spaces next to each match.
+        for i in first...last {
+            var characters = Array(lines[i])
+            for match in matches(lines[i]).reversed() {
+                if right {
+                    var end = match.upperBound
+                    while end < characters.count, characters[end] == " " { end += 1 }
+                    if end - match.upperBound >= 2 { characters.replaceSubrange(match.upperBound..<end, with: [" "]) }
+                } else {
+                    var start = match.lowerBound
+                    while start > 0, characters[start - 1] == " " { start -= 1 }
+                    if match.lowerBound - start >= 2 { characters.replaceSubrange(start..<match.lowerBound, with: [" "]) }
+                }
+            }
+            lines[i] = String(characters)
+        }
+        // Line up the k-th matches, k = 1, 2, …
+        var k = 0
+        while true {
+            let columns = (first...last).compactMap { i -> (Int, Int)? in
+                let found = matches(lines[i])
+                guard k < found.count else { return nil }
+                return (i, right ? found[k].upperBound : found[k].lowerBound)
+            }
+            guard !columns.isEmpty else { break }
+            let target = columns.map(\.1).max()!
+            for (i, at) in columns where at < target {
+                var characters = Array(lines[i])
+                characters.insert(contentsOf: Array(repeating: " ", count: target - at), at: at)
+                lines[i] = String(characters)
+            }
+            k += 1
+        }
+        let joined = lines.joined(separator: "\n")
+        guard joined != string else { return }
+        checkpoint(at: lineStarts[first])
+        text = Array(joined)
+        let start = lineStarts[min(line, lineStarts.count - 1)]
+        cursor = start + min(column, max(lineEnd(start) - start - 1, 0))
+        wantedColumn = nil
+    }
+
     // MARK: - Moving lines
 
     /// ⌥J / ⌥K (David's Doom config, ~/.doom.d/config.el my/move-line-*): the cursor's line,
@@ -909,6 +989,8 @@ struct VimEngine {
         case deleteSurround(Character)
         case changeSurround(Character, String)
         case addSurround(Motion?, String)
+        /// evil-lion: gl / gL (right: true) align lines on a character or a typed pattern.
+        case align(right: Bool, Motion?, String, firstOnly: Bool)
     }
 
     private enum Parse {
@@ -947,7 +1029,7 @@ struct VimEngine {
     /// vim commands this engine doesn't have, read to their end so the keys after them
     /// never run as commands of their own (2026-11-20: `=ip` and `ma` fell into insert
     /// mode). nil: not one of them; .some(nil): wait for more keys; .some(reason): done.
-    static let unbuiltOperators = ["=", "!", "g?", "gw", "gx", "gl", "gL", "g@", "zf"]
+    static let unbuiltOperators = ["=", "!", "g?", "gw", "gx", "g@", "zf"]
     static let unbuiltWithArgument: [String: String] = [
         "m": "marks are not built", "'": "marks are not built", "`": "marks are not built",
         "z": "not built", "[": "not built", "]": "not built", "g'": "marks are not built", "g`": "marks are not built",
@@ -1072,6 +1154,44 @@ struct VimEngine {
             index += 1
             if c == "d" { return .done(Command(count: count, action: .deleteSurround(target))) }
             return parseReplacement(keys, &index).map { Command(count: count, action: .changeSurround(target, $0)) }
+        }
+
+        // evil-lion: gl{motion}{char} and gL; in visual mode gl{char}. "/" reads a pattern to Return.
+        if c == "g", index < keys.count, keys[index] == .char("l") || keys[index] == .char("L") {
+            let right = keys[index] == .char("L")
+            index += 1
+            var motion: Motion?
+            // The count before gl is evil-lion's (1: the first match only); one after it is the motion's.
+            let outerCount = count
+            var motionCount: Int?
+            if !inVisual {
+                motionCount = readCount()
+                switch parseMotion(keys, &index, textObjects: true) {
+                case .incomplete: return .incomplete
+                case .invalid: return .invalid
+                case .done(let parsed): motion = parsed
+                }
+            }
+            guard index < keys.count else { return .incomplete }
+            guard case .char(let target) = keys[index] else { return .invalid }
+            index += 1
+            var pattern = String(target)
+            if target == "/" {
+                pattern = ""
+                while true {
+                    guard index < keys.count else { return .incomplete }
+                    let key = keys[index]
+                    index += 1
+                    if key == .enter { break }
+                    if key == .backspace { if !pattern.isEmpty { pattern.removeLast() }; continue }
+                    guard case .char(let k) = key else { return .invalid }
+                    pattern.append(k)
+                }
+                pattern = "/" + (pattern.isEmpty ? "/" : pattern)
+            }
+            // evil-lion: "Only COUNT `1' is supported at the moment".
+            if let outerCount, outerCount > 1 { return .done(Command(count: nil, action: .simple("unbuilt:only a count of 1 works before gl"))) }
+            return .done(Command(count: motionCount, action: .align(right: right, motion, pattern, firstOnly: outerCount == 1)))
         }
 
         // An operator: d, c, y, >, <, g~, gu, gU (or the same in visual mode).
@@ -1393,7 +1513,7 @@ struct VimEngine {
     private static func isChange(_ command: Command) -> Bool {
         switch command.action {
         case .motion: false
-        case .deleteSurround, .changeSurround, .addSurround: true
+        case .deleteSurround, .changeSurround, .addSurround, .align: true
         case .operate(let op, _): op != .yank
         case .simple(let name):
             ["x", "X", "s", "S", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement"].contains(name)
@@ -1405,6 +1525,18 @@ struct VimEngine {
         switch command.action {
         case .deleteSurround(let target):
             surround(target, count: command.count ?? 1, with: nil)
+            return nil
+        case .align(let right, let motion, let pattern, let firstOnly):
+            if inVisual {
+                let lines = (lineIndex(min(anchor, cursor)), lineIndex(max(anchor, cursor)))
+                cursor = min(anchor, cursor)
+                mode = .normal
+                align(lines.0, lines.1, right: right, pattern: pattern, firstOnly: firstOnly)
+            } else if let motion, let resolved = resolved(motion, count: command.count), let lines = lineRange(of: resolved, count: command.count ?? 1) {
+                align(lines.0, lines.1, right: right, pattern: pattern, firstOnly: firstOnly)
+            } else {
+                failed = true
+            }
             return nil
         case .changeSurround(let target, let replacement):
             if let pair = Self.surroundPair(replacement) { surround(target, count: command.count ?? 1, with: pair) }

@@ -89,7 +89,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `ysiw⌃F` then `inc` and Return wraps a word in `(inc …)`, `dsf` unwraps `foo(x)`;
     `ciB` inside `{:a [1 2]}` on the 2 changes `1 2` (the nearest block, as in Doom);
     `gcc` comments a Clojure line with `;; `, `gcip` a paragraph, again to uncomment;
-    `VG` then `g⌃A` on lines of `0` numbers them 1, 2, 3; `viw*` finds the next copy of a selection. (#53)
+    `VG` then `g⌃A` on lines of `0` numbers them 1, 2, 3; `viw*` finds the next copy of a selection;
+    `glip=` lines up the `=` signs of a paragraph. (#53)
 
 ## Needs your decision
 

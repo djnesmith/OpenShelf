@@ -454,4 +454,36 @@ struct VimDoomTextObjectTests {
     func visualStar(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// gl and gL, evil-lion (C28).
+    @Test(arguments: [
+        ("|a = 1\nbbb = 2\ncc = 3", "glip=", "|a   = 1\nbbb = 2\ncc  = 3"),
+        ("|a = 1\nbbb = 2\ncc = 3", "gLip=", "|a =   1\nbbb = 2\ncc =  3"),
+        ("|a, b, c\nlong, x, yy\nm, n, o", "glip,", "|a   , b, c\nlong, x, yy\nm   , n, o"),
+        ("|a, b, c\nlong, x, yy\nm, n, o", "gLip,", "|a,    b, c\nlong, x, yy\nm,    n, o"),
+        ("|a, b, c\nlong, x, yy\nm, n, o", "1glip,", "|a   , b, c\nlong, x, yy\nm   , n, o"),
+        ("|a, b, c\nlong, x, yy\nm, n, o", "1gLip,", "|a,    b, c\nlong, x, yy\nm,    n, o"),
+        ("|  x  = 1\n  long = 2", "glip=", "|  x    = 1\n  long = 2"),
+        ("|a = 1\nbbb = 2\ncc = 3", "Vjjgl=", "|a   = 1\nbbb = 2\ncc  = 3"),
+        ("|a = 1\nbbb = 2\ncc = 3", "gl2j=", "|a   = 1\nbbb = 2\ncc  = 3"),
+        ("|a := 1\nbbb := 2", "glip:", "|a   := 1\nbbb := 2"),
+        ("|a := 1\nbbb := 2", "glip=", "|a :  = 1\nbbb := 2"),
+        ("|a=1\nbb=2", "glip=", "|a =1\nbb=2"),
+        ("|a = 1\n\nbbb = 2", "glG=", "|a   = 1\n\nbbb = 2"),
+        ("a = 1\n|bbb    = 2", "glip=", "a   = 1\n|bbb = 2"),
+        ("|x\ny", "glip=", "|x\ny"),
+        ("|a = 1\nbbb = 2\ncc = 3", "glip/=<CR>", "|a   = 1\nbbb = 2\ncc  = 3"),
+        ("|a, b, c\nlong, x,   yy\nm, nnnn, o", "glip,", "|a   , b   , c\nlong, x   ,   yy\nm   , nnnn, o"),
+        ("|a, b, c\nlong, x,   yy\nm, nnnn, o", "gLip,", "|a,    b,    c\nlong, x,    yy\nm,    nnnn, o"),
+        ("|x = 1\ny  =  2", "gLip=", "|x =  1\ny  = 2"),
+        ("|a=1\nbb=2", "2glip=", "|a=1\nbb=2"),
+        ("|a = 1\nbbb = 2", "glj=u", "|a = 1\nbbb = 2"),
+        ("|aaa  = 1\nb = 2", "glip=", "|aaa = 1\nb   = 2"),
+        ("|a, bbb, c\nlong, x, yy", "1glip,", "|a   , bbb, c\nlong, x, yy"),
+        ("|a, bbb, c\nlong, x, yy", "glip,", "|a   , bbb, c\nlong, x  , yy"),
+        ("|a =  1\nbbb = 2", "gLip=", "|a =   1\nbbb = 2"),
+    ])
+    func align(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }
