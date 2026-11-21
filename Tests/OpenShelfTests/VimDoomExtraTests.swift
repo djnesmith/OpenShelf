@@ -109,4 +109,25 @@ struct VimDoomExtraTests {
     @Test func exchangeDoesNotReplaceTheLastChange() {
         #expect(VimEngineTests.run("|ab\ncd\nef", "xgxxj.").string == "b\nd\nef")
     }
+
+    /// iw and aw on the empty line after a final line break (2026-11-21: viw there crashed the
+    /// app). Expected results are evil's in emacs --batch with the cursor at the buffer's end,
+    /// where the word is that last line break; G gets the cursor there.
+    @Test(arguments: [
+        ("|a\n", "GviwS)", "a|(\n)"),
+        ("|a\n", "Gviwd", "|a"),
+        ("|a\n", "Gdiw", "|a"),
+        ("|a\n", "Gdaw", "|a"),
+        ("|a\n", "GviWd", "|a"),
+        ("|a\n", "Gviwy", "|a\n"),
+        ("|a\n", "Gviw<Esc>x", "|\n"),
+        ("|", "viwd", "|"),
+        ("|", "diw", "|"),
+        ("|\n", "Gviwd", "|"),
+        ("|\n", "viwd", "|"),
+        ("|a b\n", "Gviwd", "a |b"),
+    ])
+    func wordOnTheEmptyLastLine(start: String, keys: String, expected: String) {
+        #expect(VimEngineTests.marked(VimEngineTests.run(start, keys)) == expected)
+    }
 }

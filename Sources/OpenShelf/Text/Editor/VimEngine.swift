@@ -2217,6 +2217,11 @@ struct VimEngine {
                 failed = true
                 return
             }
+            // The empty end line's word is the line break before it, taken as is.
+            if cursor == text.count {
+                apply(op, to: word.start..<text.count)
+                return
+            }
             apply(op, from: word.start, to: Target(position: word.end, kind: word.inclusive ? .inclusive : .exclusive))
             return
         }
@@ -2592,7 +2597,7 @@ struct VimEngine {
         case "w", "W":
             // As visual mode selects it: the end is included.
             let word = wordObject(inner: inner, big: kind == "W", count: count)
-            return word.found ? (word.start..<min(word.end + 1, text.count), false) : nil
+            return word.found ? (word.start..<max(word.start, min(word.end + 1, text.count)), false) : nil
         case "\"", "'", "`": return quoteObject(inner: inner, quote: kind).map { ($0, false) }
         case "(", ")", "b": return bracketObject(inner: inner, open: "(", close: ")", count: count)
         case "[", "]": return bracketObject(inner: inner, open: "[", close: "]", count: count)
@@ -3132,6 +3137,10 @@ struct VimEngine {
     /// end is a position (its "\n", or the text's end), and an empty line is a word.
     /// On failure `end` is where the search stopped, which is where vim leaves the cursor.
     private func wordObject(inner: Bool, big: Bool, count: Int) -> (start: Int, end: Int, inclusive: Bool, found: Bool) {
+        // On the empty line after a final line break there is no character: the word is that
+        // line break, as evil takes it in Doom (vim's port below would run backwards here). In
+        // empty text it is empty, so ciw still types.
+        guard cursor < text.count else { return (max(text.count - 1, 0), max(text.count - 1, 0), true, true) }
         func isEnd(_ i: Int) -> Bool { vimIsLineEnd(i) }
         func cls(_ i: Int) -> Int { vimClass(i, big: big) }
         func atLineStart(_ i: Int) -> Bool { i == 0 || text[i - 1] == "\n" }
