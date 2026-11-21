@@ -658,6 +658,10 @@ struct VimEngine {
         var result: [Range<Int>] = []
         var i = low
         while i < high {
+            // Every turn must move on; one that doesn't ends the forms rather than loop forever
+            // (2026-11-21: a stray ")" spun here and froze the app).
+            let turn = i
+            defer { if i <= turn { i = high + 1 } }
             let c = text[i]
             if c.isWhitespace || c == "," { i += 1; continue }
             if c == ";" { while i < high, text[i] != "\n" { i += 1 }; continue }
@@ -710,6 +714,7 @@ struct VimEngine {
         while i < text.count {
             let c = text[i]
             if i > open, let next = skipLisp(i) {
+                guard next > i else { return nil }
                 i = next
                 continue
             } else if "([{".contains(c) {
@@ -731,7 +736,7 @@ struct VimEngine {
             while i < text.count {
                 if let next = skipLisp(i) {
                     if text[i] == "\"", next - 1 > i, text[next - 1] == "\"", i < cursor, cursor <= next - 1 { return (i, next - 1) }
-                    i = next
+                    i = max(next, i + 1)
                     continue
                 }
                 i += 1
@@ -741,7 +746,7 @@ struct VimEngine {
         var i = 0
         while i < cursor {
             if let next = skipLisp(i) {
-                i = next
+                i = max(next, i + 1)
                 continue
             }
             if "([{".contains(text[i]), let close = matchingAnyClose(from: i), close >= cursor { best = (i, close) }
@@ -810,7 +815,7 @@ struct VimEngine {
         var j = 0
         while j < i {
             if let next = skipLisp(j) {
-                j = next
+                j = max(next, j + 1)
                 continue
             }
             if "([{".contains(text[j]), let close = matchingAnyClose(from: j), close > i { best = (j, close) }
