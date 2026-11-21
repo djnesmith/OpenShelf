@@ -6,6 +6,8 @@ enum VimKey: Equatable, Sendable {
     case ctrl(Character)
     /// ⌥ with a letter, by key code ("j", "k"): the Edit window's line moves.
     case alt(Character)
+    /// ⌘⇧R ("R"): smartparens' raise, s-R in David's Doom.
+    case command(Character)
     case escape, enter, backspace
     case left, right, up, down
 
@@ -330,7 +332,7 @@ struct VimEngine {
         case .left: cursor = max(cursor - 1, 0)
         case .right: cursor = min(cursor + 1, text.count)
         // In insert mode ⌥ keys type their own characters (the window lets them through).
-        case .alt: break
+        case .alt, .command: break
         case .up, .down:
             let line = lineIndex(cursor) + (key == .up ? -1 : 1)
             guard line >= 0, line < lineStarts.count else { return }
@@ -590,6 +592,178 @@ struct VimEngine {
         // Side by side, evil-exchange swaps its texts the other way round and point ends at the start.
         cursor = first.upperBound == second.lowerBound ? first.lowerBound : position >= first.upperBound ? position + shift : position
         if linewise || mark.linewise { cursor = firstNonBlank(lineStart(cursor)) }
+        clampCursor()
+    }
+
+    // MARK: - Slurp, barf and raise
+
+    /// The forms (smartparens' sexps) between `low` and `high`: a bracketed form, a "…"
+    /// string or a word, with quote and reader prefixes (' ` ~ @ # ^) attached; blanks, commas
+    /// and ; comments between them are skipped.
+    private func forms(from low: Int, to high: Int) -> [Range<Int>] {
+        var result: [Range<Int>] = []
+        var i = low
+        while i < high {
+            let c = text[i]
+            if c.isWhitespace || c == "," { i += 1; continue }
+            if c == ";" { while i < high, text[i] != "\n" { i += 1 }; continue }
+            let start = i
+            while i < high, "'`~@#^".contains(text[i]) { i += 1 }
+            guard i < high else { result.append(start..<i); break }
+            if "([{".contains(text[i]) {
+                guard let end = matchingAnyClose(from: i), end < high else { return result }
+                i = end + 1
+            } else if text[i] == "\"" {
+                i += 1
+                while i < high, text[i] != "\"" { i += text[i] == "\\" ? 2 : 1 }
+                i = min(i + 1, high)
+            } else {
+                while i < high, !text[i].isWhitespace, !"()[]{}\",;".contains(text[i]) { i += 1 }
+            }
+            result.append(start..<i)
+        }
+        return result
+    }
+
+    /// The closing bracket for the bracket at `open`, any kind counting, strings skipped.
+    private func matchingAnyClose(from open: Int) -> Int? {
+        var depth = 0, i = open
+        while i < text.count {
+            let c = text[i]
+            if c == "\"" {
+                i += 1
+                while i < text.count, text[i] != "\"" { i += text[i] == "\\" ? 2 : 1 }
+            } else if "([{".contains(c) {
+                depth += 1
+            } else if ")]}".contains(c) {
+                depth -= 1
+                if depth == 0 { return i }
+            }
+            i += 1
+        }
+        return nil
+    }
+
+    /// The innermost pair around the cursor (Emacs's point, just before the cursor's character):
+    /// a bracketed form, or with `strings` a "…" string.
+    private func enclosingPair(strings: Bool) -> (open: Int, close: Int)? {
+        if strings {
+            var i = 0
+            while i < text.count {
+                if text[i] == "\"" {
+                    let open = i
+                    i += 1
+                    while i < text.count, text[i] != "\"" { i += text[i] == "\\" ? 2 : 1 }
+                    if i < text.count, open < cursor, cursor <= i { return (open, i) }
+                }
+                i += 1
+            }
+        }
+        var best: (Int, Int)?
+        var i = 0
+        while i < cursor {
+            if text[i] == "\"" {
+                i += 1
+                while i < text.count, text[i] != "\"" { i += text[i] == "\\" ? 2 : 1 }
+            } else if "([{".contains(text[i]), let close = matchingAnyClose(from: i), close >= cursor {
+                best = (i, close)
+            }
+            i += 1
+        }
+        return best
+    }
+
+    /// ⌃L ⌃H ⌃J ⌃K: smartparens' forward and backward slurp and barf on the innermost form (or
+    /// string) around the cursor, `count` forms at a time. One undo step; the cursor stays with
+    /// the text, kept inside the form. Lines are not re-indented (Doom's clojure-mode does).
+    private mutating func slurpOrBarf(_ name: String, count: Int) {
+        guard let pair = enclosingPair(strings: true) else {
+            failed = true
+            return
+        }
+        let openText = text[pair.open], closeText = text[pair.close]
+        // The forms of the list around this one (or the whole text at the top).
+        let parent = enclosingPairOf(pair.open)
+        let parentLow = parent.map { $0.open + 1 } ?? 0, parentHigh = parent?.close ?? text.count
+        var removeAt: Int, insertAt: Int, inserted: Character
+        switch name {
+        case "slurpForward":
+            let after = forms(from: pair.close + 1, to: parentHigh)
+            guard !after.isEmpty else { failed = true; return }
+            (removeAt, insertAt, inserted) = (pair.close, after[min(count, after.count) - 1].upperBound, closeText)
+        case "slurpBackward":
+            let before = forms(from: parentLow, to: pair.open)
+            guard !before.isEmpty else { failed = true; return }
+            (removeAt, insertAt, inserted) = (pair.open, before[max(before.count - count, 0)].lowerBound, openText)
+        case "barfForward":
+            let inside = forms(from: pair.open + 1, to: pair.close)
+            guard !inside.isEmpty else { failed = true; return }
+            let kept = inside.count - min(count, inside.count)
+            (removeAt, insertAt, inserted) = (pair.close, kept > 0 ? inside[kept - 1].upperBound : pair.open + 1, closeText)
+        default:
+            let inside = forms(from: pair.open + 1, to: pair.close)
+            guard !inside.isEmpty else { failed = true; return }
+            let moved = min(count, inside.count)
+            (removeAt, insertAt, inserted) = (pair.open, moved < inside.count ? inside[moved].lowerBound : pair.close, openText)
+        }
+        // Undo puts the cursor back where it was, as in Doom.
+        checkpoint(at: cursor)
+        // The cursor moves as Emacs's point does through a deletion and an insertion.
+        var point = cursor
+        text.remove(at: removeAt)
+        if point > removeAt { point -= 1 }
+        let at = insertAt > removeAt ? insertAt - 1 : insertAt
+        text.insert(inserted, at: at)
+        if point > at { point += 1 }
+        // Kept inside the form, as smartparens leaves it.
+        func moved(_ i: Int) -> Int {
+            let j = i > removeAt ? i - 1 : i
+            return j >= at ? j + 1 : j
+        }
+        let newOpen = removeAt == pair.open ? at : moved(pair.open)
+        let newClose = removeAt == pair.close ? at : moved(pair.close)
+        cursor = min(max(point, newOpen + 1), newClose)
+        wantedColumn = nil
+        clampCursor()
+    }
+
+    /// The bracketed form around position `i` (not counting a bracket at `i` itself).
+    private func enclosingPairOf(_ i: Int) -> (open: Int, close: Int)? {
+        var best: (Int, Int)?
+        var j = 0
+        while j < i {
+            if text[j] == "\"" {
+                j += 1
+                while j < text.count, text[j] != "\"" { j += text[j] == "\\" ? 2 : 1 }
+            } else if "([{".contains(text[j]), let close = matchingAnyClose(from: j), close > i {
+                best = (j, close)
+            }
+            j += 1
+        }
+        return best
+    }
+
+    /// ⌘⇧R, smartparens' raise (s-R in David's Doom): the form at the cursor, or the next one
+    /// in the list, takes the place of the list around it (a count raises that many forms from
+    /// there); the cursor goes to its start. With too few forms the list stays and the cursor
+    /// goes to its start.
+    private mutating func raise(count: Int) {
+        guard let list = enclosingPair(strings: false) else {
+            failed = true
+            return
+        }
+        let inside = forms(from: list.open + 1, to: list.close)
+        guard let first = inside.firstIndex(where: { $0.contains(cursor) }) ?? inside.firstIndex(where: { $0.lowerBound >= cursor }),
+              first + max(count, 1) - 1 < inside.count else {
+            cursor = list.open
+            failed = true
+            return
+        }
+        let raised = Array(text[inside[first].lowerBound..<inside[first + max(count, 1) - 1].upperBound])
+        checkpoint(at: list.open)
+        text.replaceSubrange(list.open...list.close, with: raised)
+        cursor = list.open
+        wantedColumn = nil
         clampCursor()
     }
 
@@ -1166,6 +1340,7 @@ struct VimEngine {
         if case .alt(let c) = key, c == "j" || c == "k" {
             return .done(Command(count: count, action: .simple(c == "j" ? "moveDown" : "moveUp")))
         }
+        if key == .command("R") { return .done(Command(count: count, action: .simple("raise"))) }
         if case .ctrl(let c) = key {
             switch c {
             case "r": return .done(Command(count: count, action: .simple("redo")))
@@ -1175,6 +1350,8 @@ struct VimEngine {
             // In visual mode, evil-numbers: every number in the selection.
             case "a" where inVisual, "x" where inVisual: return .done(Command(count: count, action: .simple(c == "a" ? "visualIncrement" : "visualDecrement")))
             case "x" where !inVisual: return .done(Command(count: count, action: .simple("decrement")))
+            // Slurp and barf, as David's Doom binds smartparens (~/.doom.d/config.el:821-824).
+            case "l", "h", "j", "k": return .done(Command(count: count, action: .simple(["l": "slurpForward", "h": "slurpBackward", "j": "barfForward", "k": "barfBackward"][c]!)))
             default: return .invalid
             }
         }
@@ -1615,6 +1792,7 @@ struct VimEngine {
             case .char(let c): String(c)
             case .ctrl(let c): "⌃\(c)"
             case .alt(let c): "⌥\(c.uppercased())"
+            case .command(let c): "⌘⇧\(c)"
             case .escape: "Esc"
             case .enter: "↩"
             default: ""
@@ -1628,7 +1806,7 @@ struct VimEngine {
         case .deleteSurround, .changeSurround, .addSurround, .align: true
         case .operate(let op, _): op != .yank && op != .exchange
         case .simple(let name):
-            ["x", "X", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement"].contains(name)
+            ["x", "X", "D", "C", "J", "o", "O", "i", "I", "a", "A", "p", "P", "~", "increment", "decrement", "slurpForward", "slurpBackward", "barfForward", "barfBackward", "raise"].contains(name)
                 || (name.hasPrefix("line") && name != "liney" && name != "lineX") || (name.hasPrefix("r") && name.count == 2)
         }
     }
@@ -1809,6 +1987,10 @@ struct VimEngine {
             case "moveDown", "moveUp":
                 moveLines(down: name == "moveDown", count: n)
                 return nil
+            case "slurpForward", "slurpBackward", "barfForward", "barfBackward", "raise":
+                mode = .normal
+                if name == "raise" { raise(count: n) } else { slurpOrBarf(name, count: n) }
+                return nil
             case "visualIncrement", "visualDecrement", "visualIncrementEach", "visualDecrementEach":
                 addToNumbersInSelection(name.contains("Increment") ? n : -n, eachMore: name.hasSuffix("Each"))
                 return nil
@@ -1858,6 +2040,8 @@ struct VimEngine {
             commandLine = name
         case ".": repeatLastChange(count: count)
         case "increment", "decrement": addToNumber(name == "increment" ? n : -n)
+        case "slurpForward", "slurpBackward", "barfForward", "barfBackward": slurpOrBarf(name, count: n)
+        case "raise": raise(count: n)
         case "moveDown", "moveUp": moveLines(down: name == "moveDown", count: n)
         case "block":
             anchor = cursor
@@ -3670,6 +3854,7 @@ struct VimEngine {
         case .down: "\u{F701}"
         // Private-use characters, so a macro holding ⌥J or ⌥K plays it back.
         case .alt(let c): c == "j" ? "\u{F8F0}" : "\u{F8F1}"
+        case .command: "\u{F8F2}"
         }
     }
 
@@ -3684,6 +3869,7 @@ struct VimEngine {
         case "\u{F701}": .down
         case "\u{F8F0}": .alt("j")
         case "\u{F8F1}": .alt("k")
+        case "\u{F8F2}": .command("R")
         default:
             if let value = character.asciiValue, value < 0x20, character != "\n", character != "\t" {
                 .ctrl(Character(UnicodeScalar(value | 0x60)))

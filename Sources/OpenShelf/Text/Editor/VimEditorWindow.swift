@@ -399,6 +399,12 @@ final class EditorPanel: NSPanel {
             onCycleLineNumbers()
             return true
         }
+        // ⌘⇧R outside insert mode is smartparens' raise, s-R in David's Doom.
+        if flags == [.command, .shift], event.charactersIgnoringModifiers?.lowercased() == "r",
+           let view = firstResponder as? VimTextView, view.engine.mode != .insert {
+            view.keyDown(with: event)
+            return true
+        }
         if flags == .command {
             // The app has no Edit menu, so the standard edit keys are sent here.
             let actions: [String: Selector] = ["c": #selector(NSText.copy(_:)), "v": #selector(NSText.paste(_:)), "x": #selector(NSText.cut(_:))]
@@ -702,6 +708,8 @@ final class VimTextView: NSTextView {
         default: break
         }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        // ⌘⇧R: raise, as s-R in David's Doom.
+        if flags == [.command, .shift], event.charactersIgnoringModifiers?.lowercased() == "r" { return .command("R") }
         if flags.contains(.control), let c = event.charactersIgnoringModifiers?.lowercased().first { return .ctrl(c) }
         if flags.contains(.command) { return nil }
         return event.characters?.first.map(VimKey.char)

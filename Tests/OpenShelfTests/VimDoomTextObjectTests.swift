@@ -632,4 +632,53 @@ struct VimDoomTextObjectTests {
     func doomNumbers(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// ⌃L ⌃H ⌃J ⌃K slurp and barf, ⌘⇧R raise, as smartparens in David's Doom (C32; <D-R> is ⌘⇧R).
+    @Test(arguments: [
+        ("(a (b| c) d e)", "<C-l>", "(a (b| c d) e)"),
+        ("(a (b| c) d e)", "<C-h>", "((a b| c) d e)"),
+        ("(a (b| c) d e)", "<C-j>", "(a (b|) c d e)"),
+        ("(a (b| c) d e)", "<C-k>", "(a b (|c) d e)"),
+        ("(a (b| c) d e)", "2<C-l>", "(a (b| c d e))"),
+        ("(a (|b c) d)", "<C-l>", "(a (|b c d))"),
+        ("(a (b c|) d)", "<C-l>", "(a (b c| d))"),
+        ("(a (b| c))", "<C-l>", "(a (b| c))"),
+        ("(a [b| c] d)", "<C-l>", "(a [b| c d])"),
+        ("(a (b|) d)", "<C-j>", "(a (|)b d)"),
+        ("(f (g x|) y)", "<C-k>", "(f g (x|) y)"),
+        ("(a (b c|) (d e))", "<C-l>", "(a (b c| (d e)))"),
+        ("x (b| c) y", "<C-l>", "x (b| c y)"),
+        ("(a (b \"s|\" c) d)", "<C-l>", "(a (b \"s| c\") d)"),
+        ("(a (b| c) d)", "<C-j><C-j>", "(a (|)b c d)"),
+        ("(a (b c|) d)", "<C-k>", "(a b (c|) d)"),
+        ("(a b|)", "<C-h>", "(a b|)"),
+        ("|(a b)", "<C-l>", "|(a b)"),
+        ("(a (b| c) d)", "<D-R>", "(a |c d)"),
+        ("(a (|b c) d)", "<D-R>", "(a |b d)"),
+        ("(a (b c|) d)", "<D-R>", "(a |(b c) d)"),
+        ("(a (b (|c d) e) f)", "<D-R>", "(a (b |c e) f)"),
+        ("(a (b |\"s t\" c))", "<D-R>", "(a |\"s t\")"),
+        ("(a b|)", "<D-R>", "|(a b)"),
+        ("|x (a)", "<D-R>", "|x (a)"),
+        ("(a (b| c) d)", "2<D-R>", "(a |(b c) d)"),
+        ("(a (b|c) d)", "<D-R>", "(a |bc d)"),
+        ("(a (|b c) d)", "<C-k>", "(a b (|c) d)"),
+        ("(a (b c|) d)", "<C-j>", "(a (b|) c d)"),
+        ("(a (b| c) 'd e)", "<C-l>", "(a (b| c 'd) e)"),
+        ("(a (b| c) #{d} e)", "<C-l>", "(a (b| c #{d}) e)"),
+        ("(a (b| c) \"d e\" f)", "<C-l>", "(a (b| c \"d e\") f)"),
+        ("(a 'x (b| c))", "<C-h>", "(a ('x b| c))"),
+        ("[a (b| c) d]", "<C-l>", "[a (b| c d)]"),
+        ("(a (b| c)  d)", "<C-l>", "(a (b| c  d))"),
+        ("(a (b|   c) d)", "<C-j>", "(a (b|)   c d)"),
+        ("(a (b|) d)", "<C-l>", "(a (b| d))"),
+        ("(a (|) d)", "<C-l>", "(a (| d))"),
+        ("(a (b c|) d e)", "2<C-j>", "(a (|)b c d e)"),
+        ("(a (b| c d) e)", "2<D-R>", "(a |c d e)"),
+        ("(a (|b c d) e)", "2<D-R>", "(a |b c e)"),
+        ("(a (b| c) d)", "<C-l>u", "(a (b| c) d)"),
+    ])
+    func structural(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }

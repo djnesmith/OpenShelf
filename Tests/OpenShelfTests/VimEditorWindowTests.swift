@@ -22,6 +22,21 @@ struct VimEditorWindowTests {
         #expect(VimTextView.vimKey(for: Self.key("[", keyCode: 33, modifiers: .control)) == .ctrl("["))
         // ⌘ keys are the window's, not vim's.
         #expect(VimTextView.vimKey(for: Self.key("v", keyCode: 9, modifiers: .command)) == nil)
+        // ⌘⇧R is smartparens' raise, s-R in David's Doom.
+        #expect(VimTextView.vimKey(for: Self.key("R", keyCode: 15, modifiers: [.command, .shift])) == .command("R"))
+        #expect(VimTextView.vimKey(for: Self.key("l", keyCode: 37, modifiers: .control)) == .ctrl("l"))
+    }
+
+    /// ⌘⇧R reaches vim through the panel, as ⌘ keys go to the window first.
+    @Test @MainActor func raiseKeyReachesVim() {
+        let panel = EditorPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        panel.contentView = view
+        panel.makeFirstResponder(view)
+        view.load("(a (b c) d)")
+        for c in "fb" { view.keyDown(with: Self.key(String(c))) }
+        #expect(panel.performKeyEquivalent(with: Self.key("R", keyCode: 15, modifiers: [.command, .shift])))
+        #expect(view.string == "(a b d)")
     }
 
     /// Keys typed into the window's text view edit the text through vim,

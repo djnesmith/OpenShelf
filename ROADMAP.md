@@ -539,7 +539,7 @@ In his Doom setup:
 | C29 | `g⌃A` / `g⌃X` in visual mode: numbers that count up line by line (evil-numbers) — **built**, with visual `⌃A` / `⌃X`, and Doom's own keys `g=` / `g-` (visual `g=` `g-` count up, `g+` adds one; David, 2026-11-21) | S | — |
 | C30 | Visual `*` / `#`: search for the selected text (evil-visualstar) — **built** | S | — |
 | C31 | evil-multiedit: visual `R`, `M-d` / `M-D` edit every match at once (his `config.el:738-759`) | L | — |
-| C32 | Slurp, barf and raise for Lisp forms (smartparens; his `s-R` raise) | M | Key choices: smartparens has no vim keys in his setup |
+| C32 | Slurp, barf and raise for Lisp forms (smartparens; his `s-R` raise) — **built** on his own keys: `⌃L` `⌃H` `⌃J` `⌃K` (`~/.doom.d/config.el:821-824`) and `⌘⇧R` | M | — |
 
 Plain vim:
 
