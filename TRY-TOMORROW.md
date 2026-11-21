@@ -94,7 +94,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `gxiw` on one word, then `gxiw` on another, swaps them;
     `s` then two letters jumps to them on the line, `s` again to the next (vim's `s` is now `cl`);
     `yif` copies the Clojure form the cursor is in;
-    in `(a (b c) d)` on b, `⌃L` makes `(a (b c d))`, `⌃J` pushes c out, `⌘⇧R` leaves `(a b d)`. (#53)
+    in `(a (b c) d)` on b, `⌃L` makes `(a (b c d))`, `⌃J` pushes c out, `⌘⇧R` leaves `(a b d)`;
+    `ggVG=` re-indents a pasted Clojure form as Doom would (needs cljfmt). (#53)
 
 ## Needs your decision
 

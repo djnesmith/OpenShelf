@@ -554,6 +554,45 @@ struct VimEngine {
         wantedColumn = nil
     }
 
+    // MARK: - Re-indenting
+
+    /// Lines `=` asked to re-indent, for the window: it runs the Text wheel's Re-indent
+    /// formatter on the whole text and hands the result to `applyReindent`. Doom's = asks the
+    /// major mode; Re-indent's formatter for the text (cljfmt for Clojure) indents as Doom's
+    /// clojure-mode does, and `=` and Re-indent then agree (David, 2026-11-21).
+    var reindentRequest: ClosedRange<Int>?
+
+    /// The formatter's result for the text as it was (`original`): each line in `lines` takes
+    /// the indentation the formatter gave it, keeping its own text, in one undo step. The cursor
+    /// goes to the first line's first non-blank. Nothing changes if the text changed meanwhile or
+    /// the formatter changed the number of lines.
+    mutating func applyReindent(_ formatted: String, lines: ClosedRange<Int>, original: String) {
+        guard string == original else { return }
+        let old = original.components(separatedBy: "\n"), new = formatted.components(separatedBy: "\n")
+        guard old.count == new.count, lines.upperBound < old.count else {
+            message = "=: the formatter changed the lines, so nothing was re-indented"
+            return
+        }
+        var result = old
+        for i in lines {
+            let body = old[i].drop { $0 == " " || $0 == "\t" }
+            result[i] = body.isEmpty ? "" : String(new[i].prefix { $0 == " " || $0 == "\t" }) + body
+        }
+        cursor = firstNonBlank(lineStarts[lines.lowerBound])
+        let joined = result.joined(separator: "\n")
+        guard joined != original else { return }
+        checkpoint(at: cursor)
+        text = Array(joined)
+        cursor = firstNonBlank(lineStarts[lines.lowerBound])
+        wantedColumn = nil
+        clampCursor()
+    }
+
+    /// The window could not re-indent: no formatter for the text, or the formatter failed.
+    mutating func reindentFailed(_ reason: String) {
+        message = "=: \(reason)"
+    }
+
     // MARK: - Exchanging
 
     /// The range the first gx marked, while the text is as it was then (evil-exchange keeps
@@ -920,7 +959,7 @@ struct VimEngine {
             for range in ranges.reversed() { text.replaceSubrange(range, with: Array(transformed(String(text[range]), op))) }
             mode = .normal
             cursor = corner
-        case .indent, .outdent, .surround, .format, .comment:
+        case .indent, .outdent, .surround, .format, .comment, .reindent:
             mode = .normal
             applyLines(op, block.first, block.last)
         case .exchange:
@@ -1205,6 +1244,8 @@ struct VimEngine {
         case comment = "C"
         /// gx: marks a range, and the next gx swaps the two (evil-exchange, ROADMAP C27).
         case exchange = "X"
+        /// =: re-indents lines with the Text wheel's Re-indent formatter (ROADMAP C34).
+        case reindent = "="
     }
 
     struct Command {
@@ -1271,7 +1312,7 @@ struct VimEngine {
     /// vim commands this engine doesn't have, read to their end so the keys after them
     /// never run as commands of their own (2026-11-20: `=ip` and `ma` fell into insert
     /// mode). nil: not one of them; .some(nil): wait for more keys; .some(reason): done.
-    static let unbuiltOperators = ["=", "!", "g?", "gw", "g@", "zf"]
+    static let unbuiltOperators = ["!", "g?", "gw", "g@", "zf"]
     static let unbuiltWithArgument: [String: String] = [
         "m": "marks are not built", "'": "marks are not built", "`": "marks are not built",
         "z": "not built", "[": "not built", "]": "not built", "g'": "marks are not built", "g`": "marks are not built",
@@ -1441,7 +1482,7 @@ struct VimEngine {
 
         // An operator: d, c, y, >, <, g~, gu, gU (or the same in visual mode).
         var op: Operator?
-        if let simpleOp = Operator(rawValue: c), [.delete, .change, .yank, .indent, .outdent].contains(simpleOp) {
+        if let simpleOp = Operator(rawValue: c), [.delete, .change, .yank, .indent, .outdent, .reindent].contains(simpleOp) {
             op = simpleOp
         } else if c == "g" {
             guard let second = next() else { return .incomplete }
@@ -2559,6 +2600,10 @@ struct VimEngine {
         if op == .surround { return wrapLines(first, last, in: surroundPair, indenting: false) }
         if op == .format { return format(first, last) }
         if op == .comment { return toggleComment(first, last) }
+        if op == .reindent {
+            reindentRequest = first...last
+            return
+        }
         if op == .exchange {
             let starts = lineStarts
             // The lines' text without the last line break, so the last line swaps cleanly.
@@ -2595,7 +2640,7 @@ struct VimEngine {
             cursor = start + indent.count
             beginInsert()
             return
-        case .surround, .format, .comment, .exchange:
+        case .surround, .format, .comment, .exchange, .reindent:
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: start)
@@ -2613,6 +2658,10 @@ struct VimEngine {
     private mutating func apply(_ op: Operator, to range: Range<Int>) {
         if op == .surround { return wrap(range, in: surroundPair, trimming: true) }
         if op == .exchange { return exchange(range, linewise: false) }
+        if op == .reindent {
+            reindentRequest = lineIndex(range.lowerBound)...lineIndex(max(range.upperBound - 1, range.lowerBound))
+            return
+        }
         if op == .format || op == .comment {
             let first = lineIndex(range.lowerBound), last = lineIndex(max(range.upperBound - 1, range.lowerBound))
             return op == .format ? format(first, last) : toggleComment(first, last)
@@ -2632,7 +2681,7 @@ struct VimEngine {
                 beginInsert()
                 return
             }
-        case .surround, .format, .comment, .exchange:
+        case .surround, .format, .comment, .exchange, .reindent:
             return
         case .indent, .outdent, .upper, .lower, .toggleCase:
             checkpoint(at: range.lowerBound)

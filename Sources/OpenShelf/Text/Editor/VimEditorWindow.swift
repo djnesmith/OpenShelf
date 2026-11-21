@@ -476,6 +476,33 @@ final class VimTextView: NSTextView {
     /// `jk` typed quickly leaves insert mode (ROADMAP C12), as Doom's evil-escape does.
     var insertEscape = InsertEscape()
 
+    /// How `=` re-indents: the Text wheel's Re-indent (ROADMAP C2), so both give the same result.
+    /// Tests put a stand-in here.
+    var reindent: @MainActor (String, String) async throws -> String? = { text, ext in
+        try await TextConversion.reindent(text, fileExtension: ext, tools: .current)
+    }
+
+    /// `=` (ROADMAP C34): the formatter for the whole text, then only the lines `=` took.
+    private func runReindent() {
+        guard let lines = engine.reindentRequest else { return }
+        engine.reindentRequest = nil
+        let original = engine.string
+        guard let ext = TextSniffer.codeExtension(for: original) else {
+            engine.reindentFailed("no formatter for this text")
+            render()
+            return
+        }
+        Task { @MainActor in
+            do {
+                let formatted = try await reindent(original, ext) ?? original
+                engine.applyReindent(formatted, lines: lines, original: original)
+            } catch {
+                engine.reindentFailed(error.localizedDescription)
+            }
+            render()
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         let key = Self.vimKey(for: event)
         if engine.mode == .insert, !hasMarkedText(), event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
@@ -500,6 +527,7 @@ final class VimTextView: NSTextView {
         guard let key else { return }
         let effect = engine.handle(key)
         render()
+        runReindent()
         if let effect { onEffect(effect) }
     }
 

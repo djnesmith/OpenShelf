@@ -27,6 +27,26 @@ struct VimEditorWindowTests {
         #expect(VimTextView.vimKey(for: Self.key("l", keyCode: 37, modifiers: .control)) == .ctrl("l"))
     }
 
+    /// = runs the window's formatter (Re-indent's) on the whole text and takes back the lines'
+    /// indentation; with no formatter for the text it says so and changes nothing.
+    @Test @MainActor func reindentRunsTheFormatter() async {
+        let view = VimTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        var asked: [(String, String)] = []
+        view.reindent = { text, ext in
+            asked.append((text, ext))
+            return "(defn f []\n  (g\n   x))"
+        }
+        view.load("(defn f []\n(g\nx))")
+        for c in "j==" { view.keyDown(with: Self.key(String(c))) }
+        for _ in 0..<100 where view.string == "(defn f []\n(g\nx))" { try? await Task.sleep(nanoseconds: 10_000_000) }
+        #expect(view.string == "(defn f []\n  (g\nx))")
+        #expect(asked.map(\.1) == ["clj"])
+        view.load("just words")
+        for c in "==" { view.keyDown(with: Self.key(String(c))) }
+        #expect(view.string == "just words")
+        #expect(view.engine.message == "=: no formatter for this text")
+    }
+
     /// ⌘⇧R reaches vim through the panel, as ⌘ keys go to the window first.
     @Test @MainActor func raiseKeyReachesVim() {
         let panel = EditorPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)

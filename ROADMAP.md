@@ -546,7 +546,7 @@ Plain vim:
 | Id | What | Size | Needs first |
 |---|---|---|---|
 | C33 | `is` / `as`: a sentence | S | — |
-| C34 | `=` re-indent (`==`, `=ip`) | S-M | Indent rules per file type, or the Re-indent tool (C2) |
+| C34 | `=` re-indent (`==`, `=ip`) — **built** on the Re-indent tool (C2), as David chose: the formatter runs on the whole text and `=` takes its lines' indentation | S-M | — |
 | C35 | Search highlight while searching, and `:noh` | S | — |
 | C36 | `gn` / `cgn`: the next match as an object, repeated with `.` | S | — |
 | C37 | Marks: `m{a-z}`, `'` and `` ` `` jumps | S | — |

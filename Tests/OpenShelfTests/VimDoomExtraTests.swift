@@ -137,4 +137,38 @@ struct VimDoomExtraTests {
         #expect(VimEngineTests.run("class A:\n    def f(self):\n        |a\n    def g(self):\n        b", "dif").string == "class A:\n    def g(self):\n        b")
         #expect(VimEngineTests.run("function f() {\n  |a;\n}\nfunction g() {}", "dif").string == "function g() {}")
     }
+
+    /// = asks the window for the lines to re-indent; the window runs Re-indent's formatter.
+    @Test(arguments: [
+        ("(a)\n|(b\nc)\n\n(d)", "=ip", 0...2), ("(a)\n|(b\nc)", "==", 1...1), ("(a)\n|(b\nc)", "=j", 1...2),
+        ("(a)\n|(b\nc)", "Vj=", 1...2), ("|(a)\n(b)\n(c)", "2==", 0...1), ("(a\n |b)", "=i(", 0...1),
+    ])
+    func reindentAsksForTheLines(start: String, keys: String, lines: ClosedRange<Int>) {
+        let engine = VimEngineTests.run(start, keys)
+        #expect(engine.reindentRequest == lines)
+        #expect(engine.string == start.replacingOccurrences(of: "|", with: ""))
+    }
+
+    @Test func reindentTakesOnlyTheIndentationOfItsLines() {
+        // The formatter also tidies spaces inside a line ("(+  a x)"); = keeps the line's text.
+        let original = "(defn f [x]\n(let [a 1]\n(+  a x)))\n(g\n   y)"
+        let formatted = "(defn f [x]\n  (let [a 1]\n    (+ a x)))\n(g\n y)"
+        var engine = VimEngine(original)
+        engine.applyReindent(formatted, lines: 1...2, original: original)
+        #expect(engine.string == "(defn f [x]\n  (let [a 1]\n    (+  a x)))\n(g\n   y)")
+        #expect(VimEngineTests.marked(engine).hasPrefix("(defn f [x]\n  |(let"))
+        _ = engine.handle(VimEngineTests.keys("u"))
+        #expect(engine.string == original)
+    }
+
+    @Test func reindentLeavesTextThatChangedOrLostLines() {
+        var engine = VimEngine("a\nb")
+        engine.applyReindent("  a\n  b", lines: 0...1, original: "a\nX")
+        #expect(engine.string == "a\nb")
+        engine.applyReindent("  a b", lines: 0...1, original: "a\nb")
+        #expect(engine.string == "a\nb")
+        #expect(engine.message?.contains("changed the lines") == true)
+        engine.applyReindent("a\n\t\n", lines: 0...1, original: "a\nb")
+        #expect(engine.string == "a\nb")
+    }
 }
