@@ -96,7 +96,8 @@ Only the Mail keys have been tried on real Mail so far. Use test messages.
     `yif` copies the Clojure form the cursor is in;
     in `(a (b c) d)` on b, `⌃L` makes `(a (b c d))`, `⌃J` pushes c out, `⌘⇧R` leaves `(a b d)`;
     `ggVG=` re-indents a pasted Clojure form as Doom would (needs cljfmt);
-    `/foo` Return, `cgn` `bar` Esc, then `.` `.` changes each foo in turn. (#53)
+    `/foo` Return, `cgn` `bar` Esc, then `.` `.` changes each foo in turn;
+    `ma` on a line, move away, `d'a` deletes the lines between. (#53)
 
 ## Needs your decision
 

@@ -21,9 +21,9 @@ a486985 (2026-11-20; the Mail rows re-checked after the day's Mail keys, filing 
 | Outside the stages (C12, C13, E6, F5, H10, I4, I5) | 6 | 1 | 0 |
 | Mail leftovers (MAIL-PLAN, ROADMAP I5 list) | 0 | 0 | 2 |
 | Text tools on files and syntax highlighting (C14, C15) | — | — | 2 |
-| Vim features (C16–C43) | 18 | 0 | 10 |
+| Vim features (C16–C43) | 19 | 0 | 9 |
 | Reminders and Notes keys (I6, an idea) | — | — | 1 |
-| **Total** | 36 | 5 | 51 |
+| **Total** | 37 | 5 | 50 |
 | Won't build: the Edit window surviving a relaunch (C44) | — | — | 1 |
 | Edit window, different from vim (TRY-TOMORROW) | — | — | 6 |
 
@@ -263,7 +263,7 @@ evil-cleverparens or targets (`~/.doom.d/init.el:61,64`); smartparens is on, wit
 | `*` `#` `n` `N` `/` `?` | Built | No match highlighting; `:noh` not built | S |
 | `gn` / `cgn` | Built | `cgn` then `.` changes match after match | — |
 | `f` `t` `F` `T` with `;` `,` | Built | evil-snipe's since C26 | — |
-| Marks `m{a-z}`, `'` and `` ` `` | Not built | Left out on 11-18 (short texts). `ma` falls to `a` (append): a wrong-mode trap | S |
+| Marks `m{a-z}`, `'` and `` ` `` | Built | They move with the text, as evil's markers | — |
 | Registers `"a`–`"z`, `"A` append, `"+` `"*` `"_` `"0` | Built | | — |
 | `:s` | Built | Gaps in "Edit window, different from vim" below | — |
 | `:g` `:norm` `:sort` `:m` `:t` `:d` with ranges | Not built | Left out on 11-18; the Text wheel's Lines tools cover sorting | M-L |

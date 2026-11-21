@@ -7,8 +7,8 @@ struct VimUnknownCommandTests {
     static let start = "(defn f [a]\n  (let [x| 1]\n    x))"
 
     @Test(arguments: [
-        ("ma", "ma: marks are not built"), ("'a", "'a: marks are not built"),
-        ("`a", "`a: marks are not built"), ("g?iw", "g?iw: not built"),
+        
+        ("g?iw", "g?iw: not built"),
         ("zz", "zz: not built"), ("zt", "zt: not built"), ("gJ", "gJ: not built"), ("[(", "[(: not built"),
         ("gx", nil), ("!ip", "!ip: not built"),
     ] as [(String, String?)])

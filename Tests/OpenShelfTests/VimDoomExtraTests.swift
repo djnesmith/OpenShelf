@@ -198,4 +198,17 @@ struct VimDoomExtraTests {
         #expect(VimEngineTests.run("(a (b| c) d e)", "qa<C-h>qu@a").string == "((a b c) d e)")
         #expect(VimEngineTests.run("(a (b| c d e) f)", "qa<C-j>qu@a").string == "(a (b c d) e f)")
     }
+
+    /// Marks move with text typed before them, as evil's Emacs markers do (vim keeps the column).
+    /// emacs --batch stops a key sequence at its first error, so these are by hand.
+    @Test func marksMoveWithTheText() {
+        #expect(VimEngineTests.marked(VimEngineTests.run("|ab cd", "wmaggiXY<Esc>`ax")) == "XYab |d")
+        #expect(VimEngineTests.marked(VimEngineTests.run("|ab\ncd", "jmakdd`ax")) == "|d")
+        let unset = VimEngineTests.run("|ab cd", "`z")
+        #expect(unset.message == "E20: Mark not set")
+        #expect(unset.cursor == 0)
+        // A and a are different marks, as in evil.
+        #expect(VimEngineTests.run("|ab cd", "mAw`a").cursor == 3)
+        #expect(VimEngineTests.run("|ab cd", "mAw`A").cursor == 0)
+    }
 }

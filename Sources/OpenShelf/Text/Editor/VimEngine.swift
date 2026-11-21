@@ -107,6 +107,11 @@ struct VimEngine {
     /// (evil-snipe-repeat-keys, set-transient-map).
     private var snipeRepeatKeys: (forward: Character, backward: Character)?
     private var lastSearch: (pattern: String, forward: Bool, wholeWord: Bool)?
+    /// Marks a-z and A-Z (separate, as in evil), as character places (ROADMAP C37). They
+    /// move with the text as evil's markers do: `marksText` is the text they were last placed
+    /// on, and a change is found by what stayed the same at either end.
+    private var marks: [Character: Int] = [:]
+    private var marksText: [Character] = []
     /// What `R` replaced, newest last (nil: a character added past the line's end), for
     /// Backspace; the keys typed, for the count and `.`.
     private var replaced: [Character?] = []
@@ -210,6 +215,7 @@ struct VimEngine {
     /// Handles one key. Returns `.finish` or `.cancel` when the window should close.
     mutating func handle(_ key: VimKey) -> VimEffect? {
         message = nil
+        moveMarks()
         if playDepth == 0, !isRepeating { failureHint = nil }
         if recording != nil, playDepth == 0, !isRepeating { recordedKeys.append(key) }
         switch mode {
@@ -1271,6 +1277,8 @@ struct VimEngine {
         case paragraphForward, paragraphBackward
         case searchNext(reverse: Bool)
         case searchWord(forward: Bool)
+        /// 'a (the mark's line, linewise) and `a (its exact place), ROADMAP C37.
+        case mark(Character, exact: Bool)
         /// iw, a", i(, ap…: a range around the cursor, after an operator or in visual mode.
         case textObject(inner: Bool, Character)
     }
@@ -1356,8 +1364,7 @@ struct VimEngine {
     /// mode). nil: not one of them; .some(nil): wait for more keys; .some(reason): done.
     static let unbuiltOperators = ["!", "g?", "gw", "g@", "zf"]
     static let unbuiltWithArgument: [String: String] = [
-        "m": "marks are not built", "'": "marks are not built", "`": "marks are not built",
-        "z": "not built", "[": "not built", "]": "not built", "g'": "marks are not built", "g`": "marks are not built",
+        "z": "not built", "[": "not built", "]": "not built",
     ]
     static let unbuiltAlone = ["gJ", "gp", "gP", "gi", "g;", "g,", "ga", "g+", "gd", "gD", "g*", "g#", "g&"]
 
@@ -1634,6 +1641,10 @@ struct VimEngine {
         case "r":
             guard case .char(let target)? = next() else { return next() == nil ? .incomplete : .invalid }
             return .done(Command(count: count, action: .simple("r\(target)")))
+        case "m":
+            guard case .char(let name)? = next() else { return next() == nil ? .incomplete : .invalid }
+            guard name.isASCII, name.isLetter else { return .invalid }
+            return .done(Command(count: nil, action: .simple("mark\(name)")))
         case "Z":
             guard case .char(let second)? = next() else { return next() == nil ? .incomplete : .invalid }
             return ["Z", "Q"].contains(second) ? .done(Command(count: nil, action: .simple("Z\(second)"))) : .invalid
@@ -1765,6 +1776,11 @@ struct VimEngine {
         case ",": return .done(.repeatFind(reverse: true))
         case "n": return .done(.searchNext(reverse: false))
         case "N": return .done(.searchNext(reverse: true))
+        case "'", "`":
+            guard index < keys.count else { return .incomplete }
+            guard case .char(let name) = keys[index], name.isASCII, name.isLetter else { return .invalid }
+            index += 1
+            return .done(.mark(name, exact: c == "`"))
         case "*": return .done(.searchWord(forward: true))
         case "#": return .done(.searchWord(forward: false))
         case "i" where textObjects, "a" where textObjects:
@@ -2188,6 +2204,8 @@ struct VimEngine {
                 recordedKeys = []
             } else if name.hasPrefix("@"), name.count == 2, let register = name.last {
                 play(register == "@" ? lastMacro : register, count: n)
+            } else if name.hasPrefix("mark"), name.count == 5, let mark = name.last {
+                marks[mark] = cursor
             } else if name.hasPrefix("r"), name.count == 2, let target = name.last {
                 replaceCharacters(with: target, count: n)
             }
@@ -2325,6 +2343,13 @@ struct VimEngine {
             return Target(position: position, kind: .exclusive)
         case .textObject:
             return nil
+        case .mark(let name, let exact):
+            guard let position = marks[name] else {
+                message = "E20: Mark not set"
+                return nil
+            }
+            let at = min(position, text.count)
+            return exact ? Target(position: at, kind: .exclusive) : Target(position: firstNonBlank(lineStart(at)), kind: .linewise)
         case .searchWord(let forward):
             guard let word = wordUnderCursor() else {
                 message = "E348: No string under cursor"
@@ -2926,6 +2951,22 @@ struct VimEngine {
         case "x": return xmlAttributeObject(inner: inner).map { ($0, false) }
         case "i", "k", "j": return indentObject(inner: inner, kind).map { ($0, true) }
         default: return nil
+        }
+    }
+
+    // MARK: - Marks
+
+    /// Moves the marks with what changed since they were last checked: a mark after the
+    /// change shifts by its length, one inside it goes to its start.
+    private mutating func moveMarks() {
+        defer { marksText = text }
+        guard !marks.isEmpty, marksText != text else { return }
+        let prefix = zip(marksText, text).prefix { $0 == $1 }.count
+        let room = min(marksText.count, text.count) - prefix
+        let suffix = min(zip(marksText.reversed(), text.reversed()).prefix { $0 == $1 }.count, room)
+        let oldEnd = marksText.count - suffix, delta = text.count - marksText.count
+        for (name, at) in marks {
+            if at >= oldEnd { marks[name] = at + delta } else if at > prefix { marks[name] = prefix }
         }
     }
 

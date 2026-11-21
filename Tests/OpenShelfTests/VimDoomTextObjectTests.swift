@@ -708,4 +708,24 @@ struct VimDoomTextObjectTests {
     func gn(start: String, keys: String, expected: String) {
         #expect(Self.run(start, keys) == expected)
     }
+
+    /// m{a-z} and the ' and backtick jumps, as motions and after operators, moving with the text (C37).
+    @Test(arguments: [
+        ("|a\nb\nc", "majjd'a", "|"),
+        ("|a\nb\nc", "majj'ax", "|\nb\nc"),
+        ("a |bc\nd", "mbj`bx", "a |c\nd"),
+        ("|a\nb\nc", "jmagg`a", "a\n|b\nc"),
+        ("|a\nb\nc", "jmaggy'aP", "|a\nb\na\nb\nc"),
+        ("|ab cd", "mawd`a", "|cd"),
+        ("|  a\nb", "lllmaj'a", "  |a\nb"),
+        ("|ab\ncd\nef", "jjmaggdd'ax", "cd\n|f"),
+        ("|ab\ncd", "jlmaggOz<Esc>`ax", "z\nab\n|c"),
+        ("|ab cd ef", "wmabdw`ax", "|d ef"),
+        ("|a\nb\nc", "jmaggd`a", "|b\nc"),
+        ("|a b\nc d", "wmajlc`aX<Esc>", "a |Xd"),
+        ("|abcd ef", "llma0dw`ax", "|f"),
+    ])
+    func marks(start: String, keys: String, expected: String) {
+        #expect(Self.run(start, keys) == expected)
+    }
 }
