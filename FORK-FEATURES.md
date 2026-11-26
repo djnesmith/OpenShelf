@@ -75,6 +75,8 @@ Builds are signed as "Apple Development: David Nesmith (JFGJA89Z8H)" with the ha
 - Commits: f036332
 - Files: `Makefile` (`SIGN_IDENTITY ?=`; `bundle_app` adds upstream's App Intents metadata before signing), `Support/Info.plist`, `Support/OpenShelf.entitlements`, `Sources/OpenShelf/Convert/ExternalTools.swift` (the `defaults` domain in a comment)
 - Check: `codesign -dv --verbose=2 /Applications/OpenShelf.app` shows `Identifier=com.djnesmith.OpenShelf`, `TeamIdentifier=CHJ32A2B4N`, and `flags=0x10000(runtime)`. `codesign -d --entitlements - /Applications/OpenShelf.app` lists only apple-events.
+- Dev builds go to `build/OpenShelf.noindex/OpenShelf.app` (2026-11-26, David: "cablepeek's build is showing up in alfred, should be ignored along with any other dev builds"), so Spotlight, Alfred and Launch Services list only `/Applications/OpenShelf.app`. Check: `mdfind "kMDItemCFBundleIdentifier == 'com.djnesmith.OpenShelf'"` prints only `/Applications/OpenShelf.app`.
+- `scripts/install-gated.sh` installs a checkout's build into /Applications: the full suite within 10 minutes (a hang is killed and nothing is installed), the tree unchanged during the build, the build checked against the code requirement of OpenShelf's Accessibility grant, and a wait until the running app reports it is idle before it is quit and replaced. It prints the commit, the pid and the sha256 of both binaries.
 
 ### 3. Minimal environment for child processes
 Every tool the app runs (ffmpeg, calibre, pandoc, yq, duckdb, sqlite3, jet, LibreOffice, brew…) gets an allowlisted environment: HOME, TMPDIR, USER, LOGNAME, SHELL, LANG, LC_*, TERM and a fixed PATH. Names that look like credentials are always dropped.

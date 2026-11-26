@@ -1,6 +1,6 @@
 #!/bin/sh
 # Notarizes a .zip or .dmg with Apple and staples the ticket.
-#   scripts/notarize.sh build/OpenShelf-1.9.0.zip build/OpenShelf.app
+#   scripts/notarize.sh build/OpenShelf-1.9.0.zip build/OpenShelf.noindex/OpenShelf.app
 #       submits the zip, staples the app (a zip can't hold a ticket)
 #   scripts/notarize.sh build/OpenShelf-1.9.0.dmg
 #       submits and staples the disk image

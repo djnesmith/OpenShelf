@@ -1,7 +1,8 @@
 APP_NAME   := OpenShelf
 ARCH       := $(shell uname -m)
 BUILD_DIR  := build
-APP_BUNDLE := $(BUILD_DIR)/$(APP_NAME).app
+# In a .noindex folder, so Spotlight, Alfred and Launch Services never list dev builds.
+APP_BUNDLE := $(BUILD_DIR)/$(APP_NAME).noindex/$(APP_NAME).app
 SOURCES    := $(shell find Sources -name '*.swift')
 
 # With only the Command Line Tools installed, the macOS 27 SDK's SwiftUI macros

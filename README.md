@@ -497,7 +497,7 @@ when you click Install.
 Requires Xcode or the Xcode Command Line Tools.
 
 ```sh
-make run      # build, bundle into build/OpenShelf.app, and launch
+make run      # build, bundle into build/OpenShelf.noindex/OpenShelf.app, and launch
 make app      # just build the .app
 make test     # run the test suite (needs a working SwiftPM)
 make release  # universal build, zipped for a GitHub release
