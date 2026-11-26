@@ -179,8 +179,10 @@ final class MailKeyTap {
         let role = AXMenuNode.string(focused, kAXRoleAttribute)
         // Only a web area is ambiguous (a message read, or one being written), so only then
         // is Mail's menu asked whether Send is enabled; an unanswered question counts as yes.
-        let inViewer = !MailKeys.listRoles.contains(role ?? "") && role != "AXWebArea" && isInMessageViewer(focused)
-        let inWindow = !isInMessageViewer(focused) && isMessageWindow(app)
+        // Focus's own window, by walking up its parents (no scan of Mail).
+        let inMainViewer = isInMessageViewer(focused)
+        let inViewer = !MailKeys.listRoles.contains(role ?? "") && role != "AXWebArea" && inMainViewer
+        let inWindow = !inMainViewer && isMessageWindow(app)
         // Mail has no Send item outside a message being written (Check Mail, 2026-11-20: "not
         // found" in the viewer and in a message window), so a missing one is off; only menus
         // that can't be read at all count as on.
@@ -195,7 +197,7 @@ final class MailKeyTap {
             modifiers: modifiers,
             mailHasFocus: MailMenu.hasKeyboardFocus(),
             // A prefix (g, *) has no action yet, so it is taken only in the list.
-            inMessageViewer: inViewer,
+            inMessageViewer: inMainViewer,
             inMessageWindow: inWindow,
             action: action,
             gPrefix: outcome == .prefix("g")

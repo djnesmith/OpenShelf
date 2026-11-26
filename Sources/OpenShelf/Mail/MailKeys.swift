@@ -162,7 +162,12 @@ enum MailKeys {
             guard !textRoles.contains(role), let action else { return false }
             return actsOnOneMessage(action)
         }
-        if listRoles.contains(role) || role == "AXWebArea" { return true }
+        // The list or a message body: only inside Mail's main viewer. A message being written
+        // is a web area too, and its Send stays off until To has an address, so Send alone
+        // took typing in a new message's body (David, 2026-11-26: "when i am in the text field
+        // of a mail message openshelf hotcut keys are trying to do stuff"). Any other window
+        // (a message being written, however it was opened) or one that can't be read: Mail's.
+        if listRoles.contains(role) || role == "AXWebArea" { return inMessageViewer }
         guard inMessageViewer, !textRoles.contains(role) else { return false }
         // g and its second key work anywhere in the viewer: after a g key through the
         // sidebar focus sits on the window, and g passed to Mail, whose type-select then

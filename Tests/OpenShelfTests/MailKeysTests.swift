@@ -37,7 +37,7 @@ struct MailKeysTests {
     /// Fail open: only the message list or a message being read, no modifier but ⇧, nothing editable.
     @Test func takesKeysOnlyInTheListOrAMessageBeingRead() {
         func may(_ role: String?, editable: Bool = false, send: Bool = false, _ modifiers: MailKeys.Modifiers = []) -> Bool {
-            MailKeys.mayTake(focusedRole: role, isEditable: editable, sendEnabled: send, modifiers: modifiers)
+            MailKeys.mayTake(focusedRole: role, isEditable: editable, sendEnabled: send, modifiers: modifiers, inMessageViewer: true)
         }
         #expect(may("AXTable"))
         #expect(may("AXOutline"))
@@ -880,5 +880,33 @@ struct MailKeysTests {
         for key in MailKeys.afterG.keys { #expect(shown(key, after: "g"), "g \(key)") }
         for key in MailKeys.afterStar.keys { #expect(shown(key, after: "*"), "* \(key)") }
         #expect(MailKeys.helpText.contains("g l  g r"))
+    }
+
+    /// Typing in a message being written always goes to Mail (David, 2026-11-26: "when i am
+    /// in the text field of a mail message openshelf hotcut keys are trying to do stuff").
+    /// Its body is a web area like a message being read, and Send stays off until To has an
+    /// address, so neither tells them apart: only the main viewer (and a message window
+    /// opened to read) take keys.
+    @Test func typingInAMessageBeingWrittenGoesToMail() {
+        let letters: [Character] = ["o", "b", "r", "s", "f", "e", "x", "j", "k", "c", "u", "z", "?", "B", "U", "g", "*"]
+        for key in letters {
+            let action: MailKeys.Action? = if case .act(let a) = MailKeys.outcome(for: key, pending: nil) { a } else { nil }
+            // The body of a new message: a web area, not editable as Accessibility reports it,
+            // Send off (To empty), outside the main viewer and not a message window.
+            #expect(!MailKeys.mayTake(focusedRole: "AXWebArea", isEditable: false, sendEnabled: false, modifiers: [], action: action), "\(key)")
+            #expect(!MailKeys.mayTake(focusedRole: "AXWebArea", isEditable: false, sendEnabled: false, modifiers: [.shift], action: action), "⇧\(key)")
+            // To, Cc, Subject and the search field: text roles, wherever they are.
+            for role in ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"] {
+                #expect(!MailKeys.mayTake(focusedRole: role, isEditable: true, sendEnabled: false, modifiers: [], inMessageViewer: true, action: action))
+                #expect(!MailKeys.mayTake(focusedRole: role, isEditable: false, sendEnabled: false, modifiers: [], inMessageWindow: true, action: action))
+            }
+            // Focus that can't be read: Mail's.
+            #expect(!MailKeys.mayTake(focusedRole: nil, isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: true, action: action))
+        }
+        // A message being read in the main viewer still takes them.
+        #expect(MailKeys.mayTake(focusedRole: "AXWebArea", isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: true, action: .menu("Message", "Archive")))
+        #expect(MailKeys.mayTake(focusedRole: "AXTable", isEditable: false, sendEnabled: false, modifiers: [], inMessageViewer: true, action: .nextMessage))
+        // A list outside the main viewer (none in a message being written, but never taken).
+        #expect(!MailKeys.mayTake(focusedRole: "AXTable", isEditable: false, sendEnabled: false, modifiers: [], action: .nextMessage))
     }
 }
